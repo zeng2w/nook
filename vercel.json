@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "nook-server/api/index.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "nook-web/package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "dist" }
+    }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/nook-server/api/index.js" },
+    { "src": "/(.*)", "dest": "/nook-web/$1" }
+  ]
+}
