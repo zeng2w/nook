@@ -11,27 +11,25 @@ const ShowSchema = new mongoose.Schema({
   airedEpisodes: { type: Number, default: 0 },
   watchedEpisodes: { type: Number, default: 0 },
   
-  // --- 核心升级：灵活的更新规则 ---
+  // 更新规则
   updateFrequency: { 
     type: String, 
     enum: ['weekly', 'daily', 'monthly', 'ended', 'unknown'], 
     default: 'unknown' 
   },
-  // 每周哪些天更新 (0=周日, 1=周一 ... 6=周六)
-  updateDays: { 
-    type: [Number], 
-    default: [] 
-  }, 
-  // 每次更新几集
-  updateCount: { 
-    type: Number, 
-    default: 1 
-  },
+  updateDays: { type: [Number], default: [] }, 
+  updateCount: { type: Number, default: 1 },
   
   lastAirDate: { type: Date, default: Date.now },
   estimatedFinishDate: { type: Date },
   
+  // 媒体信息
   posterUrl: { type: String, default: '' },
+  
+  // 【新增】播放平台信息
+  network: { type: String, default: '' },      // 例如: "Netflix", "Bilibili"
+  networkLogo: { type: String, default: '' },  // 例如: "https://image.tmdb.org/.../logo.png"
+
   tmdbId: { type: Number },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }

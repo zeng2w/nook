@@ -43,6 +43,7 @@ router.get('/search', async (req, res) => {
         // 发行年份 (用于前端显示)
         releaseDate: item.release_date || item.first_air_date,
         overview: item.overview
+        // 注意：搜索接口通常不返回 networks 数据，所以这里没有添加
       }));
 
     res.json(results);
@@ -53,7 +54,7 @@ router.get('/search', async (req, res) => {
 });
 
 // ==========================================
-// 2. 详情接口 (智能提取核心数据)
+// 2. 详情接口 (智能提取核心数据 + 平台信息)
 // GET /api/tmdb/details/:type/:id
 // ==========================================
 router.get('/details/:type/:id', async (req, res) => {
@@ -95,7 +96,11 @@ router.get('/details/:type/:id', async (req, res) => {
         airDate: s.air_date
       }));
 
-    // --- C. 构造返回给前端的最终对象 ---
+    // --- 【关键修改】C. 提取播放平台 (Networks/Production Companies) ---
+    // 电视剧使用 networks，电影使用 production_companies
+    const networksData = data.networks || data.production_companies || [];
+
+    // --- D. 构造返回给前端的最终对象 ---
     const details = {
       tmdbId: data.id,
       title: data.title || data.name,
@@ -109,21 +114,24 @@ router.get('/details/:type/:id', async (req, res) => {
       // 智能提取的“最近更新时间”
       lastAirDate: lastAirDate,
       
-      // 原始状态 (Returning Series / Ended / Canceled)
+      // 原始状态
       status: data.status, 
       
       posterUrl: getPosterUrl(data.poster_path),
       
-      // 分季列表 (供前端“选择特定一季”使用)
+      // 【新增】将提取到的平台数据传回前端
+      networks: networksData,
+      
+      // 分季列表
       seasons: validSeasons
     };
 
-    // --- D. 推断更新频率 ---
+    // --- E. 推断更新频率 ---
     // 如果状态是完结或被砍，频率设为 ended
     if (data.status === 'Ended' || data.status === 'Canceled') {
       details.updateFrequency = 'ended';
     } 
-    // 如果还在连载，默认设为周更 (这是最常见的情况，方便用户)
+    // 如果还在连载，默认设为周更
     else if (data.status === 'Returning Series') {
       details.updateFrequency = 'weekly'; 
     }
