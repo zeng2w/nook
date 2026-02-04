@@ -24,6 +24,10 @@ app.use('/api/history', require('./routes/history'));
 app.use('/api/shows', require('./routes/shows'));
 app.use('/api/tmdb', tmdbRoutes);
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server is running on port: ${PORT}`);
-});
+// 只有在本地开发时才启动监听
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => console.log(`🚀 Server started on port ${PORT}`));
+}
+
+// 关键：导出 app 供 Vercel 使用
+module.exports = app;
