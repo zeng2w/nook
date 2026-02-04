@@ -12,6 +12,7 @@
             <button class="toggle-btn" :class="{ active: viewMode === 'grid' }" @click="viewMode = 'grid'"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg></button>
             <button class="toggle-btn" :class="{ active: viewMode === 'list' }" @click="viewMode = 'list'"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg></button>
           </div>
+          
           <button class="add-btn outline-btn" @click="openCalendar">
             <span class="icon">📅</span> 追剧日历
           </button>
@@ -33,14 +34,7 @@
         <div class="filters-row" v-if="uniqueNetworks.length > 0">
           <span class="filter-label">平台</span>
           <button class="filter-chip" :class="{ active: currentNetwork === 'all' }" @click="currentNetwork = 'all'">全部</button>
-          <button 
-            v-for="net in uniqueNetworks" 
-            :key="net.name" 
-            class="filter-chip network-chip" 
-            :class="{ active: currentNetwork === net.name, 'logo-mode': !!net.logo }" 
-            @click="currentNetwork = net.name"
-            :title="net.name"
-          >
+          <button v-for="net in uniqueNetworks" :key="net.name" class="filter-chip network-chip" :class="{ active: currentNetwork === net.name, 'logo-mode': !!net.logo }" @click="currentNetwork = net.name" :title="net.name">
             <img v-if="net.logo" :src="net.logo" class="filter-logo-img" alt="logo" />
             <span v-else>{{ net.name }}</span>
           </button>
@@ -68,9 +62,7 @@
                     <div class="tags-line">
                       <span class="tag-badge" :class="show.category">{{ getCategoryLabel(show.category) }}</span>
                       <span class="status-tag" :class="show.status">{{ getStatusLabel(show.status) }}</span>
-                      <div v-if="show.networkLogo" class="network-tag-logo" :title="show.network">
-                        <img :src="show.networkLogo" alt="Network" />
-                      </div>
+                      <div v-if="show.networkLogo" class="network-tag-logo" :title="show.network"><img :src="show.networkLogo" alt="Network" /></div>
                       <span v-else-if="show.network" class="tag-badge network-text">{{ show.network }}</span>
                     </div>
                   </div>
@@ -106,12 +98,8 @@
                 <div class="list-meta">
                   <span class="tag-badge" :class="show.category">{{ getCategoryLabel(show.category) }}</span>
                   <span class="status-tag" :class="show.status">{{ getStatusLabel(show.status) }}</span>
-                  
-                  <div v-if="show.networkLogo" class="network-tag-logo list-mode" :title="show.network">
-                    <img :src="show.networkLogo" alt="Network" />
-                  </div>
+                  <div v-if="show.networkLogo" class="network-tag-logo list-mode" :title="show.network"><img :src="show.networkLogo" alt="Network" /></div>
                   <span v-else-if="show.network" class="tag-badge network-text">{{ show.network }}</span>
-                  
                   <span v-if="getEstimatedDate(show) !== '暂无数据'" class="meta-text">📅 {{ getEstimatedDate(show) }}</span>
                 </div>
               </div>
@@ -130,6 +118,46 @@
           <transition name="fade"><div v-if="pendingDeletes[show._id]" class="undo-overlay list-mode" @mouseenter="pauseDeleteTimer(show._id)" @mouseleave="resumeDeleteTimer(show._id)"><span class="undo-text">即将彻底删除...</span><button class="undo-btn" @click="cancelDelete(show._id)">撤回</button></div></transition>
         </div>
       </div>
+    </div>
+
+    <div class="sync-assistant-container">
+      
+      <transition name="slide-up">
+        <div v-if="showSyncPanel" class="sync-log-panel">
+          <div class="sync-header">
+            <h4>更新日志</h4>
+            <span class="log-count" v-if="syncLogs.length">{{ syncLogs.length }}</span>
+            <button class="clear-btn" @click="syncLogs = []" v-if="syncLogs.length">清空</button>
+          </div>
+          
+          <div class="sync-list" v-if="syncLogs.length > 0">
+            <div v-for="(log, index) in syncLogs" :key="index" class="sync-item">
+              <img :src="log.posterUrl" class="sync-poster" />
+              <div class="sync-details">
+                <div class="sync-title">{{ log.title }}</div>
+                <div class="sync-change">
+                  <span class="old-val">{{ log.oldEp }}</span>
+                  <span class="arrow">→</span>
+                  <span class="new-val">第 {{ log.newEp }} 集</span>
+                </div>
+                <div class="sync-date">{{ log.date }} 更新</div>
+              </div>
+            </div>
+          </div>
+          
+          <div v-else class="sync-empty">
+            <div class="empty-icon">🎉</div>
+            <p>暂无新更新</p>
+            <p class="sub-text">点击下方按钮同步数据</p>
+          </div>
+        </div>
+      </transition>
+
+      <button class="sync-fab" @click="triggerSyncOrToggle" :class="{ 'is-spinning': isSyncing }">
+        <span class="fab-icon" v-if="!isSyncing">↻</span>
+        <span class="fab-icon spinner" v-else>⟳</span>
+        <div class="badge-dot" v-if="syncLogs.length > 0 && !showSyncPanel"></div>
+      </button>
     </div>
 
     <Transition name="fade">
@@ -206,6 +234,11 @@ const pendingDeletes = reactive({});
 const availableSeasons = ref([]);
 const flippedCardId = ref(null);
 const isLoading = ref(false);
+const isSyncing = ref(false);
+
+// 【新增】同步面板状态
+const showSyncPanel = ref(false);
+const syncLogs = ref([]); // 存储更新日志
 
 const tmdbQuery = ref('');
 const tmdbResults = ref([]);
@@ -215,7 +248,7 @@ const initialForm = {
   title: '', category: 'tv', status: 'watching', updateFrequency: 'weekly',
   updateDays: [], updateCount: 1, watchedEpisodes: 0, airedEpisodes: 0, totalEpisodes: 0,
   lastAirDate: new Date().toISOString().split('T')[0], posterUrl: '',
-  network: '', networkLogo: ''
+  network: '', networkLogo: '', tmdbId: null
 };
 const form = reactive({ ...initialForm });
 
@@ -225,7 +258,7 @@ const freqOptions = [ { label: '周更', val: 'weekly' }, { label: '日更', val
 const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 const weekDaysAbbr = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-// --- CALENDAR LOGIC ---
+// --- CALENDAR LOGIC (Unchanged) ---
 const showCalendar = ref(false);
 const calendarStart = ref(new Date()); 
 const openCalendar = () => { const d = new Date(); const day = d.getDay(); const diff = d.getDate() - day; const sunday = new Date(d.setDate(diff)); sunday.setHours(12,0,0,0); calendarStart.value = sunday; showCalendar.value = true; };
@@ -260,13 +293,55 @@ const filteredShows = computed(() => {
     const dateB = b.lastAirDate ? new Date(b.lastAirDate).getTime() : 0;
     if (dateA === 0 && dateB !== 0) return 1;
     if (dateB === 0 && dateA !== 0) return -1;
-    return dateA - dateB; 
+    return dateB - dateA; 
   });
 });
 
 const getCurrentUserId = () => {
   const userStr = sessionStorage.getItem('current_user');
   return userStr ? JSON.parse(userStr).id : null;
+};
+
+// --- 【SYNC ASSISTANT LOGIC】 ---
+// 点击右下角按钮的逻辑
+const triggerSyncOrToggle = () => {
+  // 如果面板没开，或者正在同步，就只切换面板显示
+  if (showSyncPanel.value || isSyncing.value) {
+    showSyncPanel.value = !showSyncPanel.value;
+  } else {
+    // 否则直接开始同步并打开面板
+    showSyncPanel.value = true;
+    syncData();
+  }
+};
+
+const syncData = async () => {
+  const userId = getCurrentUserId();
+  if (!userId) return;
+  isSyncing.value = true;
+  try {
+    const res = await axios.post('http://localhost:5001/api/shows/sync', { userId });
+    await fetchShows(); 
+
+    // 如果有新日志，合并到当前日志的前面
+    if (res.data.logs && res.data.logs.length > 0) {
+      syncLogs.value = [...res.data.logs, ...syncLogs.value];
+    }
+  } catch (err) {
+    console.error('Sync failed', err);
+  } finally {
+    isSyncing.value = false;
+  }
+};
+
+const fetchShows = async () => {
+  const userId = getCurrentUserId();
+  if (!userId) return;
+  isLoading.value = true;
+  try {
+    const res = await axios.get(`http://localhost:5001/api/shows?userId=${userId}&t=${new Date().getTime()}`);
+    shows.value = res.data;
+  } catch (err) { console.error(err); } finally { setTimeout(() => { isLoading.value = false; }, 300); }
 };
 
 const searchTMDB = async () => {
@@ -280,6 +355,7 @@ const searchTMDB = async () => {
 };
 
 const selectTMDBResult = async (item) => {
+  form.tmdbId = item.tmdbId; 
   form.title = item.title;
   form.category = item.category;
   form.posterUrl = item.posterUrl;
@@ -366,16 +442,6 @@ const calcStatus = (watched, aired, total) => {
   return 'watching';
 };
 
-const fetchShows = async () => {
-  const userId = getCurrentUserId();
-  if (!userId) return;
-  isLoading.value = true;
-  try {
-    const res = await axios.get(`http://localhost:5001/api/shows?userId=${userId}`);
-    shows.value = res.data;
-  } catch (err) { console.error(err); } finally { setTimeout(() => { isLoading.value = false; }, 300); }
-};
-
 const openEditModal = (show) => {
   isEditing.value = true;
   editingId.value = show._id;
@@ -385,7 +451,7 @@ const openEditModal = (show) => {
     updateFrequency: show.updateFrequency, updateDays: show.updateDays || [], updateCount: show.updateCount || 1,
     watchedEpisodes: show.watchedEpisodes, airedEpisodes: show.airedEpisodes, totalEpisodes: show.totalEpisodes,
     lastAirDate: show.lastAirDate ? new Date(show.lastAirDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-    network: show.network || '', networkLogo: show.networkLogo || ''
+    network: show.network || '', networkLogo: show.networkLogo || '', tmdbId: show.tmdbId
   });
   showModal.value = true;
 };
@@ -465,84 +531,116 @@ onMounted(() => { fetchShows(); updateTheme('#fcfcfc'); });
 </script>
 
 <style scoped>
-/* --- 统一标签栏样式 (Grid & List) --- */
-.tags-line, .list-meta {
+/* --- 右下角同步助手 --- */
+.sync-assistant-container {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  z-index: 1000;
   display: flex;
-  gap: 6px;
-  align-items: center; /* 垂直居中 */
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-end;
 }
 
-/* 统一所有标签容器的高度、盒模型、对齐 */
-.tag-badge, .status-tag, .network-tag-logo, .network-text {
-  height: 20px; /* 强制统一高度 */
-  display: inline-flex;
+/* 悬浮按钮 FAB */
+.sync-fab {
+  width: 56px;
+  height: 56px;
+  border-radius: 28px;
+  background: #000;
+  color: #fff;
+  border: none;
+  font-size: 1.5rem;
+  display: flex;
   align-items: center;
   justify-content: center;
-  line-height: 1;
-  box-sizing: border-box; /* 边框算在高度内 */
-  border-radius: 4px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  vertical-align: middle;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+  cursor: pointer;
+  transition: transform 0.2s, background 0.2s;
+  position: relative;
+}
+.sync-fab:hover { transform: scale(1.05); background: #333; }
+.sync-fab:active { transform: scale(0.95); }
+.fab-icon.spinner { animation: spin 1s linear infinite; display: inline-block; }
+
+/* 红点提醒 */
+.badge-dot {
+  position: absolute; top: 2px; right: 2px; width: 12px; height: 12px;
+  background: #ef4444; border: 2px solid white; border-radius: 50%;
 }
 
-/* 文字标签内边距 */
-.tag-badge, .status-tag, .network-text {
-  padding: 0 6px;
+/* 日志面板 */
+.sync-log-panel {
+  background: white;
+  width: 320px;
+  max-height: 400px;
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  margin-bottom: 15px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #eee;
 }
 
-/* 图标标签样式 */
-.network-tag-logo {
-  padding: 0 4px; 
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+.sync-header {
+  padding: 15px;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fafafa;
 }
+.sync-header h4 { margin: 0; font-size: 0.95rem; font-weight: 700; color: #333; }
+.log-count { background: #000; color: #fff; font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; }
+.clear-btn { background: none; border: none; font-size: 0.8rem; color: #999; cursor: pointer; }
+.clear-btn:hover { color: #666; }
 
-/* 图标图片自适应 */
-.network-tag-logo img {
-  height: 12px; /* 12px图片在20px容器中居中 */
-  width: auto;
-  object-fit: contain;
-  display: block; 
+.sync-list { overflow-y: auto; padding: 10px; max-height: 340px; }
+.sync-item {
+  display: flex; gap: 10px; padding: 10px;
+  border-bottom: 1px solid #f5f5f5;
+  align-items: center;
 }
+.sync-item:last-child { border-bottom: none; }
+.sync-poster { width: 36px; height: 50px; border-radius: 4px; object-fit: cover; background: #eee; }
+.sync-details { flex: 1; }
+.sync-title { font-size: 0.9rem; font-weight: 600; color: #333; margin-bottom: 2px; }
+.sync-change { font-size: 0.85rem; font-weight: 700; color: #2563eb; display: flex; align-items: center; gap: 6px; }
+.old-val { color: #999; font-weight: 400; text-decoration: line-through; font-size: 0.75rem; }
+.sync-date { font-size: 0.7rem; color: #9ca3af; margin-top: 2px; }
 
-/* 类别颜色定义 (新版) */
+.sync-empty { padding: 40px 20px; text-align: center; color: #999; }
+.empty-icon { font-size: 2rem; margin-bottom: 10px; }
+.sub-text { font-size: 0.8rem; color: #ccc; margin-top: 5px; }
+
+/* 动画 */
+.slide-up-enter-active, .slide-up-leave-active { transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); }
+.slide-up-enter-from, .slide-up-leave-to { opacity: 0; transform: translateY(20px); }
+
+/* --- 之前的样式 --- */
+.tags-line, .list-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.tag-badge, .status-tag, .network-tag-logo, .network-text { height: 20px; display: inline-flex; align-items: center; justify-content: center; line-height: 1; box-sizing: border-box; border-radius: 4px; font-size: 0.7rem; font-weight: 600; vertical-align: middle; }
+.tag-badge, .status-tag, .network-text { padding: 0 6px; }
+.network-tag-logo { padding: 0 4px; background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+.network-tag-logo img { height: 12px; width: auto; object-fit: contain; display: block; }
 .tag-badge.tv { background: #dbeafe; color: #1e40af; }
 .tag-badge.anime { background: #f3e8ff; color: #6b21a8; }
 .tag-badge.movie { background: #e0e7ff; color: #3730a3; }
 .tag-badge.variety { background: #ffedd5; color: #9a3412; }
-
-/* (Previous styles remain below) */
 .status-tag.wish { background: #fef3c7; color: #d97706; }
 .status-tag.watching { background: #d1fae5; color: #059669; }
 .status-tag.watched { background: #e0e7ff; color: #4338ca; }
 .status-tag.dropped { background: #f3f4f6; color: #9ca3af; text-decoration: line-through; }
 .network-text { background: #f3f4f6; color: #4b5563; border: 1px solid #e5e7eb; }
 .network-logo-badge.list-mode { height: 20px; }
-
-/* Filter Chip Styles */
-.network-chip {
-  padding: 4px 12px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: white; 
-  border: 1px solid #eee;
-  color: #555;
-}
+.network-chip { padding: 4px 12px; height: 32px; display: inline-flex; align-items: center; justify-content: center; background: white; border: 1px solid #eee; color: #555; }
 .filter-logo-img { height: 18px; width: auto; object-fit: contain; display: block; }
 .network-chip.active { background: #fff; border: 2px solid #374151; box-shadow: 0 4px 10px rgba(55, 65, 81, 0.15); color: #374151; font-weight: 600; }
 .network-chip.logo-mode { padding: 4px 10px; }
-
-/* Network Preview */
 .network-input-group { display: flex; gap: 10px; align-items: center; }
 .network-preview { height: 38px; padding: 2px 8px; flex-shrink: 0; background: white; border: 1px solid #eee; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
 .network-preview img { height: 100%; width: auto; object-fit: contain; }
-
-/* ... (Keep all existing styles) ... */
 .tv-container { padding: 0; height: 100%; overflow-y: auto; background-color: transparent; color: #333; }
 .sticky-header-wrapper { position: sticky; top: 0; z-index: 99; background-color: rgba(252, 252, 252, 0.95); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(0,0,0,0.03); padding-bottom: 10px; }
 .header { display: flex; justify-content: space-between; align-items: center; padding: 30px 40px 10px 40px; }
@@ -718,4 +816,6 @@ onMounted(() => { fetchShows(); updateTheme('#fcfcfc'); });
 .empty-dot { text-align: center; color: #ccc; margin-top: 20px; font-size: 1.5rem; }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
+.spin { animation: spin 1s linear infinite; display: inline-block; }
+@keyframes spin { 100% { transform: rotate(360deg); } }
 </style>
