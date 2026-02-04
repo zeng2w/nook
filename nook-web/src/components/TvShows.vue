@@ -13,10 +13,10 @@
             <button class="toggle-btn" :class="{ active: viewMode === 'list' }" @click="viewMode = 'list'"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg></button>
           </div>
           <button class="add-btn outline-btn" @click="openCalendar">
-            <span class="icon">📅</span> 日历
+            <span class="icon">📅</span> 追剧日历
           </button>
           <button class="add-btn" @click="openAddModal">
-            <span class="plus-icon">+</span> 添加
+            <span class="plus-icon">+</span> 添加剧集
           </button>
         </div>
       </div>
@@ -45,7 +45,7 @@
                 </div>
                 <div class="card-header-grid">
                   <div class="poster-mini trigger-flip" :style="{ backgroundColor: getCategoryColor(show.category) }" @mouseenter="flippedCardId = show._id">
-                    <img v-if="show.posterUrl" :src="show.posterUrl" class="mini-img" /><span v-else>{{ show.title.charAt(0) }}</span><div class="flip-hint">↻</div>
+                    <img v-if="show.posterUrl" :src="show.posterUrl" class="mini-img" loading="lazy" /><span v-else>{{ show.title.charAt(0) }}</span><div class="flip-hint">↻</div>
                   </div>
                   <div class="header-info"><h3>{{ show.title }}</h3><div class="tags-line"><span class="tag-badge">{{ getCategoryLabel(show.category) }}</span><span class="status-tag" :class="show.status">{{ getStatusLabel(show.status) }}</span></div></div>
                 </div>
@@ -62,17 +62,23 @@
                 <div class="detail-control-area"><div class="detail-numbers no-border"><div class="num-col"><span class="label">已看</span><span class="val blue-text">{{ show.watchedEpisodes }}</span></div><div class="num-col"><span class="label">更新</span><span class="val purple-text">{{ show.airedEpisodes }}</span></div><div class="num-col"><span class="label">总集</span><span class="val">{{ show.totalEpisodes || '-' }}</span></div></div></div>
                 <div class="date-bar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg><span>{{ getEstimatedDate(show) }}</span></div>
               </div>
-              <div class="card-face back"><img v-if="show.posterUrl" :src="show.posterUrl" class="full-poster" /><div v-else class="back-placeholder" :style="{ backgroundColor: getCategoryColor(show.category) }"><span>{{ show.title }}</span></div></div>
+              <div class="card-face back">
+                <img v-if="show.posterUrl" :src="show.posterUrl" class="full-poster" loading="lazy" />
+                <div v-else class="back-placeholder" :style="{ backgroundColor: getCategoryColor(show.category) }"><span>{{ show.title }}</span></div>
+              </div>
             </div>
           </div>
-          <transition name="fade"><div v-if="pendingDeletes[show._id]" class="undo-overlay" @mouseenter="pauseDeleteTimer(show._id)" @mouseleave="resumeDeleteTimer(show._id)"><span class="undo-text">即将删除...</span><button class="undo-btn" @click="cancelDelete(show._id)">撤回</button></div></transition>
+          <transition name="fade">
+            <div v-if="pendingDeletes[show._id]" class="undo-overlay" @mouseenter="pauseDeleteTimer(show._id)" @mouseleave="resumeDeleteTimer(show._id)"><span class="undo-text">即将删除...</span><button class="undo-btn" @click="cancelDelete(show._id)">撤回</button></div>
+          </transition>
         </div>
         <div v-if="filteredShows.length === 0" class="empty-state">暂无相关剧集</div>
       </div>
+
       <div v-else class="list-layout-container">
         <div v-for="show in filteredShows" :key="show._id" class="list-card-wrapper">
           <div class="list-card full-height-poster" :class="{ 'blur-bg': pendingDeletes[show._id], 'dropped-card': show.status === 'dropped' }">
-            <div class="list-poster-side" :style="{ backgroundColor: show.posterUrl ? 'transparent' : getCategoryColor(show.category) }"><img v-if="show.posterUrl" :src="show.posterUrl" alt="Poster" /><span v-else>{{ show.title.charAt(0) }}</span></div>
+            <div class="list-poster-side" :style="{ backgroundColor: show.posterUrl ? 'transparent' : getCategoryColor(show.category) }"><img v-if="show.posterUrl" :src="show.posterUrl" alt="Poster" loading="lazy" /><span v-else>{{ show.title.charAt(0) }}</span></div>
             <div class="list-main-content">
               <div class="list-info-col"><h3>{{ show.title }}</h3><div class="list-meta"><span class="cat-tag" :class="show.category">{{ getCategoryLabel(show.category) }}</span><span class="status-tag list-ver" :class="show.status">{{ getStatusLabel(show.status) }}</span><span v-if="getEstimatedDate(show) !== '暂无数据'" class="meta-text">📅 {{ getEstimatedDate(show) }}</span></div></div>
               <div class="list-progress-col">
@@ -89,6 +95,7 @@
           </div>
           <transition name="fade"><div v-if="pendingDeletes[show._id]" class="undo-overlay list-mode" @mouseenter="pauseDeleteTimer(show._id)" @mouseleave="resumeDeleteTimer(show._id)"><span class="undo-text">即将彻底删除...</span><button class="undo-btn" @click="cancelDelete(show._id)">撤回</button></div></transition>
         </div>
+        <div v-if="filteredShows.length === 0" class="empty-state">暂无相关剧集</div>
       </div>
     </div>
 
@@ -100,17 +107,32 @@
           </div>
           
           <div class="modal-body-scroll">
+            
             <div v-if="!isEditing" class="tmdb-search-section">
               <div class="search-box-modern">
                 <span class="search-icon">🔍</span>
                 <input v-model="tmdbQuery" @keyup.enter="searchTMDB" placeholder="输入剧名搜索 (例如: 海贼王)" class="modern-input search-input" />
                 <button class="btn-icon" @click="searchTMDB" :disabled="isSearching">{{ isSearching ? '...' : '→' }}</button>
               </div>
-              <div v-if="tmdbResults.length > 0" class="tmdb-results-floating">
-                <div v-for="res in tmdbResults" :key="res.tmdbId" class="tmdb-item" @click="selectTMDBResult(res)">
-                  <img v-if="res.posterUrl" :src="res.posterUrl" class="tmdb-thumb" /><div v-else class="tmdb-thumb-placeholder">{{ res.title.charAt(0) }}</div><div class="tmdb-info"><div class="tmdb-title">{{ res.title }}</div><div class="tmdb-meta">{{ res.releaseDate ? res.releaseDate.substring(0,4) : 'N/A' }} • {{ getCategoryLabel(res.category) }}</div></div>
+              
+              <transition name="fade">
+                <div v-if="tmdbResults.length > 0" class="tmdb-results-floating">
+                  <div v-for="res in tmdbResults" :key="res.tmdbId" class="tmdb-item" @click="selectTMDBResult(res)">
+                    <div class="tmdb-thumb-wrapper">
+                      <img v-if="res.posterUrl" :src="res.posterUrl" class="tmdb-thumb" />
+                      <div v-else class="tmdb-thumb-placeholder">{{ res.title.charAt(0) }}</div>
+                    </div>
+                    <div class="tmdb-info">
+                      <div class="tmdb-title">{{ res.title }}</div>
+                      <div class="tmdb-meta">
+                        <span class="meta-badge">{{ res.releaseDate ? res.releaseDate.substring(0,4) : 'N/A' }}</span>
+                        <span class="meta-dot">•</span>
+                        <span>{{ getCategoryLabel(res.category) }}</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </transition>
             </div>
 
             <div class="form-group">
@@ -128,17 +150,8 @@
             <div class="form-section">
               <label class="section-title">更新频率</label>
               <div class="segmented-control">
-                <div 
-                  v-for="opt in freqOptions" 
-                  :key="opt.val" 
-                  class="segment-option"
-                  :class="{ active: form.updateFrequency === opt.val }" 
-                  @click="form.updateFrequency = opt.val"
-                >
-                  {{ opt.label }}
-                </div>
+                <div v-for="opt in freqOptions" :key="opt.val" class="segment-option" :class="{ active: form.updateFrequency === opt.val }" @click="form.updateFrequency = opt.val">{{ opt.label }}</div>
               </div>
-
               <div v-if="form.updateFrequency === 'weekly'" class="week-selector-modern">
                 <span class="sub-label">每周:</span>
                 <div class="days-row">
@@ -356,7 +369,7 @@ const filteredShows = computed(() => {
     const dateB = b.lastAirDate ? new Date(b.lastAirDate).getTime() : 0;
     if (dateA === 0 && dateB !== 0) return 1;
     if (dateB === 0 && dateA !== 0) return -1;
-    return dateB - dateA; 
+    return dateA - dateB; 
   });
 });
 
@@ -723,16 +736,45 @@ onMounted(() => { fetchShows(); updateTheme('#fcfcfc'); });
 .primary-btn { background: #1d1d1f; color: white; }
 .primary-btn:hover { background: #000; transform: scale(1.02); }
 
-/* Floating Search Results */
+/* Floating Search Results - FIX IS HERE */
+.tmdb-search-section { position: relative; } /* Ensure parent is relative for absolute child */
+
 .search-box-modern { display: flex; align-items: center; position: relative; margin-bottom: 5px; }
 .search-icon { position: absolute; left: 12px; color: #999; }
 .search-input { padding-left: 36px; padding-right: 40px; }
 .btn-icon { position: absolute; right: 8px; background: #e0e0e0; border: none; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+
 .tmdb-results-floating { 
-  position: absolute; width: calc(100% - 56px); z-index: 100; 
-  background: white; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); 
-  max-height: 250px; overflow-y: auto; padding: 8px; border: 1px solid #eee; margin-top: 4px;
+  position: absolute; 
+  top: 100%; left: 0; width: 100%; /* Full width of parent */
+  z-index: 100; 
+  background: white; border-radius: 16px; 
+  box-shadow: 0 15px 40px rgba(0,0,0,0.15); 
+  max-height: 280px; overflow-y: auto; 
+  padding: 8px; border: 1px solid #eee; margin-top: 6px;
 }
+
+.tmdb-item { 
+  display: flex; align-items: center; gap: 12px; 
+  padding: 8px; border-radius: 12px; 
+  cursor: pointer; transition: 0.2s; 
+}
+.tmdb-item:hover { background: #f5f5f7; }
+
+.tmdb-thumb-wrapper {
+  width: 48px; height: 72px; 
+  flex-shrink: 0; 
+  border-radius: 6px; overflow: hidden; background: #eee;
+  display: flex; align-items: center; justify-content: center;
+}
+.tmdb-thumb { width: 100%; height: 100%; object-fit: cover; }
+.tmdb-thumb-placeholder { font-weight: bold; color: #999; }
+
+.tmdb-info { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+.tmdb-title { font-weight: 600; font-size: 0.95rem; color: #1d1d1f; margin-bottom: 2px; }
+.tmdb-meta { font-size: 0.8rem; color: #86868b; display: flex; align-items: center; gap: 6px; }
+.meta-badge { background: #f0f0f2; padding: 2px 6px; border-radius: 4px; font-weight: 500; }
+.meta-dot { font-weight: 800; color: #d1d1d6; }
 
 /* === CALENDAR MODAL === */
 .modal-overlay.glass-background { background: rgba(0, 0, 0, 0.2); }
