@@ -3,7 +3,7 @@ const router = express.Router();
 const axios = require('axios');
 
 // 【重要】请将此处替换为你申请到的 TMDB API Key
-const TMDB_API_KEY = 'b11ae0869390e856ba928a3d91813746'; 
+const TMDB_API_KEY = process.env.TMDB_API_KEY; 
 
 const BASE_URL = 'https://api.themoviedb.org/3';
 const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500'; // w500 代表海报宽度

@@ -1,6 +1,13 @@
 <template>
   <div class="tv-container">
     
+    <transition name="toast-slide">
+      <div v-if="toast.visible" class="toast-notification" :class="toast.type">
+        <div class="toast-icon">{{ toast.type === 'success' ? '✅' : '⚠️' }}</div>
+        <div class="toast-content">{{ toast.message }}</div>
+      </div>
+    </transition>
+
     <div class="sticky-header-wrapper">
       <div class="header">
         <div>
@@ -8,11 +15,32 @@
           <p class="subtitle">管理您的影视作品观看进度</p>
         </div>
         <div class="header-actions">
+          <input 
+            type="file" 
+            ref="fileInput" 
+            style="display: none" 
+            accept=".json" 
+            @change="handleFileUpload" 
+          />
+
+          <button class="add-btn outline-btn" @click="triggerImport" title="导入备份">
+            <span class="icon">📤</span> 导入
+          </button>
+
+          <button class="add-btn outline-btn" @click="exportData" title="备份数据">
+            <span class="icon">📥</span> 导出
+          </button>
+
           <div class="view-toggle">
             <button class="toggle-btn" :class="{ active: viewMode === 'grid' }" @click="viewMode = 'grid'"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg></button>
             <button class="toggle-btn" :class="{ active: viewMode === 'list' }" @click="viewMode = 'list'"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg></button>
           </div>
           
+          <button class="add-btn outline-btn" @click="syncData" :disabled="isSyncing" title="从 TMDB 同步最新集数">
+            <span class="icon" :class="{ 'spin': isSyncing }">↻</span> 
+            {{ isSyncing ? '同步中...' : '同步进度' }}
+          </button>
+
           <button class="add-btn outline-btn" @click="openCalendar">
             <span class="icon">📅</span> 追剧日历
           </button>
@@ -34,7 +62,14 @@
         <div class="filters-row" v-if="uniqueNetworks.length > 0">
           <span class="filter-label">平台</span>
           <button class="filter-chip" :class="{ active: currentNetwork === 'all' }" @click="currentNetwork = 'all'">全部</button>
-          <button v-for="net in uniqueNetworks" :key="net.name" class="filter-chip network-chip" :class="{ active: currentNetwork === net.name, 'logo-mode': !!net.logo }" @click="currentNetwork = net.name" :title="net.name">
+          <button 
+            v-for="net in uniqueNetworks" 
+            :key="net.name" 
+            class="filter-chip network-chip" 
+            :class="{ active: currentNetwork === net.name, 'logo-mode': !!net.logo }" 
+            @click="currentNetwork = net.name"
+            :title="net.name"
+          >
             <img v-if="net.logo" :src="net.logo" class="filter-logo-img" alt="logo" />
             <span v-else>{{ net.name }}</span>
           </button>
@@ -121,41 +156,15 @@
     </div>
 
     <div class="sync-assistant-container">
-      
       <transition name="slide-up">
         <div v-if="showSyncPanel" class="sync-log-panel">
-          <div class="sync-header">
-            <h4>更新日志</h4>
-            <span class="log-count" v-if="syncLogs.length">{{ syncLogs.length }}</span>
-            <button class="clear-btn" @click="syncLogs = []" v-if="syncLogs.length">清空</button>
-          </div>
-          
-          <div class="sync-list" v-if="syncLogs.length > 0">
-            <div v-for="(log, index) in syncLogs" :key="index" class="sync-item">
-              <img :src="log.posterUrl" class="sync-poster" />
-              <div class="sync-details">
-                <div class="sync-title">{{ log.title }}</div>
-                <div class="sync-change">
-                  <span class="old-val">{{ log.oldEp }}</span>
-                  <span class="arrow">→</span>
-                  <span class="new-val">第 {{ log.newEp }} 集</span>
-                </div>
-                <div class="sync-date">{{ log.date }} 更新</div>
-              </div>
-            </div>
-          </div>
-          
-          <div v-else class="sync-empty">
-            <div class="empty-icon">🎉</div>
-            <p>暂无新更新</p>
-            <p class="sub-text">点击下方按钮同步数据</p>
-          </div>
+          <div class="sync-header"><h4>更新日志</h4><span class="log-count" v-if="syncLogs.length">{{ syncLogs.length }}</span><button class="clear-btn" @click="syncLogs = []" v-if="syncLogs.length">清空</button></div>
+          <div class="sync-list" v-if="syncLogs.length > 0"><div v-for="(log, index) in syncLogs" :key="index" class="sync-item"><img :src="log.posterUrl" class="sync-poster" /><div class="sync-details"><div class="sync-title">{{ log.title }}</div><div class="sync-change"><span class="old-val">{{ log.oldEp }}</span><span class="arrow">→</span><span class="new-val">第 {{ log.newEp }} 集</span></div><div class="sync-date">{{ log.date }} 更新</div></div></div></div>
+          <div v-else class="sync-empty"><div class="empty-icon">🎉</div><p>暂无新更新</p><p class="sub-text">点击下方按钮同步数据</p></div>
         </div>
       </transition>
-
       <button class="sync-fab" @click="triggerSyncOrToggle" :class="{ 'is-spinning': isSyncing }">
-        <span class="fab-icon" v-if="!isSyncing">↻</span>
-        <span class="fab-icon spinner" v-else>⟳</span>
+        <span class="fab-icon" v-if="!isSyncing">↻</span><span class="fab-icon spinner" v-else>⟳</span>
         <div class="badge-dot" v-if="syncLogs.length > 0 && !showSyncPanel"></div>
       </button>
     </div>
@@ -236,13 +245,92 @@ const flippedCardId = ref(null);
 const isLoading = ref(false);
 const isSyncing = ref(false);
 
-// 【新增】同步面板状态
 const showSyncPanel = ref(false);
-const syncLogs = ref([]); // 存储更新日志
+const syncLogs = ref([]);
 
 const tmdbQuery = ref('');
 const tmdbResults = ref([]);
 const isSearching = ref(false);
+
+// 【新增】Toast 状态管理
+const toast = reactive({
+  visible: false,
+  message: '',
+  type: 'success'
+});
+
+// 【新增】显示 Toast 函数
+const showToast = (msg, type = 'success') => {
+  toast.message = msg;
+  toast.type = type;
+  toast.visible = true;
+  // 3秒后自动消失
+  setTimeout(() => {
+    toast.visible = false;
+  }, 3000);
+};
+
+// 1. 定义 ref 引用
+const fileInput = ref(null);
+
+// 2. 点击按钮 -> 触发文件选择
+const triggerImport = () => {
+  fileInput.value.click();
+};
+
+// 3. 处理文件上传
+const handleFileUpload = (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  // 使用 FileReader 读取文件内容
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const jsonContent = e.target.result;
+      const parsedData = JSON.parse(jsonContent);
+
+      if (!Array.isArray(parsedData)) {
+        return showToast("文件格式错误：必须是剧集数组", "error");
+      }
+
+      // 开始上传
+      const userId = getCurrentUserId();
+      showToast("正在导入数据...", "success"); // 提示正在处理
+
+      const res = await axios.post('http://localhost:5001/api/shows/import', {
+        userId,
+        shows: parsedData
+      });
+
+      if (res.data.success) {
+        showToast(res.data.message, "success");
+        await fetchShows(); // 导入成功后刷新列表
+      }
+
+    } catch (err) {
+      console.error(err);
+      showToast("导入失败：文件损坏或格式不正确", "error");
+    } finally {
+      // 清空 input，防止同一个文件无法再次触发 change 事件
+      event.target.value = '';
+    }
+  };
+  
+  // 开始读取文本
+  reader.readAsText(file);
+};
+
+const exportData = () => {
+  const userId = getCurrentUserId();
+  if (!userId) return;
+  
+  // 直接利用浏览器的下载行为
+  const url = `http://localhost:5001/api/shows/export?userId=${userId}`;
+  window.open(url, '_blank');
+  
+  showToast("数据备份下载中...", "success");
+};
 
 const initialForm = {
   title: '', category: 'tv', status: 'watching', updateFrequency: 'weekly',
@@ -302,14 +390,11 @@ const getCurrentUserId = () => {
   return userStr ? JSON.parse(userStr).id : null;
 };
 
-// --- 【SYNC ASSISTANT LOGIC】 ---
-// 点击右下角按钮的逻辑
+// --- SYNC ASSISTANT LOGIC ---
 const triggerSyncOrToggle = () => {
-  // 如果面板没开，或者正在同步，就只切换面板显示
   if (showSyncPanel.value || isSyncing.value) {
     showSyncPanel.value = !showSyncPanel.value;
   } else {
-    // 否则直接开始同步并打开面板
     showSyncPanel.value = true;
     syncData();
   }
@@ -323,12 +408,18 @@ const syncData = async () => {
     const res = await axios.post('http://localhost:5001/api/shows/sync', { userId });
     await fetchShows(); 
 
-    // 如果有新日志，合并到当前日志的前面
-    if (res.data.logs && res.data.logs.length > 0) {
-      syncLogs.value = [...res.data.logs, ...syncLogs.value];
+    if (res.data.updatedCount > 0) {
+      if (res.data.logs && res.data.logs.length > 0) {
+        syncLogs.value = [...res.data.logs, ...syncLogs.value];
+      }
+      showToast(`同步完成！更新了 ${res.data.updatedCount} 部剧集`, "success"); // 使用 Toast
+    } else {
+      console.log('同步完成，暂无新内容');
+      showToast('暂无新内容，已经是最新了', "success"); // 使用 Toast
     }
   } catch (err) {
     console.error('Sync failed', err);
+    showToast('同步失败，请检查网络连接', "error"); // 使用 Toast
   } finally {
     isSyncing.value = false;
   }
@@ -474,20 +565,31 @@ const toggleDay = (idx) => {
 
 const saveShow = async () => {
   const userId = getCurrentUserId();
-  if (!userId || !form.title) return alert("请输入作品名称");
+  if (!userId || !form.title) return showToast("请输入作品名称", "error");
+  
   try {
     let res;
     if (isEditing.value) {
       res = await axios.put(`http://localhost:5001/api/shows/${editingId.value}`, form);
       const index = shows.value.findIndex(s => s._id === editingId.value);
       if (index !== -1) shows.value[index] = res.data;
+      showToast("编辑成功", "success");
     } else {
       const initialStatus = calcStatus(form.watchedEpisodes, form.airedEpisodes, form.totalEpisodes);
       res = await axios.post('http://localhost:5001/api/shows', { userId, ...form, status: initialStatus });
       shows.value.unshift(res.data);
+      showToast("添加成功", "success");
     }
     showModal.value = false;
-  } catch (err) { console.error(err); }
+  } catch (err) {
+    // 【修改点】使用 Toast 替换 Alert
+    if (err.response && err.response.data && err.response.data.error) {
+      showToast(err.response.data.error, "error");
+    } else {
+      console.error(err);
+      showToast("保存失败，请稍后重试", "error");
+    }
+  }
 };
 
 const updateProgress = async (show, delta) => {
@@ -518,8 +620,8 @@ const confirmDelete = async (id) => {
   if (pendingDeletes[id]) { clearTimeout(pendingDeletes[id]); delete pendingDeletes[id]; }
   const backup = shows.value.find(s => s._id === id);
   shows.value = shows.value.filter(s => s._id !== id);
-  try { await axios.delete(`http://localhost:5001/api/shows/${id}`); } 
-  catch (err) { console.error(err); if(backup) shows.value.push(backup); }
+  try { await axios.delete(`http://localhost:5001/api/shows/${id}`); showToast("删除成功", "success"); } 
+  catch (err) { console.error(err); if(backup) shows.value.push(backup); showToast("删除失败", "error"); }
 };
 
 const getCategoryColor = (cat) => ({ tv: '#e5e7eb', anime: '#f3e8ff', movie: '#e0f2fe', variety: '#ffedd5' }[cat] || '#eee');
@@ -531,77 +633,50 @@ onMounted(() => { fetchShows(); updateTheme('#fcfcfc'); });
 </script>
 
 <style scoped>
-/* --- 右下角同步助手 --- */
-.sync-assistant-container {
+/* --- 【新增】Toast 样式 --- */
+.toast-notification {
   position: fixed;
-  bottom: 30px;
-  right: 30px;
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-}
-
-/* 悬浮按钮 FAB */
-.sync-fab {
-  width: 56px;
-  height: 56px;
-  border-radius: 28px;
-  background: #000;
-  color: #fff;
-  border: none;
-  font-size: 1.5rem;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000; /* 最高层级 */
   display: flex;
   align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-  cursor: pointer;
-  transition: transform 0.2s, background 0.2s;
-  position: relative;
+  gap: 12px;
+  background: white;
+  padding: 12px 20px;
+  border-radius: 50px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+  min-width: 300px;
+  max-width: 90%;
 }
+
+/* 状态颜色指示条 (左边框) */
+.toast-notification.success { border-left: 4px solid #10b981; }
+.toast-notification.error { border-left: 4px solid #ef4444; }
+
+.toast-icon { font-size: 1.2rem; }
+.toast-content { font-size: 0.95rem; font-weight: 500; color: #333; }
+
+/* Toast 动画 */
+.toast-slide-enter-active, .toast-slide-leave-active { transition: all 0.3s ease; }
+.toast-slide-enter-from, .toast-slide-leave-to { opacity: 0; transform: translate(-50%, -20px); }
+
+/* --- 右下角同步助手 --- */
+.sync-assistant-container { position: fixed; bottom: 30px; right: 30px; z-index: 1000; display: flex; flex-direction: column; align-items: flex-end; }
+.sync-fab { width: 56px; height: 56px; border-radius: 28px; background: #000; color: #fff; border: none; font-size: 1.5rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 15px rgba(0,0,0,0.2); cursor: pointer; transition: transform 0.2s, background 0.2s; position: relative; }
 .sync-fab:hover { transform: scale(1.05); background: #333; }
 .sync-fab:active { transform: scale(0.95); }
 .fab-icon.spinner { animation: spin 1s linear infinite; display: inline-block; }
-
-/* 红点提醒 */
-.badge-dot {
-  position: absolute; top: 2px; right: 2px; width: 12px; height: 12px;
-  background: #ef4444; border: 2px solid white; border-radius: 50%;
-}
-
-/* 日志面板 */
-.sync-log-panel {
-  background: white;
-  width: 320px;
-  max-height: 400px;
-  border-radius: 16px;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.15);
-  margin-bottom: 15px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid #eee;
-}
-
-.sync-header {
-  padding: 15px;
-  border-bottom: 1px solid #f0f0f0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #fafafa;
-}
+.badge-dot { position: absolute; top: 2px; right: 2px; width: 12px; height: 12px; background: #ef4444; border: 2px solid white; border-radius: 50%; }
+.sync-log-panel { background: white; width: 320px; max-height: 400px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); margin-bottom: 15px; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #eee; }
+.sync-header { padding: 15px; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; background: #fafafa; }
 .sync-header h4 { margin: 0; font-size: 0.95rem; font-weight: 700; color: #333; }
 .log-count { background: #000; color: #fff; font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; }
 .clear-btn { background: none; border: none; font-size: 0.8rem; color: #999; cursor: pointer; }
 .clear-btn:hover { color: #666; }
-
 .sync-list { overflow-y: auto; padding: 10px; max-height: 340px; }
-.sync-item {
-  display: flex; gap: 10px; padding: 10px;
-  border-bottom: 1px solid #f5f5f5;
-  align-items: center;
-}
+.sync-item { display: flex; gap: 10px; padding: 10px; border-bottom: 1px solid #f5f5f5; align-items: center; }
 .sync-item:last-child { border-bottom: none; }
 .sync-poster { width: 36px; height: 50px; border-radius: 4px; object-fit: cover; background: #eee; }
 .sync-details { flex: 1; }
@@ -609,16 +684,13 @@ onMounted(() => { fetchShows(); updateTheme('#fcfcfc'); });
 .sync-change { font-size: 0.85rem; font-weight: 700; color: #2563eb; display: flex; align-items: center; gap: 6px; }
 .old-val { color: #999; font-weight: 400; text-decoration: line-through; font-size: 0.75rem; }
 .sync-date { font-size: 0.7rem; color: #9ca3af; margin-top: 2px; }
-
 .sync-empty { padding: 40px 20px; text-align: center; color: #999; }
 .empty-icon { font-size: 2rem; margin-bottom: 10px; }
 .sub-text { font-size: 0.8rem; color: #ccc; margin-top: 5px; }
-
-/* 动画 */
 .slide-up-enter-active, .slide-up-leave-active { transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); }
 .slide-up-enter-from, .slide-up-leave-to { opacity: 0; transform: translateY(20px); }
 
-/* --- 之前的样式 --- */
+/* --- 标签栏 (Tags Line) 样式统一 --- */
 .tags-line, .list-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .tag-badge, .status-tag, .network-tag-logo, .network-text { height: 20px; display: inline-flex; align-items: center; justify-content: center; line-height: 1; box-sizing: border-box; border-radius: 4px; font-size: 0.7rem; font-weight: 600; vertical-align: middle; }
 .tag-badge, .status-tag, .network-text { padding: 0 6px; }
