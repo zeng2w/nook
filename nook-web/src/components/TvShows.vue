@@ -15,35 +15,64 @@
           <p class="subtitle">管理您的影视作品观看进度</p>
         </div>
         <div class="header-actions">
-          <input 
-            type="file" 
-            ref="fileInput" 
-            style="display: none" 
-            accept=".json" 
-            @change="handleFileUpload" 
-          />
+          
+          <div class="notification-wrapper" ref="notiContainer">
+            <button class="icon-btn noti-btn" @click="toggleNotifications" :class="{ active: showNotiPanel }" title="消息通知">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+              <span v-if="hasNewNotis" class="red-dot"></span>
+            </button>
 
-          <button class="add-btn outline-btn" @click="triggerImport" title="导入备份">
-            <span class="icon">📤</span> 导入
-          </button>
+            <transition name="fade-slide">
+              <div v-if="showNotiPanel" class="noti-dropdown">
+                <div class="noti-header">
+                  <span>消息通知</span>
+                  <span class="noti-count" v-if="notifications.length">{{ notifications.length }}</span>
+                </div>
+                
+                <div class="noti-list" v-if="notifications.length > 0">
+                  <div v-for="(item, index) in notifications" :key="item.uniqueId" class="noti-item">
+                    <div class="noti-poster-box">
+                      <img v-if="item.posterUrl" :src="item.posterUrl" class="noti-img" loading="lazy" />
+                      <div v-else class="noti-img-placeholder">{{ item.title.charAt(0) }}</div>
+                    </div>
+                    <div class="noti-info">
+                      <div class="noti-row-top">
+                        <span class="noti-title">{{ item.title }}</span>
+                        <span class="noti-date">{{ formatDateSimple(item.updateDate) }}</span>
+                      </div>
+                      <div class="noti-desc">
+                        已更新至 <span class="highlight">{{ item.newEp }}</span> 集
+                        <span class="old-ep" v-if="item.oldEp">(原: {{ item.oldEp }})</span>
+                      </div>
+                    </div>
+                    <button class="noti-delete-btn" @click.stop="removeNotification(index)" title="删除这条记录">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                  </div>
+                </div>
+                
+                <div v-else class="noti-empty">
+                  <div class="empty-emoji">🔕</div>
+                  <p>暂无新消息</p>
+                </div>
 
-          <button class="add-btn outline-btn" @click="exportData" title="备份数据">
-            <span class="icon">📥</span> 导出
-          </button>
+                <div class="noti-footer" v-if="notifications.length > 0">
+                  <button class="clear-all-btn" @click="clearNotifications">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    清空列表
+                  </button>
+                </div>
+              </div>
+            </transition>
+          </div>
+
+          <div class="divider-vertical"></div>
 
           <div class="view-toggle">
             <button class="toggle-btn" :class="{ active: viewMode === 'grid' }" @click="viewMode = 'grid'"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg></button>
             <button class="toggle-btn" :class="{ active: viewMode === 'list' }" @click="viewMode = 'list'"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg></button>
           </div>
           
-          <button class="add-btn outline-btn" @click="syncData" :disabled="isSyncing" title="从 TMDB 同步最新集数">
-            <span class="icon" :class="{ 'spin': isSyncing }">↻</span> 
-            {{ isSyncing ? '同步中...' : '同步进度' }}
-          </button>
-
-          <button class="add-btn outline-btn" @click="openCalendar">
-            <span class="icon">📅</span> 追剧日历
-          </button>
           <button class="add-btn" @click="openAddModal">
             <span class="plus-icon">+</span> 添加剧集
           </button>
@@ -62,14 +91,7 @@
         <div class="filters-row" v-if="uniqueNetworks.length > 0">
           <span class="filter-label">平台</span>
           <button class="filter-chip" :class="{ active: currentNetwork === 'all' }" @click="currentNetwork = 'all'">全部</button>
-          <button 
-            v-for="net in uniqueNetworks" 
-            :key="net.name" 
-            class="filter-chip network-chip" 
-            :class="{ active: currentNetwork === net.name, 'logo-mode': !!net.logo }" 
-            @click="currentNetwork = net.name"
-            :title="net.name"
-          >
+          <button v-for="net in uniqueNetworks" :key="net.name" class="filter-chip network-chip" :class="{ active: currentNetwork === net.name, 'logo-mode': !!net.logo }" @click="currentNetwork = net.name" :title="net.name">
             <img v-if="net.logo" :src="net.logo" class="filter-logo-img" alt="logo" />
             <span v-else>{{ net.name }}</span>
           </button>
@@ -146,7 +168,7 @@
               <div class="list-actions-col">
                 <button class="ctrl-btn edit" @click="openEditModal(show)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
                 <template v-if="show.status === 'dropped'"><button class="ctrl-btn restore" @click="restoreShow(show)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"></path></svg></button><button class="ctrl-btn delete" @click="requestHardDelete(show._id)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button></template>
-                <template v-else><button class="ctrl-btn delete soft" @click="dropShow(show)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button><button class="ctrl-btn primary" @click="updateProgress(show, 1)">+1</button></template>
+                <template v-else><button class="ctrl-btn delete soft" @click="dropShow(show)"><svg width="16" height="16" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button><button class="ctrl-btn primary" @click="updateProgress(show, 1)">+1</button></template>
               </div>
             </div>
           </div>
@@ -155,17 +177,45 @@
       </div>
     </div>
 
-    <div class="sync-assistant-container">
-      <transition name="slide-up">
-        <div v-if="showSyncPanel" class="sync-log-panel">
-          <div class="sync-header"><h4>更新日志</h4><span class="log-count" v-if="syncLogs.length">{{ syncLogs.length }}</span><button class="clear-btn" @click="syncLogs = []" v-if="syncLogs.length">清空</button></div>
-          <div class="sync-list" v-if="syncLogs.length > 0"><div v-for="(log, index) in syncLogs" :key="index" class="sync-item"><img :src="log.posterUrl" class="sync-poster" /><div class="sync-details"><div class="sync-title">{{ log.title }}</div><div class="sync-change"><span class="old-val">{{ log.oldEp }}</span><span class="arrow">→</span><span class="new-val">第 {{ log.newEp }} 集</span></div><div class="sync-date">{{ log.date }} 更新</div></div></div></div>
-          <div v-else class="sync-empty"><div class="empty-icon">🎉</div><p>暂无新更新</p><p class="sub-text">点击下方按钮同步数据</p></div>
+    <transition name="fade">
+      <div v-if="isMenuOpen" class="fab-overlay" @click="toggleMenu"></div>
+    </transition>
+    <div v-if="showNotiPanel" class="transparent-overlay" @click="toggleNotifications"></div>
+
+    <div class="fab-container">
+      <input type="file" ref="fileInput" style="display: none" accept=".json" @change="handleFileUpload" />
+
+      <transition-group name="fab-stagger" tag="div" class="fab-menu-items">
+        <div v-if="isMenuOpen" key="sync" class="fab-item">
+          <div class="fab-label">同步进度</div>
+          <button class="fab-btn small" @click="syncData" :disabled="isSyncing">
+            <span v-if="isSyncing" class="spinner">⟳</span>
+            <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+          </button>
         </div>
-      </transition>
-      <button class="sync-fab" @click="triggerSyncOrToggle" :class="{ 'is-spinning': isSyncing }">
-        <span class="fab-icon" v-if="!isSyncing">↻</span><span class="fab-icon spinner" v-else>⟳</span>
-        <div class="badge-dot" v-if="syncLogs.length > 0 && !showSyncPanel"></div>
+        <div v-if="isMenuOpen" key="export" class="fab-item">
+          <div class="fab-label">备份数据</div>
+          <button class="fab-btn small export-btn" @click="exportData">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          </button>
+        </div>
+        <div v-if="isMenuOpen" key="import" class="fab-item">
+          <div class="fab-label">恢复备份</div>
+          <button class="fab-btn small import-btn" @click="triggerImport">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          </button>
+        </div>
+        <div v-if="isMenuOpen" key="calendar" class="fab-item">
+          <div class="fab-label">追剧日历</div>
+          <button class="fab-btn small" @click="openCalendar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+          </button>
+        </div>
+      </transition-group>
+
+      <button class="fab-btn main" @click="toggleMenu" :class="{ 'is-active': isMenuOpen }">
+        <span class="main-icon" v-if="!isMenuOpen"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></span>
+        <span class="close-icon" v-else><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></span>
       </button>
     </div>
 
@@ -226,7 +276,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
 import axios from 'axios';
 import FitnessRing from './FitnessRing.vue';
 import { updateTheme } from '../store';
@@ -245,108 +295,33 @@ const flippedCardId = ref(null);
 const isLoading = ref(false);
 const isSyncing = ref(false);
 
-const showSyncPanel = ref(false);
-const syncLogs = ref([]);
+// 菜单与通知状态
+const isMenuOpen = ref(false);
+const showNotiPanel = ref(false);
+const notifications = ref([]);
+const hasNewNotis = ref(false);
+const fileInput = ref(null);
 
 const tmdbQuery = ref('');
 const tmdbResults = ref([]);
 const isSearching = ref(false);
 
-// 【新增】Toast 状态管理
-const toast = reactive({
-  visible: false,
-  message: '',
-  type: 'success'
-});
-
-// 【新增】显示 Toast 函数
+const toast = reactive({ visible: false, message: '', type: 'success' });
 const showToast = (msg, type = 'success') => {
   toast.message = msg;
   toast.type = type;
   toast.visible = true;
-  // 3秒后自动消失
-  setTimeout(() => {
-    toast.visible = false;
-  }, 3000);
+  setTimeout(() => { toast.visible = false; }, 3000);
 };
 
-// 1. 定义 ref 引用
-const fileInput = ref(null);
-
-// 2. 点击按钮 -> 触发文件选择
-const triggerImport = () => {
-  fileInput.value.click();
-};
-
-// 3. 处理文件上传
-const handleFileUpload = (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  // 使用 FileReader 读取文件内容
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    try {
-      const jsonContent = e.target.result;
-      const parsedData = JSON.parse(jsonContent);
-
-      if (!Array.isArray(parsedData)) {
-        return showToast("文件格式错误：必须是剧集数组", "error");
-      }
-
-      // 开始上传
-      const userId = getCurrentUserId();
-      showToast("正在导入数据...", "success"); // 提示正在处理
-
-      const res = await axios.post('http://localhost:5001/api/shows/import', {
-        userId,
-        shows: parsedData
-      });
-
-      if (res.data.success) {
-        showToast(res.data.message, "success");
-        await fetchShows(); // 导入成功后刷新列表
-      }
-
-    } catch (err) {
-      console.error(err);
-      showToast("导入失败：文件损坏或格式不正确", "error");
-    } finally {
-      // 清空 input，防止同一个文件无法再次触发 change 事件
-      event.target.value = '';
-    }
-  };
-  
-  // 开始读取文本
-  reader.readAsText(file);
-};
-
-const exportData = () => {
-  const userId = getCurrentUserId();
-  if (!userId) return;
-  
-  // 直接利用浏览器的下载行为
-  const url = `http://localhost:5001/api/shows/export?userId=${userId}`;
-  window.open(url, '_blank');
-  
-  showToast("数据备份下载中...", "success");
-};
-
-const initialForm = {
-  title: '', category: 'tv', status: 'watching', updateFrequency: 'weekly',
-  updateDays: [], updateCount: 1, watchedEpisodes: 0, airedEpisodes: 0, totalEpisodes: 0,
-  lastAirDate: new Date().toISOString().split('T')[0], posterUrl: '',
-  network: '', networkLogo: '', tmdbId: null
-};
+const initialForm = { title: '', category: 'tv', status: 'watching', updateFrequency: 'weekly', updateDays: [], updateCount: 1, watchedEpisodes: 0, airedEpisodes: 0, totalEpisodes: 0, lastAirDate: new Date().toISOString().split('T')[0], posterUrl: '', network: '', networkLogo: '', tmdbId: null };
 const form = reactive({ ...initialForm });
-
 const categories = [ { label: '全部', value: 'all' }, { label: '📺 电视剧', value: 'tv' }, { label: '🎎 动漫', value: 'anime' }, { label: '🎬 电影', value: 'movie' }, { label: '🎤 综艺', value: 'variety' } ];
 const statuses = [ { label: '全部', value: 'all' }, { label: '想看', value: 'wish' }, { label: '在看', value: 'watching' }, { label: '已看', value: 'watched' }, { label: '弃剧', value: 'dropped' } ];
 const freqOptions = [ { label: '周更', val: 'weekly' }, { label: '日更', val: 'daily' }, { label: '月更', val: 'monthly' }, { label: '完结', val: 'ended' } ];
 const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 const weekDaysAbbr = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-// --- CALENDAR LOGIC (Unchanged) ---
 const showCalendar = ref(false);
 const calendarStart = ref(new Date()); 
 const openCalendar = () => { const d = new Date(); const day = d.getDay(); const diff = d.getDate() - day; const sunday = new Date(d.setDate(diff)); sunday.setHours(12,0,0,0); calendarStart.value = sunday; showCalendar.value = true; };
@@ -357,273 +332,98 @@ const isDateToday = (dateObj) => { const today = new Date(); return dateObj.getD
 const getEpisodeTextForDate = (show, targetDate) => { if (!show.lastAirDate) return `更新至 ${show.airedEpisodes} 集`; const lastUpdate = new Date(show.lastAirDate); lastUpdate.setHours(12,0,0,0); const target = new Date(targetDate); target.setHours(12,0,0,0); const diffTime = target.getTime() - lastUpdate.getTime(); const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); let cycleOffset = 0; if (show.updateFrequency === 'daily') { cycleOffset = diffDays; } else if (show.updateFrequency === 'weekly') { cycleOffset = Math.floor(diffDays / 7); if (diffDays % 7 === 0) cycleOffset = diffDays / 7; } const updateCount = show.updateCount || 1; const endEpisode = show.airedEpisodes + (cycleOffset * updateCount); let startEpisode = endEpisode - updateCount + 1; if (endEpisode <= 0) return '尚未播出'; if (show.totalEpisodes && startEpisode > show.totalEpisodes) return '已完结'; if (startEpisode < 1) startEpisode = 1; const displayEnd = show.totalEpisodes ? Math.min(endEpisode, show.totalEpisodes) : endEpisode; if (updateCount === 1 || startEpisode === displayEnd) { return `第 ${displayEnd} 集`; } else { return `第 ${startEpisode}, ${displayEnd} 集`; } };
 const getShowsForDate = (dateObj) => { const dayIndex = dateObj.getDay(); const time = dateObj.getTime(); const results = []; shows.value.forEach(s => { if (s.status === 'dropped' || s.status === 'watched' || s.updateFrequency === 'ended') return; if (s.estimatedFinishDate) { const finish = new Date(s.estimatedFinishDate).getTime(); if (time > finish) return; } let isAirDay = false; if (s.updateFrequency === 'daily') isAirDay = true; else if (s.updateDays && s.updateDays.includes(dayIndex)) isAirDay = true; if (isAirDay) { const epText = getEpisodeTextForDate(s, dateObj); if (epText !== '尚未播出') { results.push({ show: s, episodeText: epText }); } } }); return results; };
 
-const uniqueNetworks = computed(() => {
-  const nets = new Map();
-  shows.value.forEach(s => {
-    if (s.network && !nets.has(s.network)) {
-      nets.set(s.network, { name: s.network, logo: s.networkLogo });
-    }
-  });
-  return Array.from(nets.values()).sort((a, b) => a.name.localeCompare(b.name));
-});
+const uniqueNetworks = computed(() => { const nets = new Map(); shows.value.forEach(s => { if (s.network && !nets.has(s.network)) { nets.set(s.network, { name: s.network, logo: s.networkLogo }); } }); return Array.from(nets.values()).sort((a, b) => a.name.localeCompare(b.name)); });
+const filteredShows = computed(() => { let result = shows.value.filter(s => { const catMatch = currentCategory.value === 'all' || s.category === currentCategory.value; const statusMatch = currentStatus.value === 'all' || s.status === currentStatus.value; const netMatch = currentNetwork.value === 'all' || s.network === currentNetwork.value; return catMatch && statusMatch && netMatch; }); return result.sort((a, b) => { if (a.status === 'dropped' && b.status !== 'dropped') return 1; if (a.status !== 'dropped' && b.status === 'dropped') return -1; const dateA = a.lastAirDate ? new Date(a.lastAirDate).getTime() : 0; const dateB = b.lastAirDate ? new Date(b.lastAirDate).getTime() : 0; if (dateA === 0 && dateB !== 0) return 1; if (dateB === 0 && dateA !== 0) return -1; return dateB - dateA; }); });
+const getCurrentUserId = () => { const userStr = sessionStorage.getItem('current_user'); return userStr ? JSON.parse(userStr).id : null; };
 
-const filteredShows = computed(() => {
-  let result = shows.value.filter(s => {
-    const catMatch = currentCategory.value === 'all' || s.category === currentCategory.value;
-    const statusMatch = currentStatus.value === 'all' || s.status === currentStatus.value;
-    const netMatch = currentNetwork.value === 'all' || s.network === currentNetwork.value;
-    return catMatch && statusMatch && netMatch;
-  });
-  return result.sort((a, b) => {
-    if (a.status === 'dropped' && b.status !== 'dropped') return 1;
-    if (a.status !== 'dropped' && b.status === 'dropped') return -1;
-    const dateA = a.lastAirDate ? new Date(a.lastAirDate).getTime() : 0;
-    const dateB = b.lastAirDate ? new Date(b.lastAirDate).getTime() : 0;
-    if (dateA === 0 && dateB !== 0) return 1;
-    if (dateB === 0 && dateA !== 0) return -1;
-    return dateB - dateA; 
-  });
-});
-
-const getCurrentUserId = () => {
-  const userStr = sessionStorage.getItem('current_user');
-  return userStr ? JSON.parse(userStr).id : null;
-};
-
-// --- SYNC ASSISTANT LOGIC ---
-const triggerSyncOrToggle = () => {
-  if (showSyncPanel.value || isSyncing.value) {
-    showSyncPanel.value = !showSyncPanel.value;
-  } else {
-    showSyncPanel.value = true;
-    syncData();
+onMounted(() => {
+  fetchShows();
+  updateTheme('#fcfcfc');
+  const savedNotis = localStorage.getItem('tv_notifications');
+  if (savedNotis) {
+    notifications.value = JSON.parse(savedNotis);
   }
+});
+
+watch(notifications, (newVal) => {
+  localStorage.setItem('tv_notifications', JSON.stringify(newVal));
+}, { deep: true });
+
+const toggleMenu = () => { isMenuOpen.value = !isMenuOpen.value; };
+const closeAllOverlays = () => { isMenuOpen.value = false; showNotiPanel.value = false; };
+
+const toggleNotifications = () => {
+  showNotiPanel.value = !showNotiPanel.value;
+  if (showNotiPanel.value) { hasNewNotis.value = false; }
 };
 
+const clearNotifications = () => { notifications.value = []; };
+const removeNotification = (index) => { notifications.value.splice(index, 1); };
+
+const formatDateSimple = (dateStr) => {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  // 返回 "2-4" 格式
+  return `${d.getMonth()+1}-${d.getDate()}`;
+};
+
+const triggerImport = () => { fileInput.value.click(); };
+const exportData = () => { const userId = getCurrentUserId(); if (!userId) return; const url = `http://localhost:5001/api/shows/export?userId=${userId}`; window.open(url, '_blank'); showToast("数据备份下载中...", "success"); };
+const handleFileUpload = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = async (e) => { try { const jsonContent = e.target.result; const parsedData = JSON.parse(jsonContent); if (!Array.isArray(parsedData)) { return showToast("文件格式错误", "error"); } const userId = getCurrentUserId(); showToast("正在导入数据...", "success"); const res = await axios.post('http://localhost:5001/api/shows/import', { userId, shows: parsedData }); if (res.data.success) { showToast(res.data.message, "success"); await fetchShows(); } } catch (err) { console.error(err); showToast("导入失败", "error"); } finally { event.target.value = ''; } }; reader.readAsText(file); };
+
+// 【关键修改】Sync Data：确保后端返回的 date 被使用
 const syncData = async () => {
   const userId = getCurrentUserId();
   if (!userId) return;
   isSyncing.value = true;
+  showToast("正在同步最新数据...", "success");
+  
   try {
     const res = await axios.post('http://localhost:5001/api/shows/sync', { userId });
     await fetchShows(); 
 
     if (res.data.updatedCount > 0) {
       if (res.data.logs && res.data.logs.length > 0) {
-        syncLogs.value = [...res.data.logs, ...syncLogs.value];
+        const newItems = res.data.logs.map(log => ({
+          ...log,
+          // 确保映射后端字段 date -> updateDate
+          updateDate: log.date, 
+          uniqueId: Date.now() + Math.random()
+        }));
+        notifications.value = [...newItems, ...notifications.value];
+        hasNewNotis.value = true;
       }
-      showToast(`同步完成！更新了 ${res.data.updatedCount} 部剧集`, "success"); // 使用 Toast
+      showToast(`同步完成！更新了 ${res.data.updatedCount} 部剧集`, "success");
     } else {
-      console.log('同步完成，暂无新内容');
-      showToast('暂无新内容，已经是最新了', "success"); // 使用 Toast
+      showToast('暂无新内容，已经是最新了', "success");
     }
   } catch (err) {
     console.error('Sync failed', err);
-    showToast('同步失败，请检查网络连接', "error"); // 使用 Toast
+    showToast('同步失败，请检查网络连接', "error");
   } finally {
     isSyncing.value = false;
   }
 };
 
-const fetchShows = async () => {
-  const userId = getCurrentUserId();
-  if (!userId) return;
-  isLoading.value = true;
-  try {
-    const res = await axios.get(`http://localhost:5001/api/shows?userId=${userId}&t=${new Date().getTime()}`);
-    shows.value = res.data;
-  } catch (err) { console.error(err); } finally { setTimeout(() => { isLoading.value = false; }, 300); }
-};
+const fetchShows = async () => { const userId = getCurrentUserId(); if (!userId) return; isLoading.value = true; try { const res = await axios.get(`http://localhost:5001/api/shows?userId=${userId}&t=${new Date().getTime()}`); shows.value = res.data; } catch (err) { console.error(err); } finally { setTimeout(() => { isLoading.value = false; }, 300); } };
 
-const searchTMDB = async () => {
-  if (!tmdbQuery.value) return;
-  isSearching.value = true;
-  tmdbResults.value = [];
-  try {
-    const res = await axios.get(`http://localhost:5001/api/tmdb/search?query=${tmdbQuery.value}`);
-    tmdbResults.value = res.data;
-  } catch (err) { console.error(err); } finally { isSearching.value = false; }
-};
-
-const selectTMDBResult = async (item) => {
-  form.tmdbId = item.tmdbId; 
-  form.title = item.title;
-  form.category = item.category;
-  form.posterUrl = item.posterUrl;
-  availableSeasons.value = [];
-  try {
-    const type = item.category; 
-    const res = await axios.get(`http://localhost:5001/api/tmdb/details/${type}/${item.tmdbId}`);
-    const details = res.data;
-    form.totalEpisodes = details.totalEpisodes || 0;
-    form.airedEpisodes = details.airedEpisodes || 0;
-    
-    if (details.networks && details.networks.length > 0) {
-      const mainNet = details.networks[0];
-      form.network = mainNet.name;
-      if (mainNet.logo_path) {
-        form.networkLogo = `https://image.tmdb.org/t/p/h60${mainNet.logo_path}`;
-      } else {
-        form.networkLogo = '';
-      }
-    } else {
-      form.network = '';
-      form.networkLogo = '';
-    }
-
-    if (details.updateFrequency === 'ended') form.updateFrequency = 'ended';
-    if (details.lastAirDate) {
-      form.lastAirDate = new Date(details.lastAirDate).toISOString().split('T')[0];
-      const [y, m, d] = form.lastAirDate.split('-').map(Number);
-      const dayIndex = new Date(y, m - 1, d).getDay();
-      form.updateDays = [dayIndex]; 
-    }
-    if (details.seasons && details.seasons.length > 0) availableSeasons.value = details.seasons;
-    tmdbResults.value = []; tmdbQuery.value = '';
-  } catch (err) { console.error(err); }
-};
-
-const onSeasonSelect = (event) => {
-  const seasonNum = parseInt(event.target.value);
-  if (!seasonNum) return;
-  const targetSeason = availableSeasons.value.find(s => s.seasonNumber === seasonNum);
-  if (targetSeason) {
-    const baseTitle = form.title.replace(/\s\(Season \d+\)$/, '');
-    form.title = `${baseTitle} (Season ${targetSeason.seasonNumber})`;
-    form.totalEpisodes = targetSeason.episodeCount;
-    form.airedEpisodes = targetSeason.episodeCount; 
-    form.updateFrequency = 'ended'; 
-  }
-};
-
-const getEstimatedDate = (show) => {
-  if (!show.totalEpisodes || !show.airedEpisodes || show.airedEpisodes >= show.totalEpisodes) {
-    return show.status === 'watched' ? '已完结' : (show.status === 'dropped' ? '已弃剧' : '暂无数据');
-  }
-  if (!show.lastAirDate || show.updateFrequency === 'unknown' || show.updateFrequency === 'ended') return '待计算';
-  const remaining = show.totalEpisodes - show.airedEpisodes;
-  const epPerUpdate = show.updateCount || 1;
-  const lastDate = new Date(show.lastAirDate);
-  if (isNaN(lastDate.getTime())) return '日期无效'; 
-  lastDate.setHours(lastDate.getHours() + 12);
-  if (show.updateFrequency === 'daily') {
-    lastDate.setDate(lastDate.getDate() + Math.ceil(remaining / epPerUpdate));
-  } else if (show.updateFrequency === 'weekly') {
-    if (!show.updateDays || show.updateDays.length === 0) {
-      lastDate.setDate(lastDate.getDate() + (Math.ceil(remaining / epPerUpdate) * 7));
-    } else {
-      let tempRemaining = remaining;
-      let safe = 3650; 
-      while (tempRemaining > 0 && safe > 0) {
-        lastDate.setDate(lastDate.getDate() + 1);
-        if (show.updateDays.includes(lastDate.getDay())) tempRemaining -= epPerUpdate;
-        safe--;
-      }
-    }
-  } else if (show.updateFrequency === 'monthly') {
-    lastDate.setMonth(lastDate.getMonth() + Math.ceil(remaining / epPerUpdate));
-  }
-  return `预计完结：${lastDate.toLocaleDateString()}`;
-};
-
-const calcStatus = (watched, aired, total) => {
-  if (watched === 0) return 'wish';
-  const target = (total > 0) ? total : aired;
-  if (target > 0 && watched >= target) return 'watched';
-  return 'watching';
-};
-
-const openEditModal = (show) => {
-  isEditing.value = true;
-  editingId.value = show._id;
-  tmdbResults.value = []; tmdbQuery.value = ''; availableSeasons.value = [];
-  Object.assign(form, {
-    title: show.title, category: show.category, status: show.status, posterUrl: show.posterUrl,
-    updateFrequency: show.updateFrequency, updateDays: show.updateDays || [], updateCount: show.updateCount || 1,
-    watchedEpisodes: show.watchedEpisodes, airedEpisodes: show.airedEpisodes, totalEpisodes: show.totalEpisodes,
-    lastAirDate: show.lastAirDate ? new Date(show.lastAirDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-    network: show.network || '', networkLogo: show.networkLogo || '', tmdbId: show.tmdbId
-  });
-  showModal.value = true;
-};
-
-const openAddModal = () => {
-  isEditing.value = false;
-  editingId.value = null;
-  tmdbResults.value = []; tmdbQuery.value = ''; availableSeasons.value = [];
-  Object.assign(form, initialForm);
-  form.updateDays = [];
-  showModal.value = true;
-};
-
-const toggleDay = (idx) => {
-  const i = form.updateDays.indexOf(idx);
-  if (i > -1) form.updateDays.splice(i, 1);
-  else form.updateDays.push(idx);
-  form.updateDays.sort();
-};
-
-const saveShow = async () => {
-  const userId = getCurrentUserId();
-  if (!userId || !form.title) return showToast("请输入作品名称", "error");
-  
-  try {
-    let res;
-    if (isEditing.value) {
-      res = await axios.put(`http://localhost:5001/api/shows/${editingId.value}`, form);
-      const index = shows.value.findIndex(s => s._id === editingId.value);
-      if (index !== -1) shows.value[index] = res.data;
-      showToast("编辑成功", "success");
-    } else {
-      const initialStatus = calcStatus(form.watchedEpisodes, form.airedEpisodes, form.totalEpisodes);
-      res = await axios.post('http://localhost:5001/api/shows', { userId, ...form, status: initialStatus });
-      shows.value.unshift(res.data);
-      showToast("添加成功", "success");
-    }
-    showModal.value = false;
-  } catch (err) {
-    // 【修改点】使用 Toast 替换 Alert
-    if (err.response && err.response.data && err.response.data.error) {
-      showToast(err.response.data.error, "error");
-    } else {
-      console.error(err);
-      showToast("保存失败，请稍后重试", "error");
-    }
-  }
-};
-
-const updateProgress = async (show, delta) => {
-  if (show.status === 'dropped') return;
-  const newVal = Math.max(0, show.watchedEpisodes + delta);
-  show.watchedEpisodes = newVal; 
-  const newStatus = calcStatus(newVal, show.airedEpisodes, show.totalEpisodes);
-  if (newStatus !== show.status) show.status = newStatus;
-  try { await axios.put(`http://localhost:5001/api/shows/${show._id}`, { watchedEpisodes: newVal, status: newStatus }); } catch(e){}
-};
-
-const dropShow = async (show) => {
-  show.status = 'dropped';
-  try { await axios.put(`http://localhost:5001/api/shows/${show._id}`, { status: 'dropped' }); } catch(e){}
-};
-
-const restoreShow = async (show) => {
-  const correctStatus = calcStatus(show.watchedEpisodes, show.airedEpisodes, show.totalEpisodes);
-  show.status = correctStatus;
-  try { await axios.put(`http://localhost:5001/api/shows/${show._id}`, { status: correctStatus }); } catch(e){}
-};
-
+const searchTMDB = async () => { if (!tmdbQuery.value) return; isSearching.value = true; tmdbResults.value = []; try { const res = await axios.get(`http://localhost:5001/api/tmdb/search?query=${tmdbQuery.value}`); tmdbResults.value = res.data; } catch (err) { console.error(err); } finally { isSearching.value = false; } };
+const selectTMDBResult = async (item) => { form.tmdbId = item.tmdbId; form.title = item.title; form.category = item.category; form.posterUrl = item.posterUrl; availableSeasons.value = []; try { const type = item.category; const res = await axios.get(`http://localhost:5001/api/tmdb/details/${type}/${item.tmdbId}`); const details = res.data; form.totalEpisodes = details.totalEpisodes || 0; form.airedEpisodes = details.airedEpisodes || 0; if (details.networks && details.networks.length > 0) { const mainNet = details.networks[0]; form.network = mainNet.name; if (mainNet.logo_path) { form.networkLogo = `https://image.tmdb.org/t/p/h60${mainNet.logo_path}`; } else { form.networkLogo = ''; } } else { form.network = ''; form.networkLogo = ''; } if (details.updateFrequency === 'ended') form.updateFrequency = 'ended'; if (details.lastAirDate) { form.lastAirDate = new Date(details.lastAirDate).toISOString().split('T')[0]; const [y, m, d] = form.lastAirDate.split('-').map(Number); const dayIndex = new Date(y, m - 1, d).getDay(); form.updateDays = [dayIndex]; } if (details.seasons && details.seasons.length > 0) availableSeasons.value = details.seasons; tmdbResults.value = []; tmdbQuery.value = ''; } catch (err) { console.error(err); } };
+const onSeasonSelect = (event) => { const seasonNum = parseInt(event.target.value); if (!seasonNum) return; const targetSeason = availableSeasons.value.find(s => s.seasonNumber === seasonNum); if (targetSeason) { const baseTitle = form.title.replace(/\s\(Season \d+\)$/, ''); form.title = `${baseTitle} (Season ${targetSeason.seasonNumber})`; form.totalEpisodes = targetSeason.episodeCount; form.airedEpisodes = targetSeason.episodeCount; form.updateFrequency = 'ended'; } };
+const getEstimatedDate = (show) => { if (!show.totalEpisodes || !show.airedEpisodes || show.airedEpisodes >= show.totalEpisodes) { return show.status === 'watched' ? '已完结' : (show.status === 'dropped' ? '已弃剧' : '暂无数据'); } if (!show.lastAirDate || show.updateFrequency === 'unknown' || show.updateFrequency === 'ended') return '待计算'; const remaining = show.totalEpisodes - show.airedEpisodes; const epPerUpdate = show.updateCount || 1; const lastDate = new Date(show.lastAirDate); if (isNaN(lastDate.getTime())) return '日期无效'; lastDate.setHours(lastDate.getHours() + 12); if (show.updateFrequency === 'daily') { lastDate.setDate(lastDate.getDate() + Math.ceil(remaining / epPerUpdate)); } else if (show.updateFrequency === 'weekly') { if (!show.updateDays || show.updateDays.length === 0) { lastDate.setDate(lastDate.getDate() + (Math.ceil(remaining / epPerUpdate) * 7)); } else { let tempRemaining = remaining; let safe = 3650; while (tempRemaining > 0 && safe > 0) { lastDate.setDate(lastDate.getDate() + 1); if (show.updateDays.includes(lastDate.getDay())) tempRemaining -= epPerUpdate; safe--; } } } else if (show.updateFrequency === 'monthly') { lastDate.setMonth(lastDate.getMonth() + Math.ceil(remaining / epPerUpdate)); } return `预计完结：${lastDate.toLocaleDateString()}`; };
+const calcStatus = (watched, aired, total) => { if (watched === 0) return 'wish'; const target = (total > 0) ? total : aired; if (target > 0 && watched >= target) return 'watched'; return 'watching'; };
+const openEditModal = (show) => { isEditing.value = true; editingId.value = show._id; tmdbResults.value = []; tmdbQuery.value = ''; availableSeasons.value = []; Object.assign(form, { title: show.title, category: show.category, status: show.status, posterUrl: show.posterUrl, updateFrequency: show.updateFrequency, updateDays: show.updateDays || [], updateCount: show.updateCount || 1, watchedEpisodes: show.watchedEpisodes, airedEpisodes: show.airedEpisodes, totalEpisodes: show.totalEpisodes, lastAirDate: show.lastAirDate ? new Date(show.lastAirDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0], network: show.network || '', networkLogo: show.networkLogo || '', tmdbId: show.tmdbId }); showModal.value = true; };
+const openAddModal = () => { isEditing.value = false; editingId.value = null; tmdbResults.value = []; tmdbQuery.value = ''; availableSeasons.value = []; Object.assign(form, initialForm); form.updateDays = []; showModal.value = true; };
+const toggleDay = (idx) => { const i = form.updateDays.indexOf(idx); if (i > -1) form.updateDays.splice(i, 1); else form.updateDays.push(idx); form.updateDays.sort(); };
+const saveShow = async () => { const userId = getCurrentUserId(); if (!userId || !form.title) return showToast("请输入作品名称", "error"); try { let res; if (isEditing.value) { res = await axios.put(`http://localhost:5001/api/shows/${editingId.value}`, form); const index = shows.value.findIndex(s => s._id === editingId.value); if (index !== -1) shows.value[index] = res.data; showToast("编辑成功", "success"); } else { const initialStatus = calcStatus(form.watchedEpisodes, form.airedEpisodes, form.totalEpisodes); res = await axios.post('http://localhost:5001/api/shows', { userId, ...form, status: initialStatus }); shows.value.unshift(res.data); showToast("添加成功", "success"); } showModal.value = false; } catch (err) { if (err.response && err.response.data && err.response.data.error) { showToast(err.response.data.error, "error"); } else { console.error(err); showToast("保存失败，请稍后重试", "error"); } } };
+const updateProgress = async (show, delta) => { if (show.status === 'dropped') return; const newVal = Math.max(0, show.watchedEpisodes + delta); show.watchedEpisodes = newVal; const newStatus = calcStatus(newVal, show.airedEpisodes, show.totalEpisodes); if (newStatus !== show.status) show.status = newStatus; try { await axios.put(`http://localhost:5001/api/shows/${show._id}`, { watchedEpisodes: newVal, status: newStatus }); } catch(e){} };
+const dropShow = async (show) => { show.status = 'dropped'; try { await axios.put(`http://localhost:5001/api/shows/${show._id}`, { status: 'dropped' }); } catch(e){} };
+const restoreShow = async (show) => { const correctStatus = calcStatus(show.watchedEpisodes, show.airedEpisodes, show.totalEpisodes); show.status = correctStatus; try { await axios.put(`http://localhost:5001/api/shows/${show._id}`, { status: correctStatus }); } catch(e){} };
 const requestHardDelete = (id) => { pendingDeletes[id] = setTimeout(() => { confirmDelete(id); }, 3000); };
 const cancelDelete = (id) => { if (pendingDeletes[id]) { clearTimeout(pendingDeletes[id]); delete pendingDeletes[id]; } };
 const pauseDeleteTimer = (id) => { if (pendingDeletes[id]) clearTimeout(pendingDeletes[id]); };
 const resumeDeleteTimer = (id) => { pendingDeletes[id] = setTimeout(() => { confirmDelete(id); }, 3000); };
-const confirmDelete = async (id) => {
-  if (pendingDeletes[id]) { clearTimeout(pendingDeletes[id]); delete pendingDeletes[id]; }
-  const backup = shows.value.find(s => s._id === id);
-  shows.value = shows.value.filter(s => s._id !== id);
-  try { await axios.delete(`http://localhost:5001/api/shows/${id}`); showToast("删除成功", "success"); } 
-  catch (err) { console.error(err); if(backup) shows.value.push(backup); showToast("删除失败", "error"); }
-};
-
+const confirmDelete = async (id) => { if (pendingDeletes[id]) { clearTimeout(pendingDeletes[id]); delete pendingDeletes[id]; } const backup = shows.value.find(s => s._id === id); shows.value = shows.value.filter(s => s._id !== id); try { await axios.delete(`http://localhost:5001/api/shows/${id}`); showToast("删除成功", "success"); } catch (err) { console.error(err); if(backup) shows.value.push(backup); showToast("删除失败", "error"); } };
 const getCategoryColor = (cat) => ({ tv: '#e5e7eb', anime: '#f3e8ff', movie: '#e0f2fe', variety: '#ffedd5' }[cat] || '#eee');
 const getCategoryLabel = (cat) => ({ tv: '电视剧', anime: '动漫', movie: '电影', variety: '综艺' }[cat] || cat);
 const getStatusLabel = (st) => ({ wish: '想看', watching: '在看', watched: '已看', dropped: '弃剧' }[st] || st);
@@ -633,64 +433,115 @@ onMounted(() => { fetchShows(); updateTheme('#fcfcfc'); });
 </script>
 
 <style scoped>
-/* --- 【新增】Toast 样式 --- */
-.toast-notification {
-  position: fixed;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 2000; /* 最高层级 */
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: white;
-  padding: 12px 20px;
-  border-radius: 50px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.12);
-  min-width: 300px;
-  max-width: 90%;
+/* --- 透明遮罩层 (用于关闭通知面板，解决白屏问题) --- */
+.transparent-overlay {
+  position: fixed; inset: 0; 
+  background: transparent; /* 关键：完全透明，不遮挡视觉 */
+  z-index: 90; /* 层级低于通知面板 (100)，高于普通内容 */
 }
 
-/* 状态颜色指示条 (左边框) */
+/* --- 通知中心样式 --- */
+.notification-wrapper { position: relative; display: flex; align-items: center; }
+.noti-btn { position: relative; color: #555; transition: color 0.2s; }
+.noti-btn:hover, .noti-btn.active { color: #000; background: #f3f4f6; }
+.red-dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; background: #ef4444; border-radius: 50%; border: 1px solid white; }
+
+.noti-dropdown {
+  position: absolute; top: 120%; right: 0; width: 340px;
+  background: white; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+  border: 1px solid #f0f0f0; 
+  z-index: 100; /* 高于透明遮罩 */
+  display: flex; flex-direction: column; overflow: hidden;
+  max-height: 80vh; 
+}
+
+.noti-header {
+  padding: 12px 16px; border-bottom: 1px solid #f0f0f0;
+  display: flex; justify-content: space-between; align-items: center;
+  font-weight: 600; color: #333; font-size: 0.95rem;
+  background: #fafafa;
+}
+.noti-count { background: #3b82f6; color: white; padding: 1px 6px; border-radius: 10px; font-size: 0.75rem; }
+
+.noti-list { overflow-y: auto; max-height: 400px; padding-bottom: 10px; }
+.noti-item {
+  display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #f5f5f5;
+  transition: background 0.2s; position: relative;
+}
+.noti-item:hover { background: #f9fafb; }
+.noti-item:last-child { border-bottom: none; }
+
+.noti-poster-box {
+  width: 40px; height: 56px; border-radius: 4px; overflow: hidden; background: #eee; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.noti-img { width: 100%; height: 100%; object-fit: cover; }
+.noti-img-placeholder { font-weight: bold; color: #999; font-size: 1rem; }
+
+.noti-info { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+.noti-row-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.noti-title { font-size: 0.9rem; font-weight: 600; color: #111; line-height: 1.3; }
+.noti-date { font-size: 0.7rem; color: #999; flex-shrink: 0; margin-top: 2px; font-weight: 500; }
+.noti-desc { font-size: 0.8rem; color: #666; }
+.highlight { color: #2563eb; font-weight: 700; }
+.old-ep { color: #9ca3af; font-size: 0.75rem; margin-left: 4px; }
+
+.noti-delete-btn {
+  background: none; border: none; padding: 4px; color: #ccc; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.2s;
+  align-self: center; /* 垂直居中 */
+}
+.noti-delete-btn:hover { color: #ef4444; background: #fff5f5; border-radius: 4px; }
+
+.noti-empty { padding: 40px 20px; text-align: center; color: #999; }
+.empty-emoji { font-size: 2rem; margin-bottom: 8px; }
+
+.noti-footer {
+  padding: 10px 16px; border-top: 1px solid #f0f0f0; background: #fff;
+  display: flex; justify-content: flex-start;
+}
+.clear-all-btn {
+  display: flex; align-items: center; gap: 4px; border: none; background: none;
+  font-size: 0.85rem; color: #666; cursor: pointer; padding: 6px 10px; border-radius: 6px;
+  transition: all 0.2s;
+}
+.clear-all-btn:hover { color: #ef4444; background: #fef2f2; }
+
+/* 动画 */
+.fade-slide-enter-active, .fade-slide-leave-active { transition: all 0.2s ease; }
+.fade-slide-enter-from, .fade-slide-leave-to { opacity: 0; transform: translateY(10px); }
+
+/* --- FAB 菜单样式 (核心部分) --- */
+.fab-container { position: fixed; bottom: 30px; right: 30px; z-index: 1000; display: flex; flex-direction: column-reverse; align-items: center; gap: 16px; }
+/* FAB 的遮罩层依然保留白色背景 (突出操作) */
+.fab-overlay { position: fixed; inset: 0; background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(2px); z-index: 999; }
+.fab-btn { border: none; background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); color: #333; position: relative; }
+.fab-btn.main { width: 64px; height: 64px; border-radius: 50%; background: #3B82F6; color: white; font-size: 1.5rem; z-index: 2; box-shadow: 0 8px 20px rgba(59, 130, 246, 0.4); }
+.fab-btn.main:hover { transform: scale(1.05); }
+.fab-btn.main.is-active { background: #3B82F6; } 
+.fab-btn.main.is-active .main-icon, .fab-btn.main.is-active .close-icon { transform: rotate(90deg); transition: transform 0.3s; }
+.fab-item { position: relative; display: flex; align-items: center; justify-content: center; }
+.fab-btn.small { width: 48px; height: 48px; border-radius: 50%; background: white; color: #374151; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: 1px solid #f3f4f6; }
+.fab-btn.small:hover { transform: scale(1.1); background: #f9fafb; }
+.fab-label { position: absolute; right: 60px; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,0.8); color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; white-space: nowrap; pointer-events: none; opacity: 0; visibility: hidden; transition: all 0.2s ease; }
+.fab-item:hover .fab-label { opacity: 1; visibility: visible; right: 65px; }
+.fab-stagger-enter-active, .fab-stagger-leave-active { transition: all 0.3s ease; }
+.fab-stagger-enter-from, .fab-stagger-leave-to { opacity: 0; transform: translateY(20px) scale(0.5); }
+
+/* --- 之前的样式 (Header & Toast 等) --- */
+.divider-vertical { width: 1px; height: 24px; background: #e5e7eb; margin: 0 8px; }
+.icon-btn { width: 36px; height: 36px; border-radius: 8px; border: 1px solid #eee; background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #666; transition: all 0.2s; }
+.icon-btn:hover { background: #f9fafb; color: #333; }
+.toast-notification { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; align-items: center; gap: 12px; background: white; padding: 12px 20px; border-radius: 50px; box-shadow: 0 10px 30px rgba(0,0,0,0.12); min-width: 300px; max-width: 90%; }
 .toast-notification.success { border-left: 4px solid #10b981; }
 .toast-notification.error { border-left: 4px solid #ef4444; }
-
 .toast-icon { font-size: 1.2rem; }
 .toast-content { font-size: 0.95rem; font-weight: 500; color: #333; }
-
-/* Toast 动画 */
 .toast-slide-enter-active, .toast-slide-leave-active { transition: all 0.3s ease; }
 .toast-slide-enter-from, .toast-slide-leave-to { opacity: 0; transform: translate(-50%, -20px); }
 
-/* --- 右下角同步助手 --- */
-.sync-assistant-container { position: fixed; bottom: 30px; right: 30px; z-index: 1000; display: flex; flex-direction: column; align-items: flex-end; }
-.sync-fab { width: 56px; height: 56px; border-radius: 28px; background: #000; color: #fff; border: none; font-size: 1.5rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 15px rgba(0,0,0,0.2); cursor: pointer; transition: transform 0.2s, background 0.2s; position: relative; }
-.sync-fab:hover { transform: scale(1.05); background: #333; }
-.sync-fab:active { transform: scale(0.95); }
-.fab-icon.spinner { animation: spin 1s linear infinite; display: inline-block; }
-.badge-dot { position: absolute; top: 2px; right: 2px; width: 12px; height: 12px; background: #ef4444; border: 2px solid white; border-radius: 50%; }
-.sync-log-panel { background: white; width: 320px; max-height: 400px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); margin-bottom: 15px; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #eee; }
-.sync-header { padding: 15px; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; background: #fafafa; }
-.sync-header h4 { margin: 0; font-size: 0.95rem; font-weight: 700; color: #333; }
-.log-count { background: #000; color: #fff; font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; }
-.clear-btn { background: none; border: none; font-size: 0.8rem; color: #999; cursor: pointer; }
-.clear-btn:hover { color: #666; }
-.sync-list { overflow-y: auto; padding: 10px; max-height: 340px; }
-.sync-item { display: flex; gap: 10px; padding: 10px; border-bottom: 1px solid #f5f5f5; align-items: center; }
-.sync-item:last-child { border-bottom: none; }
-.sync-poster { width: 36px; height: 50px; border-radius: 4px; object-fit: cover; background: #eee; }
-.sync-details { flex: 1; }
-.sync-title { font-size: 0.9rem; font-weight: 600; color: #333; margin-bottom: 2px; }
-.sync-change { font-size: 0.85rem; font-weight: 700; color: #2563eb; display: flex; align-items: center; gap: 6px; }
-.old-val { color: #999; font-weight: 400; text-decoration: line-through; font-size: 0.75rem; }
-.sync-date { font-size: 0.7rem; color: #9ca3af; margin-top: 2px; }
-.sync-empty { padding: 40px 20px; text-align: center; color: #999; }
-.empty-icon { font-size: 2rem; margin-bottom: 10px; }
-.sub-text { font-size: 0.8rem; color: #ccc; margin-top: 5px; }
-.slide-up-enter-active, .slide-up-leave-active { transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); }
-.slide-up-enter-from, .slide-up-leave-to { opacity: 0; transform: translateY(20px); }
-
-/* --- 标签栏 (Tags Line) 样式统一 --- */
+/* (其余通用样式保持不变...) */
 .tags-line, .list-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .tag-badge, .status-tag, .network-tag-logo, .network-text { height: 20px; display: inline-flex; align-items: center; justify-content: center; line-height: 1; box-sizing: border-box; border-radius: 4px; font-size: 0.7rem; font-weight: 600; vertical-align: middle; }
 .tag-badge, .status-tag, .network-text { padding: 0 6px; }
@@ -890,4 +741,39 @@ onMounted(() => { fetchShows(); updateTheme('#fcfcfc'); });
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 .spin { animation: spin 1s linear infinite; display: inline-block; }
 @keyframes spin { 100% { transform: rotate(360deg); } }
+
+/* ==================================================
+   📱 Mobile Responsive Styles (移动端适配)
+   ================================================== */
+@media (max-width: 768px) {
+  .header { padding: 15px 20px; flex-direction: column; align-items: flex-start; gap: 15px; }
+  .content-body { padding: 15px; }
+  .header-actions { width: 100%; justify-content: space-between; }
+  .page-title { font-size: 1.5rem; }
+  .subtitle { display: none; }
+  .add-btn { padding: 8px 14px; font-size: 0.85rem; }
+  .filters-container { padding: 0 20px; margin-top: 0; }
+  .filters-row { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 10px; -webkit-overflow-scrolling: touch; gap: 8px; }
+  .filters-row::-webkit-scrollbar { display: none; }
+  .filter-chip { flex-shrink: 0; white-space: nowrap; }
+  .grid-layout { grid-template-columns: repeat(2, 1fr); gap: 10px; padding-bottom: 100px; }
+  .card-header-grid { flex-direction: row; padding-right: 30px; }
+  .poster-mini { width: 50px; height: 75px; display: flex; }
+  .header-info h3 { font-size: 0.9rem; line-height: 1.3; max-height: 2.6em; overflow: hidden; }
+  .stats-blocks { gap: 4px; }
+  .stat-block { padding: 6px 2px; }
+  .stat-label { font-size: 0.6rem; }
+  .stat-percent { font-size: 0.9rem; }
+  .ring-wrapper { transform: scale(0.7); margin: -10px 0; }
+  .list-card.full-height-poster { height: auto; min-height: 110px; }
+  .list-poster-side { width: 80px; }
+  .list-main-content { padding: 10px 15px; flex-direction: column; align-items: flex-start; gap: 10px; }
+  .list-info-col, .list-progress-col, .list-actions-col { width: 100%; flex: auto; }
+  .list-actions-col { justify-content: flex-end; padding-top: 5px; border-top: 1px solid #f5f5f5; }
+  .modal-container.modern-modal { width: 90%; max-height: 85vh; }
+  .row-group { flex-direction: column; gap: 10px; }
+  .fab-container { bottom: 20px; right: 20px; }
+  /* 移动端通知面板样式 */
+  .noti-dropdown { width: 85vw; right: -20px; top: 120%; }
+}
 </style>
