@@ -5,6 +5,7 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5001;
+const tmdbRoutes = require('./routes/tmdb');
 
 // 中间件
 app.use(cors());
@@ -20,6 +21,8 @@ mongoose.connect(uri)
 // 凡是访问 /api/auth/... 的请求，都交给 routes/auth.js 处理
 app.use('/api/auth', require('./routes/auth')); 
 app.use('/api/history', require('./routes/history'));
+app.use('/api/shows', require('./routes/shows'));
+app.use('/api/tmdb', tmdbRoutes);
 
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on port: ${PORT}`);

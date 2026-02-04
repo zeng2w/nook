@@ -11,7 +11,7 @@ import { updateTheme } from '../store';
 
 onMounted(() => {
   // 进 Dashboard 时，强制变回白色背景 (Light Mode)
-  updateTheme('#ffffff');
+  updateTheme('#fcfcfc');
 });
 </script>
 
@@ -19,7 +19,7 @@ onMounted(() => {
 .dashboard-empty-state {
   display: flex; flex-direction: column; justify-content: center; align-items: center;
   height: 100%; width: 100%;
-  background-color: #ffffff; /* Dashboard 是白色的 */
+  background-color: #fcfcfc; /* Dashboard 是白色的 */
   color: #333;
 }
 </style>
