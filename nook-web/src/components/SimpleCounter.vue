@@ -311,7 +311,7 @@ const getCurrentUser = () => {
 const fetchHistory = async () => {
   if (!currentUser.value) return;
   try {
-    const res = await axios.get(`http://localhost:5001/api/history?userId=${currentUser.value.id}`);
+    const res = await axios.get(`/api/history?userId=${currentUser.value.id}`);
     history.value = res.data.map(item => ({
       _id: item._id,
       createdAt: item.date, 
@@ -339,7 +339,7 @@ const confirmSaveAndReset = async () => {
 
   if (currentUser.value) {
     try {
-      const res = await axios.post('http://localhost:5001/api/history', {
+      const res = await axios.post('/api/history', {
         userId: currentUser.value.id,
         count: settings.count,
         duration: totalMinutes,
@@ -389,7 +389,7 @@ const handleClear = async () => {
     if (confirm(`Delete ${selectedIds.value.size} selected records?`)) {
       for (const id of selectedIds.value) {
         try {
-          await axios.delete(`http://localhost:5001/api/history/${id}`);
+          await axios.delete(`/api/history/${id}`);
         } catch (e) { console.error(e); }
       }
       history.value = history.value.filter(item => !selectedIds.value.has(item._id));
@@ -400,7 +400,7 @@ const handleClear = async () => {
     if (confirm("Delete ALL history records? This cannot be undone.")) {
        for (const item of history.value) {
           try {
-            await axios.delete(`http://localhost:5001/api/history/${item._id}`);
+            await axios.delete(`/api/history/${item._id}`);
           } catch (e) { console.error(e); }
        }
        history.value = [];
@@ -420,7 +420,7 @@ const saveHistoryForm = async () => {
 
   try {
     if (formMode.value === 'add') {
-      const res = await axios.post('http://localhost:5001/api/history', {
+      const res = await axios.post('/api/history', {
         userId: currentUser.value.id,
         count: formData.count,
         duration: totalMinutes,
@@ -433,7 +433,7 @@ const saveHistoryForm = async () => {
       };
       history.value.unshift(newRecord);
     } else {
-      const res = await axios.put(`http://localhost:5001/api/history/${editingId.value}`, {
+      const res = await axios.put(`/api/history/${editingId.value}`, {
         count: formData.count,
         duration: totalMinutes,
         date: isoDate
@@ -473,7 +473,7 @@ const deleteHistory = async (index) => {
   undoItem.value = { ...itemToDelete };
   
   try {
-    await axios.delete(`http://localhost:5001/api/history/${itemToDelete._id}`);
+    await axios.delete(`/api/history/${itemToDelete._id}`);
     
     if (selectedIds.value.has(itemToDelete._id)) {
       selectedIds.value.delete(itemToDelete._id);
@@ -502,7 +502,7 @@ const handleUndo = async () => {
   };
 
   try {
-    const res = await axios.post('http://localhost:5001/api/history', payload);
+    const res = await axios.post('/api/history', payload);
     const restoredRecord = {
       _id: res.data._id,
       createdAt: res.data.date,

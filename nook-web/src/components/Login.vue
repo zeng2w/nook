@@ -89,7 +89,7 @@ const handleLogin = async () => {
 
   try {
     // 1. 发送登录请求
-    const res = await axios.post('http://localhost:5001/api/auth/login', {
+    const res = await axios.post('/api/auth/login', {
       email: email.value,
       password: password.value
     });

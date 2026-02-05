@@ -108,7 +108,7 @@ const handleRegister = async () => {
 
   try {
     // 2. 发送请求给后端 (注意端口是 5001)
-    const res = await axios.post('http://localhost:5001/api/auth/register', {
+    const res = await axios.post('/api/auth/register', {
       username: form.username,
       email: form.email,
       password: form.password
