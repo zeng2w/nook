@@ -1,5 +1,5 @@
 <template>
-  <div class="tv-container">
+  <div class="tv-container" ref="mainContainer">
     
     <transition name="toast-slide">
       <div v-if="toast.visible" class="toast-notification" :class="toast.type">
@@ -8,7 +8,7 @@
       </div>
     </transition>
 
-    <div class="sticky-header-wrapper">
+    <div class="sticky-header-wrapper" :class="{ 'header-hidden': !isHeaderVisible }">
       <div class="header">
         <div>
           <h2 class="page-title">追剧记录</h2>
@@ -39,7 +39,7 @@
                     <div class="noti-info">
                       <div class="noti-row-top">
                         <span class="noti-title">{{ item.title }}</span>
-                        </div>
+                      </div>
                       <div class="noti-desc">
                         已更新至 <span class="highlight">{{ item.newEp }}</span> 集
                         <span class="old-ep" v-if="item.oldEp">(原: {{ item.oldEp }})</span>
@@ -280,7 +280,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue';
+// 【修改点 2：引入 onUnmounted】
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import axios from 'axios';
 import FitnessRing from './FitnessRing.vue';
 import { updateTheme } from '../store';
@@ -309,6 +310,66 @@ const fileInput = ref(null);
 const tmdbQuery = ref('');
 const tmdbResults = ref([]);
 const isSearching = ref(false);
+
+// --- 智能 Header 逻辑 (修正版) ---
+const isHeaderVisible = ref(true);
+const mainContainer = ref(null); // 对应 template 里的 ref
+let lastScrollY = 0;
+
+const handleScroll = () => {
+  // 关键修改：获取容器的滚动距离，而不是窗口的
+  const container = mainContainer.value;
+  if (!container) return;
+  
+  const currentScrollY = container.scrollTop;
+
+  // 1. 在最顶部 (容错 10px) -> 显示
+  if (currentScrollY < 10) {
+    isHeaderVisible.value = true;
+    lastScrollY = currentScrollY;
+    return;
+  }
+
+  // 2. 防抖 (滚动太小不触发)
+  if (Math.abs(currentScrollY - lastScrollY) < 10) return;
+
+  // 3. 判断方向
+  if (currentScrollY > lastScrollY) {
+    isHeaderVisible.value = false; // 向下滚 -> 隐藏
+  } else {
+    //isHeaderVisible.value = true;  // 向上滚 -> 显示
+  }
+  
+  lastScrollY = currentScrollY;
+};
+
+const handleMouseMove = (e) => {
+  if (e.clientY < 50) {
+    isHeaderVisible.value = true;
+  }
+};
+
+onMounted(() => {
+  fetchShows();
+  updateTheme('#fcfcfc');
+  const savedNotis = localStorage.getItem('tv_notifications');
+  if (savedNotis) notifications.value = JSON.parse(savedNotis);
+  
+  // 关键修改：监听 mainContainer 的 scroll 事件，而不是 window
+  if (mainContainer.value) {
+    mainContainer.value.addEventListener('scroll', handleScroll);
+  }
+  window.addEventListener('mousemove', handleMouseMove);
+});
+
+onUnmounted(() => {
+  // 记得解绑
+  if (mainContainer.value) {
+    mainContainer.value.removeEventListener('scroll', handleScroll);
+  }
+  window.removeEventListener('mousemove', handleMouseMove);
+});
+// --- 智能 Header 逻辑结束 ---
 
 const toast = reactive({ visible: false, message: '', type: 'success' });
 const showToast = (msg, type = 'success') => {
@@ -347,6 +408,16 @@ onMounted(() => {
   if (savedNotis) {
     notifications.value = JSON.parse(savedNotis);
   }
+  
+  // 【修改点 3：添加滚动和鼠标监听】
+  window.addEventListener('scroll', handleScroll);
+  window.addEventListener('mousemove', handleMouseMove);
+});
+
+// 【修改点 4：销毁时移除监听】
+onUnmounted(() => {
+  window.removeEventListener('scroll', handleScroll);
+  window.removeEventListener('mousemove', handleMouseMove);
 });
 
 watch(notifications, (newVal) => {
@@ -364,17 +435,13 @@ const toggleNotifications = () => {
 const clearNotifications = () => { notifications.value = []; };
 const removeNotification = (index) => { notifications.value.splice(index, 1); };
 
-// 【修改点 1：日期格式化修复】
-// 改为使用 UTC 时间，防止因时区导致日期显示比实际晚一天
+// 日期格式化：使用 UTC 时间获取年月日
 const formatDateSimple = (dateStr) => {
   if (!dateStr) return '';
   const d = new Date(dateStr);
- // 核心修改：使用 UTC 时间获取年月日
-  // 这样无论你在美国还是中国，只要数据库存的是 4号，这里就一定显示 4号
   const year = d.getUTCFullYear();
-  const month = String(d.getUTCMonth() + 1).padStart(2, '0'); // 月份从0开始，所以要+1
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
   const day = String(d.getUTCDate()).padStart(2, '0');
-  
   return `${year}-${month}-${day}`;
 };
 
@@ -491,7 +558,6 @@ onMounted(() => { fetchShows(); updateTheme('#fcfcfc'); });
 .noti-info { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
 .noti-row-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .noti-title { font-size: 0.9rem; font-weight: 600; color: #111; line-height: 1.3; }
-/* 原来的 .noti-date 已删除，新日期样式写在内联里了 */
 .noti-desc { font-size: 0.8rem; color: #666; }
 .highlight { color: #2563eb; font-weight: 700; }
 .old-ep { color: #9ca3af; font-size: 0.75rem; margin-left: 4px; }
@@ -575,7 +641,27 @@ onMounted(() => { fetchShows(); updateTheme('#fcfcfc'); });
 .network-preview { height: 38px; padding: 2px 8px; flex-shrink: 0; background: white; border: 1px solid #eee; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
 .network-preview img { height: 100%; width: auto; object-fit: contain; }
 .tv-container { padding: 0; height: 100%; overflow-y: auto; background-color: transparent; color: #333; }
-.sticky-header-wrapper { position: sticky; top: 0; z-index: 99; background-color: rgba(252, 252, 252, 0.95); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(0,0,0,0.03); padding-bottom: 10px; }
+
+/* 【修改点 5：添加动画和隐藏样式】 */
+.sticky-header-wrapper {
+  position: sticky;
+  top: 0;
+  z-index: 99;
+  background-color: rgba(252, 252, 252, 0.95);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(0,0,0,0.03);
+  padding-bottom: 10px;
+  
+  /* 新增过渡动画 */
+  transition: transform 0.3s ease-in-out;
+  transform: translateY(0);
+}
+
+/* 隐藏时向上移动 100% */
+.sticky-header-wrapper.header-hidden {
+  transform: translateY(-80%);
+}
+
 .header { display: flex; justify-content: space-between; align-items: center; padding: 30px 40px 10px 40px; }
 .page-title { margin: 0; font-size: 1.8rem; font-weight: 800; letter-spacing: -0.5px; }
 .subtitle { color: #666; margin-top: 5px; font-size: 0.95rem; }
