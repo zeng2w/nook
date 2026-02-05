@@ -14,7 +14,9 @@
   "routes": [
     { "src": "/api/(.*)", "dest": "/nook-server/api/index.js" },
     
-    { "handle": "filesystem" }, 
+    { "src": "/assets/(.*)", "dest": "/nook-web/assets/$1" },
+    
+    { "src": "/(.*\\..*)", "dest": "/nook-web/$1" },
     
     { "src": "/(.*)", "dest": "/nook-web/index.html" }
   ]
