@@ -8,7 +8,11 @@ const PORT = process.env.PORT || 5001;
 const tmdbRoutes = require('./routes/tmdb');
 
 // 中间件
-app.use(cors());
+// app.use(cors());
+app.use(cors({
+  origin: '*', // 允许所有域名访问 (最简单，适合个人项目)
+  credentials: true
+}));
 app.use(express.json());
 
 // 连接数据库
