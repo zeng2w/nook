@@ -317,27 +317,31 @@ const mainContainer = ref(null); // 对应 template 里的 ref
 let lastScrollY = 0;
 
 const handleScroll = () => {
-  // 关键修改：获取容器的滚动距离，而不是窗口的
   const container = mainContainer.value;
   if (!container) return;
   
   const currentScrollY = container.scrollTop;
 
-  // 1. 在最顶部 (容错 10px) -> 显示
+  // 1. 如果在页面最顶部 (小于10px)，始终显示
   if (currentScrollY < 10) {
     isHeaderVisible.value = true;
     lastScrollY = currentScrollY;
     return;
   }
 
-  // 2. 防抖 (滚动太小不触发)
+  // 2. 防抖：如果滚动幅度小于 10px，忽略它（防止手指按在屏幕上微动导致抖动）
   if (Math.abs(currentScrollY - lastScrollY) < 10) return;
 
-  // 3. 判断方向
+  // 3. 判断滚动方向
   if (currentScrollY > lastScrollY) {
-    isHeaderVisible.value = false; // 向下滚 -> 隐藏
+    // ---> 向下看内容：隐藏导航栏
+    isHeaderVisible.value = false;
   } else {
-    //isHeaderVisible.value = true;  // 向上滚 -> 显示
+    // ---> 向上往回翻：显示导航栏 (iPad 必须靠这个)
+    // 逻辑优化：只有当“明显向上滑”超过 20px 时才显示
+    if (lastScrollY - currentScrollY > 20) {
+       isHeaderVisible.value = true; 
+    }
   }
   
   lastScrollY = currentScrollY;
@@ -395,7 +399,39 @@ const getMonthTitle = () => { const d = new Date(calendarStart.value); return d.
 const getCalendarDate = (offsetIndex) => { const d = new Date(calendarStart.value); d.setDate(d.getDate() + offsetIndex); return d; };
 const isDateToday = (dateObj) => { const today = new Date(); return dateObj.getDate() === today.getDate() && dateObj.getMonth() === today.getMonth() && dateObj.getFullYear() === today.getFullYear(); };
 const getEpisodeTextForDate = (show, targetDate) => { if (!show.lastAirDate) return `更新至 ${show.airedEpisodes} 集`; const lastUpdate = new Date(show.lastAirDate); lastUpdate.setHours(12,0,0,0); const target = new Date(targetDate); target.setHours(12,0,0,0); const diffTime = target.getTime() - lastUpdate.getTime(); const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); let cycleOffset = 0; if (show.updateFrequency === 'daily') { cycleOffset = diffDays; } else if (show.updateFrequency === 'weekly') { cycleOffset = Math.floor(diffDays / 7); if (diffDays % 7 === 0) cycleOffset = diffDays / 7; } const updateCount = show.updateCount || 1; const endEpisode = show.airedEpisodes + (cycleOffset * updateCount); let startEpisode = endEpisode - updateCount + 1; if (endEpisode <= 0) return '尚未播出'; if (show.totalEpisodes && startEpisode > show.totalEpisodes) return '已完结'; if (startEpisode < 1) startEpisode = 1; const displayEnd = show.totalEpisodes ? Math.min(endEpisode, show.totalEpisodes) : endEpisode; if (updateCount === 1 || startEpisode === displayEnd) { return `第 ${displayEnd} 集`; } else { return `第 ${startEpisode}, ${displayEnd} 集`; } };
-const getShowsForDate = (dateObj) => { const dayIndex = dateObj.getDay(); const time = dateObj.getTime(); const results = []; shows.value.forEach(s => { if (s.status === 'dropped' || s.status === 'watched' || s.updateFrequency === 'ended') return; if (s.estimatedFinishDate) { const finish = new Date(s.estimatedFinishDate).getTime(); if (time > finish) return; } let isAirDay = false; if (s.updateFrequency === 'daily') isAirDay = true; else if (s.updateDays && s.updateDays.includes(dayIndex)) isAirDay = true; if (isAirDay) { const epText = getEpisodeTextForDate(s, dateObj); if (epText !== '尚未播出') { results.push({ show: s, episodeText: epText }); } } }); return results; };
+// const getShowsForDate = (dateObj) => { const dayIndex = dateObj.getDay(); const time = dateObj.getTime(); const results = []; shows.value.forEach(s => { if (s.status === 'dropped' || s.status === 'watched' || s.updateFrequency === 'ended') return; if (s.estimatedFinishDate) { const finish = new Date(s.estimatedFinishDate).getTime(); if (time > finish) return; } let isAirDay = false; if (s.updateFrequency === 'daily') isAirDay = true; else if (s.updateDays && s.updateDays.includes(dayIndex)) isAirDay = true; if (isAirDay) { const epText = getEpisodeTextForDate(s, dateObj); if (epText !== '尚未播出') { results.push({ show: s, episodeText: epText }); } } }); return results; };
+const getShowsForDate = (dateObj) => {
+  const dayIndex = dateObj.getDay();
+  const time = dateObj.getTime();
+  const results = [];
+  
+  shows.value.forEach(s => {
+    // 基础过滤：弃剧、已看完、状态为“完结”的直接跳过
+    if (s.status === 'dropped' || s.status === 'watched' || s.updateFrequency === 'ended') return;
+    
+    // 如果有预计完结日期，且当前日期已超过预计日期，也跳过
+    if (s.estimatedFinishDate) {
+      const finish = new Date(s.estimatedFinishDate).getTime();
+      if (time > finish) return;
+    }
+    
+    let isAirDay = false;
+    if (s.updateFrequency === 'daily') isAirDay = true;
+    else if (s.updateDays && s.updateDays.includes(dayIndex)) isAirDay = true;
+    
+    if (isAirDay) {
+      const epText = getEpisodeTextForDate(s, dateObj);
+      
+      // 【关键修改在这里】
+      // 只有当显示的文字不是 '尚未播出' 且不是 '已完结' 时，才添加到日历中
+      if (epText !== '尚未播出' && epText !== '已完结') {
+        results.push({ show: s, episodeText: epText });
+      }
+    }
+  });
+  
+  return results;
+};
 
 const uniqueNetworks = computed(() => { const nets = new Map(); shows.value.forEach(s => { if (s.network && !nets.has(s.network)) { nets.set(s.network, { name: s.network, logo: s.networkLogo }); } }); return Array.from(nets.values()).sort((a, b) => a.name.localeCompare(b.name)); });
 const filteredShows = computed(() => { let result = shows.value.filter(s => { const catMatch = currentCategory.value === 'all' || s.category === currentCategory.value; const statusMatch = currentStatus.value === 'all' || s.status === currentStatus.value; const netMatch = currentNetwork.value === 'all' || s.network === currentNetwork.value; return catMatch && statusMatch && netMatch; }); return result.sort((a, b) => { if (a.status === 'dropped' && b.status !== 'dropped') return 1; if (a.status !== 'dropped' && b.status === 'dropped') return -1; const dateA = a.lastAirDate ? new Date(a.lastAirDate).getTime() : 0; const dateB = b.lastAirDate ? new Date(b.lastAirDate).getTime() : 0; if (dateA === 0 && dateB !== 0) return 1; if (dateB === 0 && dateA !== 0) return -1; return dateB - dateA; }); });
@@ -461,14 +497,28 @@ const syncData = async () => {
 
     if (res.data.updatedCount > 0) {
       if (res.data.logs && res.data.logs.length > 0) {
-        const newItems = res.data.logs.map(log => ({
+        // --- 核心修复：去重逻辑 ---
+        // 1. 给现有的通知建立指纹 (剧名-集数-日期)
+        const existingSignatures = new Set(
+          notifications.value.map(n => `${n.title}|${n.newEp}|${n.updateDate}`)
+        );
+
+        // 2. 过滤掉已存在的，只保留真正的新消息
+        const uniqueNewItems = res.data.logs.filter(log => {
+          const signature = `${log.title}|${log.newEp}|${log.date}`;
+          return !existingSignatures.has(signature);
+        }).map(log => ({
           ...log,
-          // 确保映射后端字段 date -> updateDate
           updateDate: log.date, 
-          uniqueId: Date.now() + Math.random()
+          uniqueId: Date.now() + Math.random() // 这里的随机ID只用于Vue渲染，不影响数据逻辑
         }));
-        notifications.value = [...newItems, ...notifications.value];
-        hasNewNotis.value = true;
+
+        // 3. 只有当确实有新数据时才添加
+        if (uniqueNewItems.length > 0) {
+          notifications.value = [...uniqueNewItems, ...notifications.value];
+          hasNewNotis.value = true;
+        }
+        // -----------------------
       }
       showToast(`同步完成！更新了 ${res.data.updatedCount} 部剧集`, "success");
     } else {

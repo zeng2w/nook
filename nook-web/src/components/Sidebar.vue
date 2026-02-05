@@ -36,7 +36,7 @@
       
       <router-link to="/home/tv-shows" class="nav-item" active-class="active" :title="!isOpen ? 'TV Shows' : ''">
         <svg class="icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect><polyline points="17 2 12 7 7 2"></polyline></svg>
-        <span v-if="isOpen">TV Shows</span>
+        <span v-if="isOpen">TV Tracks</span>
       </router-link>
     </nav>
 
@@ -63,20 +63,27 @@ defineEmits(['logout', 'toggle-menu']);
 <style scoped>
 .sidebar {
   width: 260px;
-  height: 100vh;
-  /* 【核心修改】文字改为深色，以适应浅色背景 */
+  /* 【修改点1】使用 dvh (动态视口高度) 适配移动端/iPad 地址栏 */
+  height: 100dvh; 
   color: rgba(0, 0, 0, 0.7); 
   display: flex; 
   flex-direction: column; 
   padding: 20px; 
   box-sizing: border-box;
   transition: width 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-  overflow: hidden; 
-  /* 【核心修改】透明背景 */
+  
+  /* 【修改点2】允许垂直滚动，防止底部按钮被切掉 */
+  overflow-y: auto; 
+  overflow-x: hidden; /* 保持水平不滚动 */
+  
   background-color: transparent; 
   border-right: 1px solid rgba(0,0,0,0.05);
   position: relative;
+  
+  /* 隐藏滚动条但保留功能 (可选，为了美观) */
+  scrollbar-width: none; /* Firefox */
 }
+.sidebar::-webkit-scrollbar { display: none; /* Chrome/Safari */ }
 
 .sidebar.closed { width: 80px; padding: 20px 10px; }
 
@@ -90,6 +97,8 @@ defineEmits(['logout', 'toggle-menu']);
   padding: 12px; border-radius: 8px; 
   text-decoration: none; color: inherit; font-weight: 500;
   transition: all 0.2s; white-space: nowrap; cursor: pointer; height: 48px;
+  /* 防止导航项被压缩 */
+  flex-shrink: 0; 
 }
 .nav-item:hover, .nav-item.active {
   background-color: rgba(0,0,0,0.05); color: #000;
@@ -98,7 +107,12 @@ defineEmits(['logout', 'toggle-menu']);
 .nav-item.disabled { opacity: 0.3; cursor: not-allowed; }
 .icon { min-width: 24px; }
 
-.sidebar-header { display: flex; align-items: center; justify-content: space-between; height: 50px; margin-bottom: 40px; }
+.sidebar-header { 
+  display: flex; align-items: center; justify-content: space-between; 
+  height: 50px; margin-bottom: 40px; 
+  /* 防止头部被压缩 */
+  flex-shrink: 0; 
+}
 .sidebar.closed .sidebar-header { justify-content: center; }
 .user-profile { display: flex; align-items: center; gap: 12px; white-space: nowrap; overflow: hidden; }
 .avatar-placeholder { min-width: 36px; width: 36px; height: 36px; background-color: #333; color: white; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: bold; font-size: 1rem; }
@@ -106,8 +120,23 @@ defineEmits(['logout', 'toggle-menu']);
 .welcome-text { font-size: 0.7rem; opacity: 0.7; line-height: 1.2; }
 .username { font-weight: 600; font-size: 0.9rem; }
 .menu-toggle-btn { background: transparent; border: none; cursor: pointer; padding: 8px; border-radius: 8px; color: inherit; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
-.nav-menu { flex: 1; display: flex; flex-direction: column; gap: 8px; }
-.logout-section { margin-top: auto; padding-top: 20px; }
+
+.nav-menu { 
+  flex: 1; 
+  display: flex; 
+  flex-direction: column; 
+  gap: 8px; 
+  /* 确保菜单部分本身也能适应 */
+  min-height: min-content;
+}
+
+.logout-section { 
+  margin-top: auto; 
+  padding-top: 20px; 
+  /* 【修改点3】防止底部按钮在屏幕变矮时被压扁 */
+  flex-shrink: 0; 
+}
+
 .logout-btn { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px; border: none; background: transparent; border-radius: 8px; color: inherit; font-weight: 500; cursor: pointer; transition: 0.2s; white-space: nowrap; height: 48px; }
 .logout-btn:hover { background-color: rgba(0,0,0,0.05); color: #d32f2f; }
 .sidebar.closed .logout-btn { justify-content: center; }
