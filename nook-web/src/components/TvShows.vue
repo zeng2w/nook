@@ -35,16 +35,20 @@
                       <img v-if="item.posterUrl" :src="item.posterUrl" class="noti-img" loading="lazy" />
                       <div v-else class="noti-img-placeholder">{{ item.title.charAt(0) }}</div>
                     </div>
+                    
                     <div class="noti-info">
                       <div class="noti-row-top">
                         <span class="noti-title">{{ item.title }}</span>
-                        <span class="noti-date">{{ formatDateSimple(item.updateDate) }}</span>
-                      </div>
+                        </div>
                       <div class="noti-desc">
                         已更新至 <span class="highlight">{{ item.newEp }}</span> 集
                         <span class="old-ep" v-if="item.oldEp">(原: {{ item.oldEp }})</span>
                       </div>
+                      <div class="noti-date-bottom" style="font-size: 0.75rem; color: #9ca3af; margin-top: 4px;">
+                        {{ formatDateSimple(item.updateDate) }}
+                      </div>
                     </div>
+
                     <button class="noti-delete-btn" @click.stop="removeNotification(index)" title="删除这条记录">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
@@ -360,18 +364,24 @@ const toggleNotifications = () => {
 const clearNotifications = () => { notifications.value = []; };
 const removeNotification = (index) => { notifications.value.splice(index, 1); };
 
+// 【修改点 1：日期格式化修复】
+// 改为使用 UTC 时间，防止因时区导致日期显示比实际晚一天
 const formatDateSimple = (dateStr) => {
   if (!dateStr) return '';
   const d = new Date(dateStr);
-  // 返回 "2-4" 格式
-  return `${d.getMonth()+1}-${d.getDate()}`;
+ // 核心修改：使用 UTC 时间获取年月日
+  // 这样无论你在美国还是中国，只要数据库存的是 4号，这里就一定显示 4号
+  const year = d.getUTCFullYear();
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0'); // 月份从0开始，所以要+1
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  
+  return `${year}-${month}-${day}`;
 };
 
 const triggerImport = () => { fileInput.value.click(); };
 const exportData = () => { const userId = getCurrentUserId(); if (!userId) return; const url = `/api/shows/export?userId=${userId}`; window.open(url, '_blank'); showToast("数据备份下载中...", "success"); };
 const handleFileUpload = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = async (e) => { try { const jsonContent = e.target.result; const parsedData = JSON.parse(jsonContent); if (!Array.isArray(parsedData)) { return showToast("文件格式错误", "error"); } const userId = getCurrentUserId(); showToast("正在导入数据...", "success"); const res = await axios.post('/api/shows/import', { userId, shows: parsedData }); if (res.data.success) { showToast(res.data.message, "success"); await fetchShows(); } } catch (err) { console.error(err); showToast("导入失败", "error"); } finally { event.target.value = ''; } }; reader.readAsText(file); };
 
-// 【关键修改】Sync Data：确保后端返回的 date 被使用
 const syncData = async () => {
   const userId = getCurrentUserId();
   if (!userId) return;
@@ -481,7 +491,7 @@ onMounted(() => { fetchShows(); updateTheme('#fcfcfc'); });
 .noti-info { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
 .noti-row-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .noti-title { font-size: 0.9rem; font-weight: 600; color: #111; line-height: 1.3; }
-.noti-date { font-size: 0.7rem; color: #999; flex-shrink: 0; margin-top: 2px; font-weight: 500; }
+/* 原来的 .noti-date 已删除，新日期样式写在内联里了 */
 .noti-desc { font-size: 0.8rem; color: #666; }
 .highlight { color: #2563eb; font-weight: 700; }
 .old-ep { color: #9ca3af; font-size: 0.75rem; margin-left: 4px; }
