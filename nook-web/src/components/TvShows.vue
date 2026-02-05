@@ -203,11 +203,9 @@
                 <button class="square-btn minus" @click.stop="updateProgress(show, -1)" :disabled="show.watchedEpisodes <= 0">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 </button>
-                
                 <button class="square-btn plus" @click.stop="updateProgress(show, 1)">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 </button>
-
                 <button class="trash-btn" @click.stop="requestHardDelete(show._id)">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 </button>
@@ -226,7 +224,6 @@
 
     <div class="fab-container">
       <input type="file" ref="fileInput" style="display: none" accept=".json" @change="handleFileUpload" />
-
       <transition-group name="fab-stagger" tag="div" class="fab-menu-items">
         <div v-if="isMenuOpen" key="sync" class="fab-item">
           <div class="fab-label">同步进度</div>
@@ -254,7 +251,6 @@
           </button>
         </div>
       </transition-group>
-
       <button class="fab-btn main" @click="toggleMenu" :class="{ 'is-active': isMenuOpen }">
         <span class="main-icon" v-if="!isMenuOpen"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></span>
         <span class="close-icon" v-else><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></span>
@@ -265,11 +261,12 @@
       <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
         <div class="modal-container modern-modal">
           <div class="modal-header"><h3>{{ isEditing ? '编辑剧集' : '添加新剧集' }}</h3></div>
-          <div class="modal-body-scroll">
+          <div class="modal-body-scroll compact-mode">
+            
             <div v-if="!isEditing" class="tmdb-search-section">
-              <div class="search-box-modern">
+              <div class="search-box-modern compact">
                 <span class="search-icon">🔍</span>
-                <input v-model="tmdbQuery" @keyup.enter="searchTMDB" placeholder="输入剧名搜索 (例如: 海贼王)" class="modern-input search-input" />
+                <input v-model="tmdbQuery" @keyup.enter="searchTMDB" placeholder="搜索剧名 (例如: 仙逆)" class="modern-input search-input" />
                 <button class="btn-icon" @click="searchTMDB" :disabled="isSearching">{{ isSearching ? '...' : '→' }}</button>
               </div>
               <transition name="fade">
@@ -284,21 +281,80 @@
                 </div>
               </transition>
             </div>
-            <div class="form-group"><label>作品名称</label><input v-model="form.title" type="text" class="modern-input" placeholder="输入剧集名称" /></div>
-            <div class="form-group"><label>播放平台 / 制作方</label><div class="network-input-group"><input v-model="form.network" type="text" class="modern-input" placeholder="例如: Netflix, Bilibili" /><div v-if="form.networkLogo" class="network-preview"><img :src="form.networkLogo" alt="Logo" /></div></div></div>
-            <div v-if="!isEditing && availableSeasons.length > 0" class="form-group season-select-group"><label>检测到多季，是否仅添加特定一季？</label><select @change="onSeasonSelect" class="modern-input"><option value="">-- 添加整部剧 (默认) --</option><option v-for="s in availableSeasons" :key="s.seasonNumber" :value="s.seasonNumber">第 {{ s.seasonNumber }} 季 ({{ s.episodeCount }} 集)</option></select></div>
-            <div class="row-group">
-              <div class="form-group"><label>分类</label><select v-model="form.category" class="modern-input"><option value="tv">📺 电视剧</option><option value="anime">🎎 动漫</option><option value="movie">🎬 电影</option><option value="variety">🎤 综艺</option></select></div>
-              <div class="form-group" v-if="isEditing"><label>状态</label><select v-model="form.status" class="modern-input"><option value="wish">想看</option><option value="watching">在追</option><option value="watched">已看</option><option value="dropped">弃剧</option></select></div>
+
+            <div class="form-grid-row main-info">
+              <div class="form-group title-group">
+                <label>作品名称</label>
+                <input v-model="form.title" type="text" class="modern-input" placeholder="输入名称" />
+              </div>
+              <div class="form-group category-group">
+                <label>分类</label>
+                <select v-model="form.category" class="modern-input">
+                  <option value="tv">📺 电视剧</option>
+                  <option value="anime">🎎 动漫</option>
+                  <option value="movie">🎬 电影</option>
+                  <option value="variety">🎤 综艺</option>
+                </select>
+              </div>
             </div>
-            <div class="form-section">
-              <label class="section-title">更新频率</label>
-              <div class="segmented-control"><div v-for="opt in freqOptions" :key="opt.val" class="segment-option" :class="{ active: form.updateFrequency === opt.val }" @click="form.updateFrequency = opt.val">{{ opt.label }}</div></div>
-              <div v-if="form.updateFrequency === 'weekly'" class="week-selector-modern"><span class="sub-label">每周:</span><div class="days-row"><button v-for="(day, idx) in weekDays" :key="idx" class="day-chip" :class="{ active: form.updateDays.includes(idx) }" @click="toggleDay(idx)">{{ day }}</button></div></div>
-              <div v-if="form.updateFrequency !== 'ended' && form.updateFrequency !== 'unknown'" class="update-count-row"><span class="sub-label">每次更新:</span><input v-model.number="form.updateCount" type="number" min="1" class="modern-input small-input" /><span class="sub-label">集</span></div>
+
+            <div class="form-grid-row" :class="{ 'single-col': !isEditing }">
+              <div class="form-group">
+                <label>播放平台</label>
+                <div class="network-input-compact">
+                  <input v-model="form.network" type="text" class="modern-input" placeholder="如: Netflix" />
+                  <div v-if="form.networkLogo" class="network-logo-mini">
+                    <img :src="form.networkLogo" alt="Logo" />
+                  </div>
+                </div>
+              </div>
+              <div class="form-group" v-if="isEditing">
+                <label>状态</label>
+                <select v-model="form.status" class="modern-input">
+                  <option value="wish">想看</option>
+                  <option value="watching">在追</option>
+                  <option value="watched">已看</option>
+                  <option value="dropped">弃剧</option>
+                </select>
+              </div>
             </div>
-            <div class="form-section"><label class="section-title">当前进度</label><div class="stats-inputs-modern"><div class="stat-group"><label>已看</label><input v-model.number="form.watchedEpisodes" type="number" class="modern-input" /></div><div class="stat-group"><label>已更</label><input v-model.number="form.airedEpisodes" type="number" class="modern-input" /></div><div class="stat-group"><label>总集</label><input v-model.number="form.totalEpisodes" type="number" class="modern-input" /></div></div></div>
-            <div class="form-group" v-if="form.updateFrequency !== 'ended' && form.updateFrequency !== 'unknown'"><label>最近更新日期</label><input v-model="form.lastAirDate" type="date" class="modern-input" /></div>
+
+            <div v-if="!isEditing && availableSeasons.length > 0" class="form-group compact-group">
+              <select @change="onSeasonSelect" class="modern-input">
+                <option value="">-- 添加整部剧 (默认) --</option>
+                <option v-for="s in availableSeasons" :key="s.seasonNumber" :value="s.seasonNumber">第 {{ s.seasonNumber }} 季 ({{ s.episodeCount }} 集)</option>
+              </select>
+            </div>
+
+            <div class="form-section-compact">
+              <div class="compact-header">
+                <label>更新频率</label>
+                <div class="segmented-control mini">
+                  <div v-for="opt in freqOptions" :key="opt.val" class="segment-option" :class="{ active: form.updateFrequency === opt.val }" @click="form.updateFrequency = opt.val">{{ opt.label }}</div>
+                </div>
+              </div>
+              <div v-if="form.updateFrequency === 'weekly'" class="week-selector-mini">
+                <button v-for="(day, idx) in weekDays" :key="idx" class="day-chip mini" :class="{ active: form.updateDays.includes(idx) }" @click="toggleDay(idx)">{{ day }}</button>
+              </div>
+              <div v-if="form.updateFrequency !== 'ended' && form.updateFrequency !== 'unknown'" class="inline-row">
+                <span class="sub-label">每次更新:</span>
+                <input v-model.number="form.updateCount" type="number" min="1" class="modern-input inline-input" />
+                <span class="unit">集</span>
+                <span class="spacer">|</span>
+                <span class="sub-label">最近:</span>
+                <input v-model="form.lastAirDate" type="date" class="modern-input inline-date" />
+              </div>
+            </div>
+
+            <div class="form-section-compact">
+              <label>当前进度</label>
+              <div class="stats-row-compact">
+                <div class="stat-input-wrap"><span>已看</span><input v-model.number="form.watchedEpisodes" type="number" class="modern-input" /></div>
+                <div class="stat-input-wrap"><span>已更</span><input v-model.number="form.airedEpisodes" type="number" class="modern-input" /></div>
+                <div class="stat-input-wrap"><span>总集</span><input v-model.number="form.totalEpisodes" type="number" class="modern-input" /></div>
+              </div>
+            </div>
+
           </div>
           <div class="modal-footer"><button class="btn text-btn" @click="showModal = false">取消</button><button class="btn primary-btn" @click="saveShow">保存</button></div>
         </div>
@@ -424,19 +480,15 @@ const toggleNotifications = () => { showNotiPanel.value = !showNotiPanel.value; 
 const clearNotifications = () => { notifications.value = []; };
 const removeNotification = (index) => { notifications.value.splice(index, 1); };
 
-// const formatDateSimple = (dateStr) => { if (!dateStr) return ''; const d = new Date(dateStr); const year = d.getUTCFullYear(); const month = String(d.getUTCMonth() + 1).padStart(2, '0'); const day = String(d.getUTCDate()).padStart(2, '0'); return `${year}-${month}-${day}`; };
-// 日期格式化：改为中文 YYYY年M月D日
+// 日期格式化：中文 YYYY年M月D日
 const formatDateSimple = (dateStr) => {
   if (!dateStr) return '';
   const d = new Date(dateStr);
-  const year = d.getFullYear(); // 使用本地时间，更符合直觉
+  const year = d.getFullYear(); 
   const month = d.getMonth() + 1;
   const day = d.getDate();
   return `${year}年${month}月${day}日`;
 };
-
-// 新增：中文日期格式化
-// const formatDateCN = (dateStr) => { if (!dateStr) return ''; const d = new Date(dateStr); return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`; };
 
 const triggerImport = () => { fileInput.value.click(); };
 const exportData = () => { const userId = getCurrentUserId(); if (!userId) return; const url = `/api/shows/export?userId=${userId}`; window.open(url, '_blank'); showToast("数据备份下载中...", "success"); };
@@ -448,7 +500,8 @@ const fetchShows = async () => { const userId = getCurrentUserId(); if (!userId)
 const searchTMDB = async () => { if (!tmdbQuery.value) return; isSearching.value = true; tmdbResults.value = []; try { const res = await axios.get(`/api/tmdb/search?query=${tmdbQuery.value}`); tmdbResults.value = res.data; } catch (err) { console.error(err); } finally { isSearching.value = false; } };
 const selectTMDBResult = async (item) => { form.tmdbId = item.tmdbId; form.title = item.title; form.category = item.category; form.posterUrl = item.posterUrl; availableSeasons.value = []; try { const type = item.category; const res = await axios.get(`/api/tmdb/details/${type}/${item.tmdbId}`); const details = res.data; form.totalEpisodes = details.totalEpisodes || 0; form.airedEpisodes = details.airedEpisodes || 0; if (details.networks && details.networks.length > 0) { const mainNet = details.networks[0]; form.network = mainNet.name; if (mainNet.logo_path) { form.networkLogo = `https://image.tmdb.org/t/p/h60${mainNet.logo_path}`; } else { form.networkLogo = ''; } } else { form.network = ''; form.networkLogo = ''; } if (details.updateFrequency === 'ended') form.updateFrequency = 'ended'; if (details.lastAirDate) { form.lastAirDate = new Date(details.lastAirDate).toISOString().split('T')[0]; const [y, m, d] = form.lastAirDate.split('-').map(Number); const dayIndex = new Date(y, m - 1, d).getDay(); form.updateDays = [dayIndex]; } if (details.seasons && details.seasons.length > 0) availableSeasons.value = details.seasons; tmdbResults.value = []; tmdbQuery.value = ''; } catch (err) { console.error(err); } };
 const onSeasonSelect = (event) => { const seasonNum = parseInt(event.target.value); if (!seasonNum) return; const targetSeason = availableSeasons.value.find(s => s.seasonNumber === seasonNum); if (targetSeason) { const baseTitle = form.title.replace(/\s\(Season \d+\)$/, ''); form.title = `${baseTitle} (Season ${targetSeason.seasonNumber})`; form.totalEpisodes = targetSeason.episodeCount; form.airedEpisodes = targetSeason.episodeCount; form.updateFrequency = 'ended'; } };
-//const getEstimatedDate = (show) => { if (!show.totalEpisodes || !show.airedEpisodes || show.airedEpisodes >= show.totalEpisodes) { return show.status === 'watched' ? '已完结' : (show.status === 'dropped' ? '已弃剧' : '暂无数据'); } if (!show.lastAirDate || show.updateFrequency === 'unknown' || show.updateFrequency === 'ended') return '待计算'; const remaining = show.totalEpisodes - show.airedEpisodes; const epPerUpdate = show.updateCount || 1; const lastDate = new Date(show.lastAirDate); if (isNaN(lastDate.getTime())) return '日期无效'; lastDate.setHours(lastDate.getHours() + 12); if (show.updateFrequency === 'daily') { lastDate.setDate(lastDate.getDate() + Math.ceil(remaining / epPerUpdate)); } else if (show.updateFrequency === 'weekly') { if (!show.updateDays || show.updateDays.length === 0) { lastDate.setDate(lastDate.getDate() + (Math.ceil(remaining / epPerUpdate) * 7)); } else { let tempRemaining = remaining; let safe = 3650; while (tempRemaining > 0 && safe > 0) { lastDate.setDate(lastDate.getDate() + 1); if (show.updateDays.includes(lastDate.getDay())) tempRemaining -= epPerUpdate; safe--; } } } else if (show.updateFrequency === 'monthly') { lastDate.setMonth(lastDate.getMonth() + Math.ceil(remaining / epPerUpdate)); } return `预计完结：${lastDate.toLocaleDateString()}`; };
+
+// 列表日期：中文格式 YYYY年M月D日 + 时区修正
 const getEstimatedDate = (show) => {
   if (!show.totalEpisodes || !show.airedEpisodes || show.airedEpisodes >= show.totalEpisodes) {
     return show.status === 'watched' ? '已完结' : (show.status === 'dropped' ? '已弃剧' : '暂无数据');
@@ -480,9 +533,9 @@ const getEstimatedDate = (show) => {
     lastDate.setMonth(lastDate.getMonth() + Math.ceil(remaining / epPerUpdate));
   }
   
-  // ★★★ 修改了这一行，强制使用中文格式 ★★★
   return `预计完结：${lastDate.getFullYear()}年${lastDate.getMonth() + 1}月${lastDate.getDate()}日`;
 };
+
 const calcStatus = (watched, aired, total) => { if (watched === 0) return 'wish'; const target = (total > 0) ? total : aired; if (target > 0 && watched >= target) return 'watched'; return 'watching'; };
 const openEditModal = (show) => { isEditing.value = true; editingId.value = show._id; tmdbResults.value = []; tmdbQuery.value = ''; availableSeasons.value = []; Object.assign(form, { title: show.title, category: show.category, status: show.status, posterUrl: show.posterUrl, updateFrequency: show.updateFrequency, updateDays: show.updateDays || [], updateCount: show.updateCount || 1, watchedEpisodes: show.watchedEpisodes, airedEpisodes: show.airedEpisodes, totalEpisodes: show.totalEpisodes, lastAirDate: show.lastAirDate ? new Date(show.lastAirDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0], network: show.network || '', networkLogo: show.networkLogo || '', tmdbId: show.tmdbId }); showModal.value = true; };
 const openAddModal = () => { isEditing.value = false; editingId.value = null; tmdbResults.value = []; tmdbQuery.value = ''; availableSeasons.value = []; Object.assign(form, initialForm); form.updateDays = []; showModal.value = true; };
@@ -802,6 +855,211 @@ const calcPercent = (n, d) => (!d || d === 0) ? 0 : Math.round((n / d) * 100);
 .square-btn.plus:hover { background: #000; transform: translateY(-1px); }
 .trash-btn { width: 42px; height: 42px; border: none; background: transparent; color: #ef4444; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; border-radius: 10px; }
 .trash-btn:hover { background: #fef2f2; }
+
+/* --- 紧凑版 Modal 样式 (新增) --- */
+
+/* 缩小整体间距 */
+.modal-body-scroll.compact-mode {
+  padding: 15px 24px;
+  gap: 12px; /* 减少各行间距 */
+}
+
+/* --- 修复布局错位 --- */
+
+/* 1. 改为 Grid 布局，控制比例更精准 */
+.form-grid-row.main-info {
+  display: grid;
+  /* 左边占 1 份(自动伸缩)，右边固定 110px (足够放下分类选择) */
+  grid-template-columns: 1fr 110px; 
+  gap: 12px;
+  align-items: start; /* 顶部对齐，防止标签高度不一致导致错位 */
+}
+
+/* 2. 确保表单组占满格子 */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  width: 100%; /* 关键：撑满 Grid 格子 */
+}
+
+/* 3. 标签样式微调，保证高度一致 */
+.form-group label {
+  font-size: 0.75rem;
+  margin-bottom: 6px;
+  color: #86868b;
+  height: 14px; /* 固定标签高度，防止对齐抖动 */
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+/* 4. 分类选择框样式 */
+.category-group select.modern-input {
+  /* 移除部分浏览器的默认样式，让其更像普通输入框 */
+  appearance: none; 
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 14px;
+  padding-right: 24px; /* 给箭头留位置 */
+}
+
+/* 紧凑输入框 */
+.modern-input {
+  padding: 8px 12px; /* 减小内边距 */
+  font-size: 0.95rem;
+  border-radius: 8px;
+  background: #f2f2f7;
+  height: 38px; /* 固定高度，防止太高 */
+}
+
+/* 平台 Logo 紧凑模式 */
+.network-input-compact {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.network-input-compact input {
+  padding-right: 40px; /* 给右边的Logo留位置 */
+}
+.network-logo-mini {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  background: white;
+  border-radius: 6px;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  pointer-events: none;
+}
+.network-logo-mini img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* 频率选择器紧凑版 */
+.form-section-compact {
+  background: #f9f9fb;
+  border-radius: 10px;
+  padding: 10px 12px;
+  border: 1px solid #f0f0f0;
+}
+.compact-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.compact-header label { margin: 0; }
+
+.segmented-control.mini {
+  margin: 0;
+  padding: 2px;
+  background: #e5e5ea;
+  height: 28px;
+}
+.segmented-control.mini .segment-option {
+  padding: 0 10px;
+  font-size: 0.8rem;
+  line-height: 24px;
+}
+
+/* 周选择器 - 单行小球 */
+.week-selector-mini {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.day-chip.mini {
+  width: 30px;
+  height: 30px;
+  font-size: 0.75rem;
+  margin: 0;
+}
+
+/* 内联输入行 (每次更新 & 日期) */
+.inline-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: #666;
+}
+.modern-input.inline-input {
+  width: 50px;
+  text-align: center;
+  padding: 4px;
+  height: 30px;
+}
+.modern-input.inline-date {
+  width: 130px;
+  padding: 4px 8px;
+  height: 30px;
+  font-size: 0.8rem;
+}
+.spacer { color: #ddd; margin: 0 4px; }
+
+/* 底部进度条紧凑版 */
+.stats-row-compact {
+  display: flex;
+  gap: 10px;
+}
+.stat-input-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background: white;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  overflow: hidden;
+  height: 36px;
+}
+.stat-input-wrap span {
+  font-size: 0.75rem;
+  color: #999;
+  background: #fcfcfc;
+  padding: 0 8px;
+  border-right: 1px solid #f0f0f0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+.stat-input-wrap input {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  text-align: center;
+  padding: 0;
+  height: 100%;
+  font-weight: 600;
+}
+.stat-input-wrap input:focus {
+  box-shadow: none;
+  background: #fff;
+}
+
+/* 搜索框微调 */
+.search-box-modern.compact {
+  margin-bottom: 0;
+  height: 40px;
+}
+.search-box-modern.compact .search-input {
+  height: 40px;
+  padding: 0 36px;
+}
+.search-box-modern.compact .search-icon {
+  top: 50%; transform: translateY(-50%); left: 10px;
+}
+.search-box-modern.compact .btn-icon {
+  width: 24px; height: 24px; top: 50%; transform: translateY(-50%); right: 8px;
+}
 
 @media (max-width: 768px) {
   .header { padding: 15px 20px; flex-direction: column; align-items: flex-start; gap: 15px; }
