@@ -6,7 +6,7 @@ import Register from '../components/Register.vue';
 import SimpleCounter from '../components/SimpleCounter.vue';
 import MainLayout from '../views/MainLayout.vue'; // 布局组件
 import DashboardHome from '../components/DashboardHome.vue'; // 仪表盘组件
-import TvShows from '../components/TvShows.vue'; // 【新增】追剧记录组件
+import TvTrackerView from '../views/TvTrackerView.vue'; // 【新增】追剧记录组件
 
 const routes = [
   // 1. 根路径重定向到登录
@@ -43,7 +43,7 @@ const routes = [
       {
         path: 'tv-shows', // 完整路径: /home/tv-shows
         name: 'TvShows',
-        component: TvShows
+        component: TvTrackerView
       }
     ]
   }

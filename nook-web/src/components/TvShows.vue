@@ -376,7 +376,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import axios from 'axios';
-import FitnessRing from './FitnessRing.vue';
+import FitnessRing from './TvTracker/FitnessRing.vue';
 import { updateTheme } from '../store';
 
 const viewMode = ref('grid'); 
