@@ -31,9 +31,16 @@
     </TvHeader>
 
     <div class="content-body">
+      
+      <ShowSortToolbar 
+        :sortBy="sortBy" 
+        :sortDesc="sortDesc" 
+        @change="handleSort" 
+      />
+
       <div v-if="viewMode === 'grid'" class="grid-layout">
         <ShowGridCard 
-          v-for="show in filteredShows" 
+          v-for="show in sortedShows" 
           :key="show._id" 
           :show="show"
           :is-pending-delete="!!pendingDeletes[show._id]"
@@ -46,12 +53,12 @@
           @pause-delete="pauseDeleteTimer"
           @resume-delete="resumeDeleteTimer"
         />
-        <div v-if="filteredShows.length === 0" class="empty-state">暂无相关剧集</div>
+        <div v-if="sortedShows.length === 0" class="empty-state">暂无相关剧集</div>
       </div>
 
       <div v-else class="list-layout-container">
         <ShowListItem
-          v-for="show in filteredShows" 
+          v-for="show in sortedShows" 
           :key="show._id" 
           :show="show"
           :is-pending-delete="!!pendingDeletes[show._id]"
@@ -64,7 +71,7 @@
           @pause-delete="pauseDeleteTimer"
           @resume-delete="resumeDeleteTimer"
         />
-        <div v-if="filteredShows.length === 0" class="empty-state">暂无相关剧集</div>
+        <div v-if="sortedShows.length === 0" class="empty-state">暂无相关剧集</div>
       </div>
     </div>
 
@@ -108,7 +115,11 @@ import EditShowModal from '../components/TvTracker/EditShowModal.vue';
 import CalendarModal from '../components/TvTracker/CalendarModal.vue';
 import FabMenu from '../components/TvTracker/FabMenu.vue';
 
-// --- 状态与逻辑 (保持不变) ---
+// ★ 引入排序相关
+import { useShowSort } from '@/composables/useShowSort';
+import ShowSortToolbar from '@/components/TvTracker/ShowSortToolbar.vue';
+
+// --- 状态与逻辑 ---
 const viewMode = ref('grid');
 const currentCategory = ref('all');
 const currentStatus = ref('all');
@@ -128,7 +139,7 @@ const fileInput = ref(null);
 
 const toast = reactive({ visible: false, message: '', type: 'success' });
 
-// 计算属性
+// 计算属性：平台列表
 const uniqueNetworks = computed(() => {
   const nets = new Map();
   shows.value.forEach(s => {
@@ -139,25 +150,21 @@ const uniqueNetworks = computed(() => {
   return Array.from(nets.values()).sort((a, b) => a.name.localeCompare(b.name));
 });
 
+// 计算属性：筛选逻辑 (只负责过滤，不负责排序)
 const filteredShows = computed(() => {
-  let result = shows.value.filter(s => {
+  return shows.value.filter(s => {
     const catMatch = currentCategory.value === 'all' || s.category === currentCategory.value;
     const statusMatch = currentStatus.value === 'all' || s.status === currentStatus.value;
     const netMatch = currentNetwork.value === 'all' || s.network === currentNetwork.value;
     return catMatch && statusMatch && netMatch;
   });
-  return result.sort((a, b) => {
-    if (a.status === 'dropped' && b.status !== 'dropped') return 1;
-    if (a.status !== 'dropped' && b.status === 'dropped') return -1;
-    const dateA = a.lastAirDate ? new Date(a.lastAirDate).getTime() : 0;
-    const dateB = b.lastAirDate ? new Date(b.lastAirDate).getTime() : 0;
-    if (dateA === 0 && dateB !== 0) return 1;
-    if (dateB === 0 && dateA !== 0) return -1;
-    return dateB - dateA;
-  });
 });
 
-// Scroll Logic
+// ★ 排序逻辑：使用 Composable 接管排序
+// 它接收筛选后的列表，返回排序后的列表和控制变量
+const { sortBy, sortDesc, sortedShows, handleSort } = useShowSort(filteredShows);
+
+// --- Scroll Logic ---
 const isHeaderVisible = ref(true);
 const mainContainer = ref(null);
 let lastScrollY = 0;
@@ -188,6 +195,7 @@ onUnmounted(() => {
 
 watch(notifications, (newVal) => { localStorage.setItem('tv_notifications', JSON.stringify(newVal)); }, { deep: true });
 
+// --- 业务逻辑 (CRUD) ---
 const getCurrentUserId = () => { const userStr = sessionStorage.getItem('current_user'); return userStr ? JSON.parse(userStr).id : null; };
 const showToast = (msg, type = 'success') => { toast.message = msg; toast.type = type; toast.visible = true; setTimeout(() => { toast.visible = false; }, 3000); };
 
@@ -253,13 +261,8 @@ const restoreShow = async (show) => {
 const requestHardDelete = (id) => { pendingDeletes[id] = setTimeout(() => { confirmDelete(id); }, 3000); };
 const cancelDelete = (id) => { if (pendingDeletes[id]) { clearTimeout(pendingDeletes[id]); delete pendingDeletes[id]; } };
 const pauseDeleteTimer = (id) => { if (pendingDeletes[id]) clearTimeout(pendingDeletes[id]); };
-// const resumeDeleteTimer = (id) => { pendingDeletes[id] = setTimeout(() => { confirmDelete(id); }, 3000); };
-// 2. 恢复删除 (鼠标移出时触发)
 const resumeDeleteTimer = (id) => {
-  // 只有当这个 id 还在待删除列表中时才重启
-  // 重新设置一个 3000ms 的定时器
   if (pendingDeletes[id] !== undefined) {
-    // 先清一下防止重复绑定（保险起见）
     clearTimeout(pendingDeletes[id]); 
     pendingDeletes[id] = setTimeout(() => {
       confirmDelete(id);
@@ -325,7 +328,6 @@ const handleFileUpload = (event) => {
   padding: 0; 
   height: 100%; 
   overflow-y: auto; 
-  /* ★ 关键修改：背景色 */
   background-color: #f7f9fc; 
   color: #333; 
 }

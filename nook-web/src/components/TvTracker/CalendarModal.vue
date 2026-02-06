@@ -122,16 +122,29 @@ const isDateToday = (dateObj) => {
   return dateObj.getDate() === today.getDate() && dateObj.getMonth() === today.getMonth() && dateObj.getFullYear() === today.getFullYear();
 };
 
+// ★ 核心修复：日期计算逻辑
 const getEpisodeTextForDate = (show, targetDate) => {
   if (!show.lastAirDate) return `${show.airedEpisodes}集`;
   
-  const lastUpdate = new Date(show.lastAirDate);
-  lastUpdate.setHours(12,0,0,0);
+  // 1. 修复时区问题：
+  // 将 API 里的 UTC 日期（如 2026-02-06T00:00Z）强制转换为本地日历的 2026-02-06
+  const rawDate = new Date(show.lastAirDate);
+  const lastUpdate = new Date(
+    rawDate.getUTCFullYear(),
+    rawDate.getUTCMonth(),
+    rawDate.getUTCDate()
+  );
+  lastUpdate.setHours(12, 0, 0, 0); // 设定为中午12点，避免边界效应
+
   const target = new Date(targetDate);
-  target.setHours(12,0,0,0);
+  target.setHours(12, 0, 0, 0);
   
   const diffTime = target.getTime() - lastUpdate.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  // 2. 修复夏令时/冬令时问题：
+  // 使用 Math.round 而不是 Math.ceil。
+  // 因为冬令时一天可能是25小时，25/24 = 1.04，ceil 会变成 2天，导致集数算错。round 则稳定为 1天。
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
   
   let cycleOffset = 0;
   if (show.updateFrequency === 'daily') {
@@ -160,13 +173,15 @@ const getEpisodeTextForDate = (show, targetDate) => {
 
 const getShowsForDate = (dateObj) => {
   const dayIndex = dateObj.getDay();
-  const time = dateObj.getTime();
+  // 注意：这里比较是否完结时，也要注意时区，不过对于 "estimatedFinishDate" 一般精度要求不高，暂保持原样
+  const time = dateObj.getTime(); 
   const results = [];
   
   props.shows.forEach(s => {
     if (s.status === 'dropped' || s.status === 'watched' || s.updateFrequency === 'ended') return;
     if (s.estimatedFinishDate) {
-      if (time > new Date(s.estimatedFinishDate).getTime()) return;
+      // 给预计完结时间加一点缓冲 (一天)，防止刚好当天完结不显示
+      if (time > new Date(s.estimatedFinishDate).getTime() + 86400000) return;
     }
     
     let isAirDay = false;
@@ -218,7 +233,7 @@ const getShowsForDate = (dateObj) => {
 .close-glass-btn { background: #f2f2f7; width: 32px; height: 32px; border-radius: 50%; border: none; font-size: 1rem; cursor: pointer; color: #666; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
 .close-glass-btn:hover { background: #e5e5ea; color: #000; }
 
-/* ★ 关键修改：更窄的列宽 (135px) */
+/* Grid 布局 */
 .calendar-grid-view { 
   display: grid; 
   grid-template-columns: repeat(7, 120px); 
@@ -232,7 +247,7 @@ const getShowsForDate = (dateObj) => {
 .day-column { 
   border-right: 1px solid rgba(0,0,0,0.04); 
   display: flex; flex-direction: column; 
-  min-width: 120px; /* 确保不被压缩 */
+  min-width: 120px;
 }
 .day-column:last-child { border-right: none; }
 .day-column.is-today { background: rgba(0, 122, 255, 0.04); }
@@ -255,7 +270,9 @@ const getShowsForDate = (dateObj) => {
   background: #fff; 
   border: 1px solid rgba(0,0,0,0.03); 
   box-shadow: 0 2px 5px rgba(0,0,0,0.02); 
-  cursor: pointer; transition: all 0.2s; 
+  /* 纯展示模式 */
+  cursor: default; 
+  transition: all 0.2s; 
   overflow: hidden; 
 }
 .mini-item-card:hover { transform: translateX(2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-color: rgba(0,0,0,0.08); }
@@ -266,7 +283,7 @@ const getShowsForDate = (dateObj) => {
 
 .mini-info { flex: 1; display: flex; flex-direction: column; justify-content: center; overflow: hidden; gap: 2px; }
 
-/* 弹幕效果容器 */
+/* 弹幕效果 */
 .marquee-box {
   width: 100%;
   overflow: hidden;
@@ -274,7 +291,6 @@ const getShowsForDate = (dateObj) => {
   mask-image: linear-gradient(to right, black 85%, transparent); 
 }
 
-/* 滚动文字 */
 .mini-title { 
   display: inline-block;
   font-size: 0.8rem; 
@@ -301,6 +317,7 @@ const getShowsForDate = (dateObj) => {
 
 @media (max-width: 768px) {
   .glass-calendar-card.compact-mode { width: 100vw; height: 60vh; border-radius: 20px 20px 0 0; position: absolute; bottom: 0; max-width: none; }
-  .day-column { min-width: 135px; }
+  /* 修复：移动端列宽与 Grid 一致 */
+  .day-column { min-width: 120px; }
 }
 </style>
