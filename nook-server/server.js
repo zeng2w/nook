@@ -27,6 +27,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/history', require('./routes/history'));
 app.use('/api/shows', require('./routes/shows'));
 app.use('/api/tmdb', tmdbRoutes);
+app.use('/api/tvlog', require('./routes/tvlog'));
 
 // 只有在本地开发时才启动监听
 if (process.env.NODE_ENV !== 'production') {

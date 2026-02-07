@@ -106,20 +106,19 @@ import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import axios from 'axios';
 import { updateTheme } from '../store';
 
-// 引入组件
-import TvHeader from '../components/TvTracker/TvHeader.vue';
-import FilterBar from '../components/TvTracker/FilterBar.vue';
-import ShowGridCard from '../components/TvTracker/ShowGridCard.vue';
-import ShowListItem from '../components/TvTracker/ShowListItem.vue';
-import EditShowModal from '../components/TvTracker/EditShowModal.vue';
-import CalendarModal from '../components/TvTracker/CalendarModal.vue';
-import FabMenu from '../components/TvTracker/FabMenu.vue';
+// 引入组件 (根据你的实际路径调整)
+import TvHeader from '@/components/TvTracker/TvHeader.vue';
+import FilterBar from '@/components/TvTracker/FilterBar.vue';
+import ShowGridCard from '@/components/TvTracker/ShowGridCard.vue';
+import ShowListItem from '@/components/TvTracker/ShowListItem.vue';
+import EditShowModal from '@/components/TvTracker/EditShowModal.vue';
+import CalendarModal from '@/components/TvTracker/CalendarModal.vue';
+import FabMenu from '@/components/TvTracker/FabMenu.vue';
 
-// ★ 引入排序相关
+// 引入排序逻辑
 import { useShowSort } from '@/composables/useShowSort';
 import ShowSortToolbar from '@/components/TvTracker/ShowSortToolbar.vue';
-
-// --- 状态与逻辑 ---
+// --- 状态定义 ---
 const viewMode = ref('grid');
 const currentCategory = ref('all');
 const currentStatus = ref('all');
@@ -139,7 +138,9 @@ const fileInput = ref(null);
 
 const toast = reactive({ visible: false, message: '', type: 'success' });
 
-// 计算属性：平台列表
+// --- 计算属性 ---
+
+// 提取所有不重复的播放平台
 const uniqueNetworks = computed(() => {
   const nets = new Map();
   shows.value.forEach(s => {
@@ -150,7 +151,7 @@ const uniqueNetworks = computed(() => {
   return Array.from(nets.values()).sort((a, b) => a.name.localeCompare(b.name));
 });
 
-// 计算属性：筛选逻辑 (只负责过滤，不负责排序)
+// 筛选逻辑 (Category/Status/Network)
 const filteredShows = computed(() => {
   return shows.value.filter(s => {
     const catMatch = currentCategory.value === 'all' || s.category === currentCategory.value;
@@ -160,30 +161,43 @@ const filteredShows = computed(() => {
   });
 });
 
-// ★ 排序逻辑：使用 Composable 接管排序
-// 它接收筛选后的列表，返回排序后的列表和控制变量
+// 排序逻辑 (使用 Composable)
 const { sortBy, sortDesc, sortedShows, handleSort } = useShowSort(filteredShows);
 
-// --- Scroll Logic ---
+// --- 滚动与交互逻辑 ---
 const isHeaderVisible = ref(true);
 const mainContainer = ref(null);
 let lastScrollY = 0;
+
 const handleScroll = () => {
   const container = mainContainer.value;
   if (!container) return;
   const currentScrollY = container.scrollTop;
-  if (currentScrollY < 10) { isHeaderVisible.value = true; lastScrollY = currentScrollY; return; }
+  
+  if (currentScrollY < 10) { 
+    isHeaderVisible.value = true; 
+    lastScrollY = currentScrollY; 
+    return; 
+  }
+  
   if (Math.abs(currentScrollY - lastScrollY) < 10) return;
   isHeaderVisible.value = currentScrollY <= lastScrollY || (lastScrollY - currentScrollY > 20);
   lastScrollY = currentScrollY;
 };
-const handleMouseMove = (e) => { if (e.clientY < 50) isHeaderVisible.value = true; };
 
+const handleMouseMove = (e) => { 
+  if (e.clientY < 50) isHeaderVisible.value = true; 
+};
+
+// --- 生命周期 ---
 onMounted(() => {
   fetchShows();
   updateTheme('#fcfcfc');
+  
+  // 读取本地存储的通知
   const savedNotis = localStorage.getItem('tv_notifications');
   if (savedNotis) notifications.value = JSON.parse(savedNotis);
+  
   if (mainContainer.value) mainContainer.value.addEventListener('scroll', handleScroll);
   window.addEventListener('mousemove', handleMouseMove);
 });
@@ -193,12 +207,25 @@ onUnmounted(() => {
   window.removeEventListener('mousemove', handleMouseMove);
 });
 
-watch(notifications, (newVal) => { localStorage.setItem('tv_notifications', JSON.stringify(newVal)); }, { deep: true });
+watch(notifications, (newVal) => { 
+  localStorage.setItem('tv_notifications', JSON.stringify(newVal)); 
+}, { deep: true });
 
-// --- 业务逻辑 (CRUD) ---
-const getCurrentUserId = () => { const userStr = sessionStorage.getItem('current_user'); return userStr ? JSON.parse(userStr).id : null; };
-const showToast = (msg, type = 'success') => { toast.message = msg; toast.type = type; toast.visible = true; setTimeout(() => { toast.visible = false; }, 3000); };
+// --- 核心业务逻辑 ---
 
+const getCurrentUserId = () => { 
+  const userStr = sessionStorage.getItem('current_user'); 
+  return userStr ? JSON.parse(userStr).id : null; 
+};
+
+const showToast = (msg, type = 'success') => { 
+  toast.message = msg; 
+  toast.type = type; 
+  toast.visible = true; 
+  setTimeout(() => { toast.visible = false; }, 3000); 
+};
+
+// 获取剧集列表
 const fetchShows = async () => {
   const userId = getCurrentUserId();
   if (!userId) return;
@@ -210,22 +237,29 @@ const fetchShows = async () => {
   finally { setTimeout(() => { isLoading.value = false; }, 300); }
 };
 
-const openAddModal = () => { editingShow.value = null; showModal.value = true; };
-const openEditModal = (show) => { editingShow.value = { ...show }; showModal.value = true; };
+// 状态自动计算逻辑
+const calcStatus = (watched, aired, total) => { 
+  if (watched === 0) return 'wish'; 
+  const target = (total > 0) ? total : aired; 
+  if (target > 0 && watched >= target) return 'watched'; 
+  return 'watching'; 
+};
 
-const calcStatus = (watched, aired, total) => { if (watched === 0) return 'wish'; const target = (total > 0) ? total : aired; if (target > 0 && watched >= target) return 'watched'; return 'watching'; };
-
+// 保存/添加剧集
 const saveShow = async (formData) => {
   const userId = getCurrentUserId();
   if (!userId || !formData.title) return showToast("请输入作品名称", "error");
+  
   try {
     let res;
     if (editingShow.value && editingShow.value._id) {
+      // 编辑模式
       res = await axios.put(`/api/shows/${editingShow.value._id}`, formData);
       const index = shows.value.findIndex(s => s._id === editingShow.value._id);
       if (index !== -1) shows.value[index] = res.data;
       showToast("编辑成功", "success");
     } else {
+      // 添加模式
       const initialStatus = calcStatus(formData.watchedEpisodes, formData.airedEpisodes, formData.totalEpisodes);
       res = await axios.post('/api/shows', { userId, ...formData, status: initialStatus });
       shows.value.unshift(res.data);
@@ -238,14 +272,51 @@ const saveShow = async (formData) => {
   }
 };
 
+// ★★★ 核心逻辑：更新进度 & 记录历史 ★★★
 const updateProgress = async (show, delta) => {
   if (show.status === 'dropped') return;
+  
+  const oldVal = show.watchedEpisodes;
   const newVal = Math.max(0, show.watchedEpisodes + delta);
+  
+  // 如果已经是0集还要减，忽略
+  if (newVal === oldVal && delta < 0) return;
+
+  // 1. 本地乐观更新
   show.watchedEpisodes = newVal;
+  
   const newStatus = calcStatus(newVal, show.airedEpisodes, show.totalEpisodes);
   if (newStatus !== show.status) show.status = newStatus;
-  try { await axios.put(`/api/shows/${show._id}`, { watchedEpisodes: newVal, status: newStatus }); } catch(e){}
+
+  try {
+    // 2. 请求后端更新 Shows 表 (保存当前进度)
+    await axios.put(`/api/shows/${show._id}`, { 
+      watchedEpisodes: newVal, 
+      status: newStatus 
+    });
+
+    // 3. 请求后端更新 TvLog 表 (热力图数据)
+    // 无论 +1 还是 -1，都如实记录，热力图会自动处理
+    const userId = getCurrentUserId();
+    if (userId) {
+      await axios.post('/api/tvlog', {
+        userId: userId,
+        showId: show._id,
+        showTitle: show.title,
+        count: delta, 
+        date: new Date()
+      });
+    }
+  } catch (e) {
+    console.error(e);
+    // 失败回滚
+    show.watchedEpisodes = oldVal;
+    showToast("更新失败", "error");
+  }
 };
+
+const openAddModal = () => { editingShow.value = null; showModal.value = true; };
+const openEditModal = (show) => { editingShow.value = { ...show }; showModal.value = true; };
 
 const dropShow = async (show) => {
   show.status = 'dropped';
@@ -258,25 +329,37 @@ const restoreShow = async (show) => {
   try { await axios.put(`/api/shows/${show._id}`, { status: correctStatus }); } catch(e){}
 };
 
-const requestHardDelete = (id) => { pendingDeletes[id] = setTimeout(() => { confirmDelete(id); }, 3000); };
-const cancelDelete = (id) => { if (pendingDeletes[id]) { clearTimeout(pendingDeletes[id]); delete pendingDeletes[id]; } };
-const pauseDeleteTimer = (id) => { if (pendingDeletes[id]) clearTimeout(pendingDeletes[id]); };
+// --- 删除逻辑 (带撤回功能) ---
+const requestHardDelete = (id) => { 
+  pendingDeletes[id] = setTimeout(() => { confirmDelete(id); }, 3000); 
+};
+const cancelDelete = (id) => { 
+  if (pendingDeletes[id]) { clearTimeout(pendingDeletes[id]); delete pendingDeletes[id]; } 
+};
+const pauseDeleteTimer = (id) => { 
+  if (pendingDeletes[id]) clearTimeout(pendingDeletes[id]); 
+};
 const resumeDeleteTimer = (id) => {
   if (pendingDeletes[id] !== undefined) {
     clearTimeout(pendingDeletes[id]); 
-    pendingDeletes[id] = setTimeout(() => {
-      confirmDelete(id);
-    }, 3000);
+    pendingDeletes[id] = setTimeout(() => { confirmDelete(id); }, 3000);
   }
 };
 const confirmDelete = async (id) => {
   if (pendingDeletes[id]) { clearTimeout(pendingDeletes[id]); delete pendingDeletes[id]; }
   const backup = shows.value.find(s => s._id === id);
   shows.value = shows.value.filter(s => s._id !== id);
-  try { await axios.delete(`/api/shows/${id}`); showToast("删除成功", "success"); } 
-  catch (err) { console.error(err); if(backup) shows.value.push(backup); showToast("删除失败", "error"); }
+  try { 
+    await axios.delete(`/api/shows/${id}`); 
+    showToast("删除成功", "success"); 
+  } catch (err) { 
+    console.error(err); 
+    if(backup) shows.value.push(backup); 
+    showToast("删除失败", "error"); 
+  }
 };
 
+// --- 通知与同步 ---
 const clearNotifications = () => { notifications.value = []; };
 const removeNotification = (index) => { notifications.value.splice(index, 1); };
 
@@ -288,21 +371,40 @@ const syncData = async () => {
   try {
     const res = await axios.post('/api/shows/sync', { userId });
     await fetchShows();
+    
     if (res.data.updatedCount > 0) {
       if (res.data.logs?.length) {
+        // 生成唯一通知，去重
         const existingSignatures = new Set(notifications.value.map(n => `${n.title}|${n.newEp}|${n.updateDate}`));
-        const uniqueNewItems = res.data.logs.filter(log => !existingSignatures.has(`${log.title}|${log.newEp}|${log.date}`))
+        const uniqueNewItems = res.data.logs
+          .filter(log => !existingSignatures.has(`${log.title}|${log.newEp}|${log.date}`))
           .map(log => ({ ...log, updateDate: log.date, uniqueId: Date.now() + Math.random() }));
-        if (uniqueNewItems.length) { notifications.value = [...uniqueNewItems, ...notifications.value]; hasNewNotis.value = true; }
+          
+        if (uniqueNewItems.length) { 
+          notifications.value = [...uniqueNewItems, ...notifications.value]; 
+          hasNewNotis.value = true; 
+        }
       }
       showToast(`同步完成！更新 ${res.data.updatedCount} 部`, "success");
-    } else { showToast('暂无新内容', "success"); }
-  } catch (err) { console.error(err); showToast('同步失败', "error"); } 
-  finally { isSyncing.value = false; }
+    } else { 
+      showToast('暂无新内容', "success"); 
+    }
+  } catch (err) { 
+    console.error(err); 
+    showToast('同步失败', "error"); 
+  } finally { 
+    isSyncing.value = false; 
+  }
 };
 
+// --- 导入导出 ---
 const triggerImport = () => { fileInput.value.click(); };
-const exportData = () => { const userId = getCurrentUserId(); if (!userId) return; window.open(`/api/shows/export?userId=${userId}`, '_blank'); showToast("备份下载中...", "success"); };
+const exportData = () => { 
+  const userId = getCurrentUserId(); 
+  if (!userId) return; 
+  window.open(`/api/shows/export?userId=${userId}`, '_blank'); 
+  showToast("备份下载中...", "success"); 
+};
 const handleFileUpload = (event) => {
   const file = event.target.files[0]; if (!file) return;
   const reader = new FileReader();

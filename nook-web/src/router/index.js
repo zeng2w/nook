@@ -5,7 +5,7 @@ import Login from '../components/Login.vue';
 import Register from '../components/Register.vue';
 import SimpleCounter from '../components/SimpleCounter.vue';
 import MainLayout from '../views/MainLayout.vue'; // 布局组件
-import DashboardHome from '../components/DashboardHome.vue'; // 仪表盘组件
+import DashboardHome from '../views//DashboardHome.vue'; // 仪表盘组件
 import TvTrackerView from '../views/TvTrackerView.vue'; // 【新增】追剧记录组件
 
 const routes = [
