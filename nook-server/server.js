@@ -8,20 +8,42 @@ const PORT = process.env.PORT || 5001;
 const tmdbRoutes = require('./routes/tmdb');
 
 // 中间件
-// app.use(cors());
 app.use(cors({
   origin: '*', // 允许所有域名访问 (最简单，适合个人项目)
   credentials: true
 }));
 app.use(express.json());
 
-// 连接数据库
+// === 核心修改：Serverless 环境下的数据库连接逻辑 ===
 const uri = process.env.MONGO_URI;
-mongoose.connect(uri)
-  .then(() => console.log("✅ MongoDB database connection established successfully"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err));
 
-// === 路由 (新增部分) ===
+// 用一个变量来记录数据库连接状态 (0: disconnected, 1: connected, 2: connecting, 3: disconnecting)
+let isConnected = 0;
+
+const connectDB = async () => {
+  // 如果已经连接上，就直接返回，不再重复连接
+  if (isConnected === 1) {
+    return;
+  }
+  
+  // 如果没有连接，则发起连接
+  try {
+    const db = await mongoose.connect(uri);
+    isConnected = db.connections[0].readyState; // 更新状态为已连接
+    console.log("✅ MongoDB database connection established successfully");
+  } catch (err) {
+    console.error("❌ MongoDB connection error:", err);
+  }
+};
+
+// 增加一个全局中间件：确保任何请求进来之前，数据库都是连接状态
+app.use(async (req, res, next) => {
+  await connectDB();
+  next();
+});
+// =================================================
+
+// === 路由 ===
 // 凡是访问 /api/auth/... 的请求，都交给 routes/auth.js 处理
 app.use('/api/auth', require('./routes/auth')); 
 app.use('/api/history', require('./routes/history'));
