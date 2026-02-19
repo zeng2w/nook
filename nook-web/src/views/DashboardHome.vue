@@ -53,19 +53,18 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { updateTheme } from '@/store';
-import { fetchTvLogApi } from '@/api/shows'; // 注意：只留获取热力图的API
 
-// 👇 新增：引入全局剧集状态
-import { useGlobalShows } from '@/composables/useGlobalShows';
+// 👇 新增：导入封装好的 API 方法
+import { fetchShowsApi, fetchTvLogApi } from '@/api/shows';
 
 import TvStatsOverview from '@/components/home/TvStatsOverview.vue';
 import TvHeatmap from '@/components/home/TvHeatmap.vue';
 import { useTvStatistics } from '@/composables/useTvStatistics';
 
-// 👇 解构出全局变量和方法
-const { shows, isLoading, fetchGlobalShows } = useGlobalShows();
-
+const shows = ref([]);
 const historyData = ref({}); 
+const isLoading = ref(true);
+
 const { statusCounts, progressStats } = useTvStatistics(shows);
 
 const getCurrentUserId = () => { 
@@ -73,12 +72,12 @@ const getCurrentUserId = () => {
   return userStr ? JSON.parse(userStr).id : null; 
 };
 
-// 获取热力图数据保持不变
+// 获取热力图数据 (★ 使用提取的方法)
 const fetchHistory = async () => {
   const userId = getCurrentUserId();
   if (!userId) return;
   try {
-    const res = await fetchTvLogApi(userId);
+    const res = await fetchTvLogApi(userId); // <-- 替换了原本的 axios.get
     const map = {};
     if (Array.isArray(res.data)) {
       res.data.forEach(item => {
@@ -93,15 +92,23 @@ const fetchHistory = async () => {
   }
 };
 
-onMounted(async () => {
-  updateTheme('#f7f9fc'); 
+// 获取剧集列表 (★ 使用提取的方法)
+const fetchShows = async () => {
   const userId = getCurrentUserId();
-  
-  // 👇 并发请求全局剧集和热力图数据
-  await Promise.all([
-    fetchGlobalShows(userId), 
-    fetchHistory()
-  ]);
+  if (!userId) { isLoading.value = false; return; }
+  try {
+    const res = await fetchShowsApi(userId); // <-- 替换了原本的 axios.get
+    shows.value = res.data;
+  } catch (err) {
+    console.error(err);
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+onMounted(async () => {
+  updateTheme('#f7f9fc'); // 确保背景是浅灰色，而不是纯白
+  await Promise.all([fetchShows(), fetchHistory()]);
 });
 </script>
 
