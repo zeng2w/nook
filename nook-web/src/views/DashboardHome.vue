@@ -52,8 +52,10 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import axios from 'axios';
 import { updateTheme } from '@/store';
+
+// 👇 新增：导入封装好的 API 方法
+import { fetchShowsApi, fetchTvLogApi } from '@/api/shows';
 
 import TvStatsOverview from '@/components/home/TvStatsOverview.vue';
 import TvHeatmap from '@/components/home/TvHeatmap.vue';
@@ -70,11 +72,12 @@ const getCurrentUserId = () => {
   return userStr ? JSON.parse(userStr).id : null; 
 };
 
+// 获取热力图数据 (★ 使用提取的方法)
 const fetchHistory = async () => {
   const userId = getCurrentUserId();
   if (!userId) return;
   try {
-    const res = await axios.get(`/api/tvlog?userId=${userId}`);
+    const res = await fetchTvLogApi(userId); // <-- 替换了原本的 axios.get
     const map = {};
     if (Array.isArray(res.data)) {
       res.data.forEach(item => {
@@ -89,11 +92,12 @@ const fetchHistory = async () => {
   }
 };
 
+// 获取剧集列表 (★ 使用提取的方法)
 const fetchShows = async () => {
   const userId = getCurrentUserId();
   if (!userId) { isLoading.value = false; return; }
   try {
-    const res = await axios.get(`/api/shows?userId=${userId}&t=${new Date().getTime()}`);
+    const res = await fetchShowsApi(userId); // <-- 替换了原本的 axios.get
     shows.value = res.data;
   } catch (err) {
     console.error(err);

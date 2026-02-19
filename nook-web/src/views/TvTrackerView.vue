@@ -26,6 +26,7 @@
           v-model:status="currentStatus"
           v-model:network="currentNetwork"
           :networks="uniqueNetworks"
+          :shows="shows"
         />
       </template>
     </TvHeader>
@@ -33,46 +34,61 @@
     <div class="content-body">
       
       <ShowSortToolbar 
+        v-if="!isLoading && displayShows.length > 0"
         :sortBy="sortBy" 
         :sortDesc="sortDesc" 
         @change="handleSort" 
       />
 
-      <div v-if="viewMode === 'grid'" class="grid-layout">
-        <ShowGridCard 
-          v-for="show in sortedShows" 
-          :key="show._id" 
-          :show="show"
-          :is-pending-delete="!!pendingDeletes[show._id]"
-          @edit="openEditModal"
-          @update-progress="updateProgress"
-          @delete="requestHardDelete"
-          @restore="restoreShow"
-          @drop="dropShow"
-          @cancel-delete="cancelDelete"
-          @pause-delete="pauseDeleteTimer"
-          @resume-delete="resumeDeleteTimer"
-        />
-        <div v-if="sortedShows.length === 0" class="empty-state">暂无相关剧集</div>
+      <div v-if="isLoading" class="loading-state">
+        <div class="spinner"></div>
+        <p>数据加载中...</p>
       </div>
 
-      <div v-else class="list-layout-container">
-        <ShowListItem
-          v-for="show in sortedShows" 
-          :key="show._id" 
-          :show="show"
-          :is-pending-delete="!!pendingDeletes[show._id]"
-          @edit="openEditModal"
-          @update-progress="updateProgress"
-          @delete="requestHardDelete"
-          @restore="restoreShow"
-          @drop="dropShow"
-          @cancel-delete="cancelDelete(show._id)"
-          @pause-delete="pauseDeleteTimer"
-          @resume-delete="resumeDeleteTimer"
-        />
-        <div v-if="sortedShows.length === 0" class="empty-state">暂无相关剧集</div>
+      <div v-else-if="displayShows.length === 0" class="empty-state">
+        <div class="empty-icon">🍿</div>
+        <h3>这里空空如也</h3>
+        <p>没有找到相关剧集，快去添加一部吧！</p>
+        <button class="add-action-btn" @click="openAddModal">
+          去添加
+        </button>
       </div>
+
+      <template v-else>
+        <div v-if="viewMode === 'grid'" class="grid-layout">
+          <ShowGridCard 
+            v-for="show in displayShows" 
+            :key="show._id" 
+            :show="show"
+            :is-pending-delete="!!pendingDeletes[show._id]"
+            @edit="openEditModal"
+            @update-progress="updateProgress"
+            @delete="requestHardDelete"
+            @restore="restoreShow"
+            @drop="dropShow"
+            @cancel-delete="cancelDelete"
+            @pause-delete="pauseDeleteTimer"
+            @resume-delete="resumeDeleteTimer"
+          />
+        </div>
+
+        <div v-else class="list-layout-container">
+          <ShowListItem
+            v-for="show in displayShows" 
+            :key="show._id" 
+            :show="show"
+            :is-pending-delete="!!pendingDeletes[show._id]"
+            @edit="openEditModal"
+            @update-progress="updateProgress"
+            @delete="requestHardDelete"
+            @restore="restoreShow"
+            @drop="dropShow"
+            @cancel-delete="cancelDelete(show._id)"
+            @pause-delete="pauseDeleteTimer"
+            @resume-delete="resumeDeleteTimer"
+          />
+        </div>
+      </template>
     </div>
 
     <EditShowModal 
@@ -103,10 +119,15 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
-import axios from 'axios';
 import { updateTheme } from '../store';
 
-// 引入组件 (根据你的实际路径调整)
+// 导入封装好的 API 方法
+import { 
+  fetchShowsApi, addShowApi, updateShowApi, deleteShowApi, 
+  syncShowsApi, importShowsApi, addTvLogApi 
+} from '@/api/shows';
+
+// 引入组件
 import TvHeader from '@/components/TvTracker/TvHeader.vue';
 import FilterBar from '@/components/TvTracker/FilterBar.vue';
 import ShowGridCard from '@/components/TvTracker/ShowGridCard.vue';
@@ -118,20 +139,26 @@ import FabMenu from '@/components/TvTracker/FabMenu.vue';
 // 引入排序逻辑
 import { useShowSort } from '@/composables/useShowSort';
 import ShowSortToolbar from '@/components/TvTracker/ShowSortToolbar.vue';
+
 // --- 状态定义 ---
 const viewMode = ref('grid');
 const currentCategory = ref('all');
-const currentStatus = ref('all');
+const currentStatus = ref('watching'); 
 const currentNetwork = ref('all');
 const showModal = ref(false);
 const showCalendar = ref(false);
 const isMenuOpen = ref(false);
 const isSyncing = ref(false);
-const isLoading = ref(false);
+const isLoading = ref(false); // ★ 加载状态标志
 
 const shows = ref([]);
 const editingShow = ref(null);
 const pendingDeletes = reactive({});
+
+// 用于存放各个剧集的防抖定时器和累计变化量
+const updateTimers = {};
+const pendingDeltas = {}; 
+
 const notifications = ref([]);
 const hasNewNotis = ref(false);
 const fileInput = ref(null);
@@ -164,6 +191,19 @@ const filteredShows = computed(() => {
 // 排序逻辑 (使用 Composable)
 const { sortBy, sortDesc, sortedShows, handleSort } = useShowSort(filteredShows);
 
+// 处理“全部”分类下的强制排序
+const displayShows = computed(() => {
+  if (currentStatus.value === 'all') {
+    const statusOrder = { 'watching': 1, 'wish': 2, 'watched': 3, 'dropped': 4 };
+    return [...sortedShows.value].sort((a, b) => {
+      const orderA = statusOrder[a.status] || 99;
+      const orderB = statusOrder[b.status] || 99;
+      return orderA - orderB; 
+    });
+  }
+  return sortedShows.value;
+});
+
 // --- 滚动与交互逻辑 ---
 const isHeaderVisible = ref(true);
 const mainContainer = ref(null);
@@ -194,7 +234,6 @@ onMounted(() => {
   fetchShows();
   updateTheme('#fcfcfc');
   
-  // 读取本地存储的通知
   const savedNotis = localStorage.getItem('tv_notifications');
   if (savedNotis) notifications.value = JSON.parse(savedNotis);
   
@@ -205,6 +244,20 @@ onMounted(() => {
 onUnmounted(() => {
   if (mainContainer.value) mainContainer.value.removeEventListener('scroll', handleScroll);
   window.removeEventListener('mousemove', handleMouseMove);
+  
+  // 清理所有尚未执行的删除定时器
+  Object.values(pendingDeletes).forEach(timer => clearTimeout(timer));
+
+  // 如果用户没等防抖结束就离开了页面，立即把积累的改动发送给后端
+  Object.keys(updateTimers).forEach(showId => {
+    clearTimeout(updateTimers[showId]); 
+    const show = shows.value.find(s => s._id === showId);
+    if (show && pendingDeltas[showId] !== 0) {
+      updateShowApi(show._id, { watchedEpisodes: show.watchedEpisodes, status: show.status }).catch(()=>{});
+      const userId = getCurrentUserId();
+      if (userId) addTvLogApi({ userId, showId, showTitle: show.title, count: pendingDeltas[showId], date: new Date() }).catch(()=>{});
+    }
+  });
 });
 
 watch(notifications, (newVal) => { 
@@ -231,7 +284,7 @@ const fetchShows = async () => {
   if (!userId) return;
   isLoading.value = true;
   try {
-    const res = await axios.get(`/api/shows?userId=${userId}&t=${new Date().getTime()}`);
+    const res = await fetchShowsApi(userId);
     shows.value = res.data;
   } catch (err) { console.error(err); } 
   finally { setTimeout(() => { isLoading.value = false; }, 300); }
@@ -253,15 +306,13 @@ const saveShow = async (formData) => {
   try {
     let res;
     if (editingShow.value && editingShow.value._id) {
-      // 编辑模式
-      res = await axios.put(`/api/shows/${editingShow.value._id}`, formData);
+      res = await updateShowApi(editingShow.value._id, formData);
       const index = shows.value.findIndex(s => s._id === editingShow.value._id);
       if (index !== -1) shows.value[index] = res.data;
       showToast("编辑成功", "success");
     } else {
-      // 添加模式
       const initialStatus = calcStatus(formData.watchedEpisodes, formData.airedEpisodes, formData.totalEpisodes);
-      res = await axios.post('/api/shows', { userId, ...formData, status: initialStatus });
+      res = await addShowApi({ userId, ...formData, status: initialStatus });
       shows.value.unshift(res.data);
       showToast("添加成功", "success");
     }
@@ -272,47 +323,53 @@ const saveShow = async (formData) => {
   }
 };
 
-// ★★★ 核心逻辑：更新进度 & 记录历史 ★★★
-const updateProgress = async (show, delta) => {
+// ★★★ 核心逻辑：更新进度 & 记录历史 (带防抖优化) ★★★
+const updateProgress = (show, delta) => {
   if (show.status === 'dropped') return;
   
-  const oldVal = show.watchedEpisodes;
   const newVal = Math.max(0, show.watchedEpisodes + delta);
-  
-  // 如果已经是0集还要减，忽略
-  if (newVal === oldVal && delta < 0) return;
+  if (newVal === show.watchedEpisodes && delta < 0) return; 
 
-  // 1. 本地乐观更新
   show.watchedEpisodes = newVal;
-  
   const newStatus = calcStatus(newVal, show.airedEpisodes, show.totalEpisodes);
   if (newStatus !== show.status) show.status = newStatus;
 
-  try {
-    // 2. 请求后端更新 Shows 表 (保存当前进度)
-    await axios.put(`/api/shows/${show._id}`, { 
-      watchedEpisodes: newVal, 
-      status: newStatus 
-    });
+  pendingDeltas[show._id] = (pendingDeltas[show._id] || 0) + delta;
 
-    // 3. 请求后端更新 TvLog 表 (热力图数据)
-    // 无论 +1 还是 -1，都如实记录，热力图会自动处理
-    const userId = getCurrentUserId();
-    if (userId) {
-      await axios.post('/api/tvlog', {
-        userId: userId,
-        showId: show._id,
-        showTitle: show.title,
-        count: delta, 
-        date: new Date()
-      });
-    }
-  } catch (e) {
-    console.error(e);
-    // 失败回滚
-    show.watchedEpisodes = oldVal;
-    showToast("更新失败", "error");
+  if (updateTimers[show._id]) {
+    clearTimeout(updateTimers[show._id]);
   }
+
+  updateTimers[show._id] = setTimeout(async () => {
+    const finalDelta = pendingDeltas[show._id];
+    delete pendingDeltas[show._id];
+    delete updateTimers[show._id];
+
+    if (finalDelta === 0) return; 
+
+    try {
+      await updateShowApi(show._id, { 
+        watchedEpisodes: show.watchedEpisodes, 
+        status: show.status 
+      });
+
+      const userId = getCurrentUserId();
+      if (userId) {
+        await addTvLogApi({
+          userId: userId,
+          showId: show._id,
+          showTitle: show.title,
+          count: finalDelta, 
+          date: new Date()
+        });
+      }
+    } catch (e) {
+      console.error(e);
+      show.watchedEpisodes = Math.max(0, show.watchedEpisodes - finalDelta);
+      show.status = calcStatus(show.watchedEpisodes, show.airedEpisodes, show.totalEpisodes);
+      showToast("更新进度失败，已回滚", "error");
+    }
+  }, 500); 
 };
 
 const openAddModal = () => { editingShow.value = null; showModal.value = true; };
@@ -320,16 +377,16 @@ const openEditModal = (show) => { editingShow.value = { ...show }; showModal.val
 
 const dropShow = async (show) => {
   show.status = 'dropped';
-  try { await axios.put(`/api/shows/${show._id}`, { status: 'dropped' }); } catch(e){}
+  try { await updateShowApi(show._id, { status: 'dropped' }); } catch(e){}
 };
 
 const restoreShow = async (show) => {
   const correctStatus = calcStatus(show.watchedEpisodes, show.airedEpisodes, show.totalEpisodes);
   show.status = correctStatus;
-  try { await axios.put(`/api/shows/${show._id}`, { status: correctStatus }); } catch(e){}
+  try { await updateShowApi(show._id, { status: correctStatus }); } catch(e){}
 };
 
-// --- 删除逻辑 (带撤回功能) ---
+// --- 删除逻辑 ---
 const requestHardDelete = (id) => { 
   pendingDeletes[id] = setTimeout(() => { confirmDelete(id); }, 3000); 
 };
@@ -350,7 +407,7 @@ const confirmDelete = async (id) => {
   const backup = shows.value.find(s => s._id === id);
   shows.value = shows.value.filter(s => s._id !== id);
   try { 
-    await axios.delete(`/api/shows/${id}`); 
+    await deleteShowApi(id); 
     showToast("删除成功", "success"); 
   } catch (err) { 
     console.error(err); 
@@ -369,12 +426,11 @@ const syncData = async () => {
   isSyncing.value = true;
   showToast("正在同步...", "success");
   try {
-    const res = await axios.post('/api/shows/sync', { userId });
+    const res = await syncShowsApi(userId);
     await fetchShows();
     
     if (res.data.updatedCount > 0) {
       if (res.data.logs?.length) {
-        // 生成唯一通知，去重
         const existingSignatures = new Set(notifications.value.map(n => `${n.title}|${n.newEp}|${n.updateDate}`));
         const uniqueNewItems = res.data.logs
           .filter(log => !existingSignatures.has(`${log.title}|${log.newEp}|${log.date}`))
@@ -414,7 +470,7 @@ const handleFileUpload = (event) => {
       if (!Array.isArray(parsedData)) return showToast("文件格式错误", "error");
       const userId = getCurrentUserId();
       showToast("正在导入...", "success");
-      await axios.post('/api/shows/import', { userId, shows: parsedData });
+      await importShowsApi(userId, parsedData);
       showToast("导入成功", "success");
       await fetchShows();
     } catch (err) { showToast("导入失败", "error"); } 
@@ -436,7 +492,75 @@ const handleFileUpload = (event) => {
 .content-body { padding: 30px 60px 40px 40px; }
 .grid-layout { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 40px; padding-bottom: 60px; }
 .list-layout-container { display: flex; flex-direction: column; gap: 1px; }
-.empty-state { padding: 50px; text-align: center; color: #999; grid-column: 1 / -1; }
+
+/* ★ 优化 4：加载状态样式 (Loading) */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 0;
+  color: #94a3b8;
+}
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #f3f4f6;
+  border-top: 3px solid #4f46e5; /* 靛蓝色圆环 */
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+@keyframes spin { 
+  0% { transform: rotate(0deg); } 
+  100% { transform: rotate(360deg); } 
+}
+
+/* ★ 优化 5：精致的空状态样式 (Empty State) */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  color: #64748b;
+  grid-column: 1 / -1; /* 确保在网格布局中能独占一行 */
+}
+.empty-icon {
+  font-size: 3.5rem;
+  margin-bottom: 16px;
+  opacity: 0.9;
+}
+.empty-state h3 {
+  font-size: 1.25rem;
+  color: #1e293b;
+  margin: 0 0 8px 0;
+  font-weight: 700;
+}
+.empty-state p {
+  font-size: 0.95rem;
+  margin: 0 0 24px 0;
+}
+.add-action-btn {
+  background: #111;
+  color: white;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+.add-action-btn:hover {
+  background: #333;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
+}
+.add-action-btn:active {
+  transform: translateY(0);
+}
 
 /* Toast */
 .toast-notification { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; align-items: center; gap: 12px; background: white; padding: 12px 20px; border-radius: 50px; box-shadow: 0 10px 30px rgba(0,0,0,0.12); min-width: 300px; max-width: 90%; }

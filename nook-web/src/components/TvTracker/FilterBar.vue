@@ -12,6 +12,7 @@
         >
           <span class="pill-icon" v-if="cat.icon">{{ cat.icon }}</span>
           {{ cat.label }}
+          <span class="count">{{ getCategoryCount(cat.value) }}</span>
         </button>
       </div>
     </div>
@@ -27,6 +28,7 @@
         >
           <span class="status-dot" :class="[st.value, { 'force-white': status === st.value }]"></span>
           {{ st.label }}
+          <span class="count">{{ getStatusCount(st.value) }}</span>
         </button>
       </div>
     </div>
@@ -39,6 +41,7 @@
           @click="$emit('update:network', 'all')"
         >
           全部平台
+          <span class="count">{{ getNetworkCount('all') }}</span>
         </button>
         <button 
           v-for="net in networks" 
@@ -50,6 +53,7 @@
         >
           <img v-if="net.logo" :src="net.logo" class="network-icon" alt="logo" loading="lazy" />
           <span v-else>{{ net.name }}</span>
+          <span class="count">{{ getNetworkCount(net.name) }}</span>
         </button>
       </div>
     </div>
@@ -58,12 +62,14 @@
 </template>
 
 <script setup>
-defineProps({
+const props = defineProps({
   category: String,
   status: String,
   network: String,
-  networks: Array
+  networks: Array,
+  shows: { type: Array, default: () => [] } // 接收所有剧集数据
 });
+
 defineEmits(['update:category', 'update:status', 'update:network']);
 
 const categories = [
@@ -81,6 +87,41 @@ const statuses = [
   { label: '已看', value: 'watched' },
   { label: '弃剧', value: 'dropped' }
 ];
+
+// --- 核心修改：动态联动计算逻辑 ---
+
+// 计算各分类的数量 (受当前选中的状态、平台限制)
+const getCategoryCount = (val) => {
+  if (!props.shows) return 0;
+  return props.shows.filter(s => {
+    const statusMatch = props.status === 'all' || s.status === props.status;
+    const netMatch = props.network === 'all' || s.network === props.network;
+    const catMatch = val === 'all' || s.category === val;
+    return statusMatch && netMatch && catMatch;
+  }).length;
+};
+
+// 计算各状态的数量 (受当前选中的分类、平台限制)
+const getStatusCount = (val) => {
+  if (!props.shows) return 0;
+  return props.shows.filter(s => {
+    const catMatch = props.category === 'all' || s.category === props.category;
+    const netMatch = props.network === 'all' || s.network === props.network;
+    const statusMatch = val === 'all' || s.status === val;
+    return catMatch && netMatch && statusMatch;
+  }).length;
+};
+
+// 计算各平台的数量 (受当前选中的分类、状态限制)
+const getNetworkCount = (val) => {
+  if (!props.shows) return 0;
+  return props.shows.filter(s => {
+    const catMatch = props.category === 'all' || s.category === props.category;
+    const statusMatch = props.status === 'all' || s.status === props.status;
+    const netMatch = val === 'all' || s.network === val;
+    return catMatch && statusMatch && netMatch;
+  }).length;
+};
 </script>
 
 <style scoped>
@@ -89,7 +130,6 @@ const statuses = [
   display: flex;
   flex-direction: column;
   gap: 10px;
-  /* ★ 关键修改：背景透明，边框移除 */
   background: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -172,6 +212,19 @@ const statuses = [
 }
 .network-pill.active .network-icon {
   filter: brightness(0) invert(1); /* 选中变白 */
+}
+
+/* --- 新增：数量角标样式 --- */
+.count {
+  font-size: 0.75rem;
+  opacity: 0.5;
+  margin-left: 2px;
+  font-weight: normal;
+}
+
+/* 当按钮被选中时，让数字稍微亮一点 */
+.filter-pill.active .count {
+  opacity: 0.9;
 }
 
 @media (max-width: 768px) {
