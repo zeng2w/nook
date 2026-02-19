@@ -49,9 +49,7 @@
         <div class="empty-icon">🍿</div>
         <h3>这里空空如也</h3>
         <p>没有找到相关剧集，快去添加一部吧！</p>
-        <button class="add-action-btn" @click="openAddModal">
-          去添加
-        </button>
+        <button class="add-action-btn" @click="openAddModal">去添加</button>
       </div>
 
       <template v-else>
@@ -121,13 +119,17 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { updateTheme } from '../store';
 
-// 导入封装好的 API 方法
+// ★ 引入 VueUse 的事件监听工具
+import { useEventListener } from '@vueuse/core';
+
+// 引入全局 Toast (将 globalToast 重命名为 toast 供模板使用)
+import { globalToast as toast, showToast } from '@/composables/useToast';
+
 import { 
-  fetchShowsApi, addShowApi, updateShowApi, deleteShowApi, 
+  addShowApi, updateShowApi, deleteShowApi, 
   syncShowsApi, importShowsApi, addTvLogApi 
 } from '@/api/shows';
 
-// 引入组件
 import TvHeader from '@/components/TvTracker/TvHeader.vue';
 import FilterBar from '@/components/TvTracker/FilterBar.vue';
 import ShowGridCard from '@/components/TvTracker/ShowGridCard.vue';
@@ -136,9 +138,8 @@ import EditShowModal from '@/components/TvTracker/EditShowModal.vue';
 import CalendarModal from '@/components/TvTracker/CalendarModal.vue';
 import FabMenu from '@/components/TvTracker/FabMenu.vue';
 
-// 引入排序逻辑
 import { useShowSort } from '@/composables/useShowSort';
-import ShowSortToolbar from '@/components/TvTracker/ShowSortToolbar.vue';
+import { useGlobalShows } from '@/composables/useGlobalShows'; 
 
 // --- 状态定义 ---
 const viewMode = ref('grid');
@@ -149,13 +150,12 @@ const showModal = ref(false);
 const showCalendar = ref(false);
 const isMenuOpen = ref(false);
 const isSyncing = ref(false);
-const isLoading = ref(false); // ★ 加载状态标志
 
-const shows = ref([]);
+const { shows, isLoading, fetchGlobalShows } = useGlobalShows();
+
 const editingShow = ref(null);
 const pendingDeletes = reactive({});
 
-// 用于存放各个剧集的防抖定时器和累计变化量
 const updateTimers = {};
 const pendingDeltas = {}; 
 
@@ -163,11 +163,8 @@ const notifications = ref([]);
 const hasNewNotis = ref(false);
 const fileInput = ref(null);
 
-const toast = reactive({ visible: false, message: '', type: 'success' });
-
 // --- 计算属性 ---
 
-// 提取所有不重复的播放平台
 const uniqueNetworks = computed(() => {
   const nets = new Map();
   shows.value.forEach(s => {
@@ -178,7 +175,6 @@ const uniqueNetworks = computed(() => {
   return Array.from(nets.values()).sort((a, b) => a.name.localeCompare(b.name));
 });
 
-// 筛选逻辑 (Category/Status/Network)
 const filteredShows = computed(() => {
   return shows.value.filter(s => {
     const catMatch = currentCategory.value === 'all' || s.category === currentCategory.value;
@@ -188,10 +184,8 @@ const filteredShows = computed(() => {
   });
 });
 
-// 排序逻辑 (使用 Composable)
 const { sortBy, sortDesc, sortedShows, handleSort } = useShowSort(filteredShows);
 
-// 处理“全部”分类下的强制排序
 const displayShows = computed(() => {
   if (currentStatus.value === 'all') {
     const statusOrder = { 'watching': 1, 'wish': 2, 'watched': 3, 'dropped': 4 };
@@ -204,51 +198,48 @@ const displayShows = computed(() => {
   return sortedShows.value;
 });
 
-// --- 滚动与交互逻辑 ---
+// --- 滚动与交互逻辑 (★ 使用 VueUse 彻底解放双手) ---
 const isHeaderVisible = ref(true);
 const mainContainer = ref(null);
 let lastScrollY = 0;
 
-const handleScroll = () => {
+// VueUse: 监听滚动事件，组件卸载时自动移除，完全不需要手动去 onUnmounted 里清理
+useEventListener(mainContainer, 'scroll', () => {
   const container = mainContainer.value;
   if (!container) return;
   const currentScrollY = container.scrollTop;
-  
   if (currentScrollY < 10) { 
     isHeaderVisible.value = true; 
     lastScrollY = currentScrollY; 
     return; 
   }
-  
   if (Math.abs(currentScrollY - lastScrollY) < 10) return;
   isHeaderVisible.value = currentScrollY <= lastScrollY || (lastScrollY - currentScrollY > 20);
   lastScrollY = currentScrollY;
-};
+});
 
-const handleMouseMove = (e) => { 
+// VueUse: 监听全局鼠标移动，同样自动管理生命周期
+useEventListener(window, 'mousemove', (e) => { 
   if (e.clientY < 50) isHeaderVisible.value = true; 
+});
+
+const getCurrentUserId = () => { 
+  const userStr = sessionStorage.getItem('current_user'); 
+  return userStr ? JSON.parse(userStr).id : null; 
 };
 
 // --- 生命周期 ---
 onMounted(() => {
-  fetchShows();
+  fetchGlobalShows(getCurrentUserId());
   updateTheme('#fcfcfc');
   
   const savedNotis = localStorage.getItem('tv_notifications');
   if (savedNotis) notifications.value = JSON.parse(savedNotis);
-  
-  if (mainContainer.value) mainContainer.value.addEventListener('scroll', handleScroll);
-  window.addEventListener('mousemove', handleMouseMove);
 });
 
 onUnmounted(() => {
-  if (mainContainer.value) mainContainer.value.removeEventListener('scroll', handleScroll);
-  window.removeEventListener('mousemove', handleMouseMove);
-  
-  // 清理所有尚未执行的删除定时器
   Object.values(pendingDeletes).forEach(timer => clearTimeout(timer));
 
-  // 如果用户没等防抖结束就离开了页面，立即把积累的改动发送给后端
   Object.keys(updateTimers).forEach(showId => {
     clearTimeout(updateTimers[showId]); 
     const show = shows.value.find(s => s._id === showId);
@@ -266,31 +257,6 @@ watch(notifications, (newVal) => {
 
 // --- 核心业务逻辑 ---
 
-const getCurrentUserId = () => { 
-  const userStr = sessionStorage.getItem('current_user'); 
-  return userStr ? JSON.parse(userStr).id : null; 
-};
-
-const showToast = (msg, type = 'success') => { 
-  toast.message = msg; 
-  toast.type = type; 
-  toast.visible = true; 
-  setTimeout(() => { toast.visible = false; }, 3000); 
-};
-
-// 获取剧集列表
-const fetchShows = async () => {
-  const userId = getCurrentUserId();
-  if (!userId) return;
-  isLoading.value = true;
-  try {
-    const res = await fetchShowsApi(userId);
-    shows.value = res.data;
-  } catch (err) { console.error(err); } 
-  finally { setTimeout(() => { isLoading.value = false; }, 300); }
-};
-
-// 状态自动计算逻辑
 const calcStatus = (watched, aired, total) => { 
   if (watched === 0) return 'wish'; 
   const target = (total > 0) ? total : aired; 
@@ -298,7 +264,7 @@ const calcStatus = (watched, aired, total) => {
   return 'watching'; 
 };
 
-// 保存/添加剧集
+// 保存/添加剧集 
 const saveShow = async (formData) => {
   const userId = getCurrentUserId();
   if (!userId || !formData.title) return showToast("请输入作品名称", "error");
@@ -308,22 +274,21 @@ const saveShow = async (formData) => {
     if (editingShow.value && editingShow.value._id) {
       res = await updateShowApi(editingShow.value._id, formData);
       const index = shows.value.findIndex(s => s._id === editingShow.value._id);
-      if (index !== -1) shows.value[index] = res.data;
+      if (index !== -1) shows.value[index] = res.data; 
       showToast("编辑成功", "success");
     } else {
       const initialStatus = calcStatus(formData.watchedEpisodes, formData.airedEpisodes, formData.totalEpisodes);
       res = await addShowApi({ userId, ...formData, status: initialStatus });
-      shows.value.unshift(res.data);
+      shows.value.unshift(res.data); 
       showToast("添加成功", "success");
     }
     showModal.value = false;
   } catch (err) {
-    console.error(err);
-    showToast("保存失败", "error");
+    console.error('保存操作被拦截器捕获'); 
   }
 };
 
-// ★★★ 核心逻辑：更新进度 & 记录历史 (带防抖优化) ★★★
+// 更新进度
 const updateProgress = (show, delta) => {
   if (show.status === 'dropped') return;
   
@@ -364,10 +329,8 @@ const updateProgress = (show, delta) => {
         });
       }
     } catch (e) {
-      console.error(e);
       show.watchedEpisodes = Math.max(0, show.watchedEpisodes - finalDelta);
       show.status = calcStatus(show.watchedEpisodes, show.airedEpisodes, show.totalEpisodes);
-      showToast("更新进度失败，已回滚", "error");
     }
   }, 500); 
 };
@@ -410,9 +373,7 @@ const confirmDelete = async (id) => {
     await deleteShowApi(id); 
     showToast("删除成功", "success"); 
   } catch (err) { 
-    console.error(err); 
     if(backup) shows.value.push(backup); 
-    showToast("删除失败", "error"); 
   }
 };
 
@@ -427,7 +388,7 @@ const syncData = async () => {
   showToast("正在同步...", "success");
   try {
     const res = await syncShowsApi(userId);
-    await fetchShows();
+    await fetchGlobalShows(userId, true);
     
     if (res.data.updatedCount > 0) {
       if (res.data.logs?.length) {
@@ -446,8 +407,7 @@ const syncData = async () => {
       showToast('暂无新内容', "success"); 
     }
   } catch (err) { 
-    console.error(err); 
-    showToast('同步失败', "error"); 
+    console.error('同步失败，被拦截器捕获');
   } finally { 
     isSyncing.value = false; 
   }
@@ -467,14 +427,21 @@ const handleFileUpload = (event) => {
   reader.onload = async (e) => {
     try {
       const parsedData = JSON.parse(e.target.result);
-      if (!Array.isArray(parsedData)) return showToast("文件格式错误", "error");
+      if (!Array.isArray(parsedData)) {
+        return showToast("文件格式错误，请检查JSON文件", "error");
+      }
       const userId = getCurrentUserId();
       showToast("正在导入...", "success");
       await importShowsApi(userId, parsedData);
       showToast("导入成功", "success");
-      await fetchShows();
-    } catch (err) { showToast("导入失败", "error"); } 
-    finally { event.target.value = ''; }
+      await fetchGlobalShows(userId, true);
+    } catch (err) { 
+      if(err.name === 'SyntaxError') {
+        showToast("JSON解析失败", "error");
+      }
+    } finally { 
+      event.target.value = ''; 
+    }
   };
   reader.readAsText(file);
 };
@@ -493,7 +460,7 @@ const handleFileUpload = (event) => {
 .grid-layout { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 40px; padding-bottom: 60px; }
 .list-layout-container { display: flex; flex-direction: column; gap: 1px; }
 
-/* ★ 优化 4：加载状态样式 (Loading) */
+/* 加载状态样式 */
 .loading-state {
   display: flex;
   flex-direction: column;
@@ -506,7 +473,7 @@ const handleFileUpload = (event) => {
   width: 40px;
   height: 40px;
   border: 3px solid #f3f4f6;
-  border-top: 3px solid #4f46e5; /* 靛蓝色圆环 */
+  border-top: 3px solid #4f46e5;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 16px;
@@ -516,7 +483,7 @@ const handleFileUpload = (event) => {
   100% { transform: rotate(360deg); } 
 }
 
-/* ★ 优化 5：精致的空状态样式 (Empty State) */
+/* 空状态样式 */
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -524,7 +491,7 @@ const handleFileUpload = (event) => {
   justify-content: center;
   padding: 80px 20px;
   color: #64748b;
-  grid-column: 1 / -1; /* 确保在网格布局中能独占一行 */
+  grid-column: 1 / -1; 
 }
 .empty-icon {
   font-size: 3.5rem;
