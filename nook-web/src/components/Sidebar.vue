@@ -1,11 +1,11 @@
 <template>
   <aside 
     class="sidebar" 
-    :class="{ 'closed': !isOpen, 'light-theme': store.isLightMode }"
+    :class="{ 'closed': !isOpen, 'dark-theme': !store.isLightMode }"
   >
     <div class="sidebar-header">
       <div class="user-profile" v-show="isOpen">
-        <div class="avatar-placeholder" :class="{ 'light-avatar': store.isLightMode }">
+        <div class="avatar-placeholder">
           {{ username.charAt(0).toUpperCase() }}
         </div>
         <div class="user-info">
@@ -61,35 +61,31 @@ defineEmits(['logout', 'toggle-menu']);
 </script>
 
 <style scoped>
+/* ==================== 默认状态 (浅色主题，暗色文字) ==================== */
 .sidebar {
   width: 260px;
-  /* 【修改点1】使用 dvh (动态视口高度) 适配移动端/iPad 地址栏 */
   height: 100dvh; 
   color: rgba(0, 0, 0, 0.7); 
   display: flex; 
   flex-direction: column; 
   padding: 20px; 
   box-sizing: border-box;
-  transition: width 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  /* 增加了颜色的过渡效果，切换时更丝滑 */
+  transition: width 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
+              color 0.3s ease, border-color 0.3s ease;
   
-  /* 【修改点2】允许垂直滚动，防止底部按钮被切掉 */
   overflow-y: auto; 
-  overflow-x: hidden; /* 保持水平不滚动 */
-  
+  overflow-x: hidden; 
   background-color: transparent; 
   border-right: 1px solid rgba(0,0,0,0.05);
   position: relative;
-  
-  /* 隐藏滚动条但保留功能 (可选，为了美观) */
-  scrollbar-width: none; /* Firefox */
+  scrollbar-width: none; 
 }
-.sidebar::-webkit-scrollbar { display: none; /* Chrome/Safari */ }
-
+.sidebar::-webkit-scrollbar { display: none; }
 .sidebar.closed { width: 80px; padding: 20px 10px; }
 
-/* === 样式调整 === */
-.username { color: #333; }
-.menu-toggle-btn { color: #333; }
+.username { color: #333; transition: color 0.3s; }
+.menu-toggle-btn { color: #333; transition: color 0.3s, background-color 0.2s; }
 .menu-toggle-btn:hover { background-color: rgba(0,0,0,0.05); }
 
 .nav-item {
@@ -97,47 +93,70 @@ defineEmits(['logout', 'toggle-menu']);
   padding: 12px; border-radius: 8px; 
   text-decoration: none; color: inherit; font-weight: 500;
   transition: all 0.2s; white-space: nowrap; cursor: pointer; height: 48px;
-  /* 防止导航项被压缩 */
   flex-shrink: 0; 
 }
-.nav-item:hover, .nav-item.active {
-  background-color: rgba(0,0,0,0.05); color: #000;
-}
+.nav-item:hover, .nav-item.active { background-color: rgba(0,0,0,0.05); color: #000; }
 .sidebar.closed .nav-item { justify-content: center; }
 .nav-item.disabled { opacity: 0.3; cursor: not-allowed; }
 .icon { min-width: 24px; }
 
-.sidebar-header { 
-  display: flex; align-items: center; justify-content: space-between; 
-  height: 50px; margin-bottom: 40px; 
-  /* 防止头部被压缩 */
-  flex-shrink: 0; 
-}
+.sidebar-header { display: flex; align-items: center; justify-content: space-between; height: 50px; margin-bottom: 40px; flex-shrink: 0; }
 .sidebar.closed .sidebar-header { justify-content: center; }
 .user-profile { display: flex; align-items: center; gap: 12px; white-space: nowrap; overflow: hidden; }
-.avatar-placeholder { min-width: 36px; width: 36px; height: 36px; background-color: #333; color: white; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: bold; font-size: 1rem; }
+
+.avatar-placeholder { 
+  min-width: 36px; width: 36px; height: 36px; 
+  background-color: #333; color: white; border-radius: 50%; 
+  display: flex; justify-content: center; align-items: center; 
+  font-weight: bold; font-size: 1rem; 
+  transition: background-color 0.3s, color 0.3s;
+}
 .user-info { display: flex; flex-direction: column; }
 .welcome-text { font-size: 0.7rem; opacity: 0.7; line-height: 1.2; }
-.username { font-weight: 600; font-size: 0.9rem; }
-.menu-toggle-btn { background: transparent; border: none; cursor: pointer; padding: 8px; border-radius: 8px; color: inherit; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+.menu-toggle-btn { background: transparent; border: none; cursor: pointer; padding: 8px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
 
-.nav-menu { 
-  flex: 1; 
-  display: flex; 
-  flex-direction: column; 
-  gap: 8px; 
-  /* 确保菜单部分本身也能适应 */
-  min-height: min-content;
+.nav-menu { flex: 1; display: flex; flex-direction: column; gap: 8px; min-height: min-content; }
+.logout-section { margin-top: auto; padding-top: 20px; flex-shrink: 0; }
+
+.logout-btn { 
+  width: 100%; display: flex; align-items: center; gap: 10px; 
+  padding: 12px; border: none; background: transparent; 
+  border-radius: 8px; color: inherit; font-weight: 500; 
+  cursor: pointer; transition: 0.2s; white-space: nowrap; height: 48px; 
 }
-
-.logout-section { 
-  margin-top: auto; 
-  padding-top: 20px; 
-  /* 【修改点3】防止底部按钮在屏幕变矮时被压扁 */
-  flex-shrink: 0; 
-}
-
-.logout-btn { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px; border: none; background: transparent; border-radius: 8px; color: inherit; font-weight: 500; cursor: pointer; transition: 0.2s; white-space: nowrap; height: 48px; }
 .logout-btn:hover { background-color: rgba(0,0,0,0.05); color: #d32f2f; }
 .sidebar.closed .logout-btn { justify-content: center; }
+
+
+/* ==================== 深色主题覆盖 (深色背景，亮色文字) ==================== */
+.sidebar.dark-theme {
+  color: rgba(255, 255, 255, 0.7); 
+  border-right-color: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar.dark-theme .username,
+.sidebar.dark-theme .menu-toggle-btn {
+  color: #ffffff;
+}
+
+.sidebar.dark-theme .menu-toggle-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar.dark-theme .nav-item:hover, 
+.sidebar.dark-theme .nav-item.active {
+  background-color: rgba(255, 255, 255, 0.15); 
+  color: #ffffff;
+}
+
+.sidebar.dark-theme .logout-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1); 
+  color: #ff8a80; /* 深色模式下红色稍微亮一点 */
+}
+
+/* 深色模式下头像翻转为白底黑字 */
+.sidebar.dark-theme .avatar-placeholder {
+  background-color: #ffffff;
+  color: #333333;
+}
 </style>

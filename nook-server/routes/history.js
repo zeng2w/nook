@@ -74,4 +74,19 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// nook-server/routes/history.js 新增路由
+router.post('/batch-delete', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids)) {
+      return res.status(400).json({ error: 'ids array is required' });
+    }
+    // 假设你使用的是 Mongoose
+    await History.deleteMany({ _id: { $in: ids } });
+    res.status(200).json({ message: 'Batch deletion successful' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete records' });
+  }
+});
+
 module.exports = router;

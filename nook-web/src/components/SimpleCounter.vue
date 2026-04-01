@@ -38,7 +38,7 @@
         <div class="modal-container" :class="{ 'light-theme-modal': isLightMode }" :style="{ backgroundColor: settings.bgColor }">
           <div class="setting-card">
             <span class="label">Set count =</span>
-            <input type="number" v-model.number="settings.count" class="num-input" />
+            <input type="number" v-model.number="settings.count" class="num-input" min="0" />
           </div>
           <div class="setting-card column-layout">
             <div class="row-between">
@@ -50,12 +50,29 @@
             </div>
             <div v-if="settings.limitsEnabled" class="row-between mt-3">
               <span class="label">Maximum =</span>
-              <input type="number" v-model.number="settings.maxValue" class="num-input" />
+              <input type="number" v-model.number="settings.maxValue" class="num-input" min="0" />
             </div>
           </div>
+          
           <div class="setting-card">
             <div class="color-grid">
-              <div v-for="color in colorPalette" :key="color" class="color-item" :style="{ backgroundColor: color }" :class="{ active: settings.bgColor === color }" @click="settings.bgColor = color"></div>
+              <div 
+                v-for="color in colorPalette" 
+                :key="color" 
+                class="color-item" 
+                :style="{ backgroundColor: color }" 
+                :class="{ active: settings.bgColor.toLowerCase() === color }" 
+                @click="settings.bgColor = color"
+              ></div>
+              
+              <div 
+                class="color-item custom-color-picker" 
+                :class="{ active: isCustomColor }"
+                title="Custom Color"
+              >
+                <input type="color" v-model="settings.bgColor" class="hidden-color-input" />
+              </div>
+
             </div>
           </div>
         </div>
@@ -72,17 +89,17 @@
           
           <div class="time-input-row">
             <div class="time-group">
-              <input type="number" v-model.number="resetInputs.hr" class="reset-time-input" placeholder="0" autofocus />
+              <input type="number" v-model.number="resetInputs.hr" class="reset-time-input" placeholder="0" min="0" autofocus />
               <span class="time-unit-label">HR</span>
             </div>
             <span class="time-separator">:</span>
             <div class="time-group">
-              <input type="number" v-model.number="resetInputs.min" class="reset-time-input" placeholder="0" />
+              <input type="number" v-model.number="resetInputs.min" class="reset-time-input" placeholder="0" min="0" />
               <span class="time-unit-label">MIN</span>
             </div>
             <span class="time-separator">:</span>
             <div class="time-group">
-              <input type="number" v-model.number="resetInputs.sec" class="reset-time-input" placeholder="0" />
+              <input type="number" v-model.number="resetInputs.sec" class="reset-time-input" placeholder="0" min="0" />
               <span class="time-unit-label">SEC</span>
             </div>
           </div>
@@ -96,11 +113,11 @@
     </Transition>
 
     <Transition name="fade">
-      <div v-if="showHistory" class="modal-overlay" @click.self="showHistory = false">
+      <div v-if="showHistory" class="modal-overlay" @click.self="closeHistory">
         
         <div class="modal-container history-modal" :class="{ 'light-theme-modal': isLightMode }" :style="{ backgroundColor: settings.bgColor }">
           
-          <div v-if="!isHistoryEditing" style="height:100%; display:flex; flex-direction:column; position: relative;">
+          <div v-if="!isHistoryEditing" style="flex: 1; display:flex; flex-direction:column; min-height: 0;">
             <div class="history-header">
               <button class="header-text-btn clear-btn" :class="{ 'active': selectedIds.size > 0 }" @click="handleClear">
                 {{ selectedIds.size > 0 ? `Clear (${selectedIds.size})` : 'Clear All' }}
@@ -137,7 +154,7 @@
                       <button class="mini-btn" @click.stop="openHistoryForm(item)">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                       </button>
-                      <button class="mini-btn delete" @click.stop="deleteHistory(index)">
+                      <button class="mini-btn delete" @click.stop="deleteHistory(item._id)">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                       </button>
                     </div>
@@ -156,19 +173,23 @@
             </div>
 
             <Transition name="slide-up">
+              <div v-if="selectedIds.size > 0" class="selection-stats">
+                <div class="stat-col"><span class="stat-label">Total Time</span><span class="stat-val">{{ formatDuration(selectedStats.totalDuration) }}</span></div>
+                <div class="stat-col"><span class="stat-label">Total Count</span><span class="stat-val">{{ selectedStats.totalCount }}</span></div>
+                <div class="stat-col highlight"><span class="stat-label">Avg Time</span><span class="stat-val">{{ selectedStats.avgEfficiency }} m/ea</span></div>
+              </div>
+            </Transition>
+
+            <Transition name="slide-up">
               <div 
                 v-if="showUndoToast" 
                 class="undo-toast"
+                :class="{ 'has-selection': selectedIds.size > 0 }"
                 @mouseenter="pauseUndoTimer" 
                 @mouseleave="resumeUndoTimer"
               >
                 <span class="undo-text">Record deleted</span>
                 <button class="undo-btn" @click="handleUndo">UNDO</button>
-              </div>
-              <div v-else-if="selectedIds.size > 0" class="selection-stats">
-                <div class="stat-col"><span class="stat-label">Total Time</span><span class="stat-val">{{ formatDuration(selectedStats.totalDuration) }}</span></div>
-                <div class="stat-col"><span class="stat-label">Total Count</span><span class="stat-val">{{ selectedStats.totalCount }}</span></div>
-                <div class="stat-col highlight"><span class="stat-label">Avg Time</span><span class="stat-val">{{ selectedStats.avgEfficiency }} m/ea</span></div>
               </div>
             </Transition>
             
@@ -184,24 +205,24 @@
             
             <div class="form-group">
               <label>Count</label>
-              <input type="number" v-model.number="formData.count" class="dark-input" />
+              <input type="number" v-model.number="formData.count" class="dark-input" min="0"/>
             </div>
             
             <div class="form-group">
               <label>Duration</label>
               <div class="time-input-row compact">
                 <div class="time-group">
-                  <input type="number" v-model.number="formData.hr" class="reset-time-input small" placeholder="0"/>
+                  <input type="number" v-model.number="formData.hr" class="reset-time-input small" placeholder="0" min="0"/>
                   <span class="time-unit-label">HR</span>
                 </div>
                 <span class="time-separator">:</span>
                 <div class="time-group">
-                  <input type="number" v-model.number="formData.min" class="reset-time-input small" placeholder="0"/>
+                  <input type="number" v-model.number="formData.min" class="reset-time-input small" placeholder="0" min="0"/>
                   <span class="time-unit-label">MIN</span>
                 </div>
                 <span class="time-separator">:</span>
                 <div class="time-group">
-                  <input type="number" v-model.number="formData.sec" class="reset-time-input small" placeholder="0"/>
+                  <input type="number" v-model.number="formData.sec" class="reset-time-input small" placeholder="0" min="0"/>
                   <span class="time-unit-label">SEC</span>
                 </div>
               </div>
@@ -221,11 +242,10 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted, watch, onBeforeUnmount } from 'vue';
 import axios from 'axios';
 import { updateTheme } from '../store'; 
 
-// 状态定义
 const showModal = ref(false);
 const showResetModal = ref(false);
 const showHistory = ref(false);
@@ -238,49 +258,91 @@ const editingId = ref(null);
 const formData = reactive({ date: '', count: 0, hr: '', min: '', sec: '' });
 const selectedIds = ref(new Set()); 
 
-// === Undo 相关状态 ===
 const showUndoToast = ref(false);
-const undoItem = ref(null); // 暂存被删除的数据
-let undoTimer = null; // 计时器句柄
+const undoItem = ref(null); 
+let undoTimer = null; 
+let pendingDeleteId = null; 
 
 const defaultSettings = {
   count: 0,
-  bgColor: '#ffffff', // 默认白色
+  bgColor: '#ffffff',
   limitsEnabled: false,
   maxValue: 10
 };
 
 const settings = reactive({ ...defaultSettings });
-
 const history = ref([]);
 const currentUser = ref(null);
 
+// 保留常用的预设颜色（去除了几个相近的颜色，腾出一个格子给取色器）
 const colorPalette = [
-  '#000000', '#ffffff', '#e91e63', '#9c27b0',
-  '#673ab7', '#607d8b', '#00bcd4', '#009688',
-  '#3f51b5', '#2196f3', '#03a9f4', '#3f729b'
+  '#000000', '#ffffff', '#f5f5f5', '#e91e63', 
+  '#9c27b0', '#673ab7', '#00bcd4', '#009688',
+  '#4caf50', '#ff9800', '#2196f3'
 ];
 
-const isLightMode = computed(() => settings.bgColor.toLowerCase() === '#ffffff');
+// 【新增】计算属性：判断当前颜色是否属于“自定义颜色”（即不在预设数组中）
+const isCustomColor = computed(() => {
+  return !colorPalette.includes(settings.bgColor.toLowerCase());
+});
+
+const isLightMode = computed(() => {
+  let color = settings.bgColor;
+  if (!color) return true;
+
+  color = color.toLowerCase().trim();
+  
+  if (color === 'white' || color === '#fff' || color === '#ffffff') return true;
+  if (color === 'black' || color === '#000' || color === '#000000') return false;
+
+  if (color.startsWith('rgb')) {
+    const rgbValues = color.match(/\d+/g);
+    if (rgbValues && rgbValues.length >= 3) {
+      const r = parseInt(rgbValues[0], 10);
+      const g = parseInt(rgbValues[1], 10);
+      const b = parseInt(rgbValues[2], 10);
+      return ((r * 299) + (g * 587) + (b * 114)) / 1000 >= 128;
+    }
+  }
+
+  let hex = color.startsWith('#') ? color.substring(1) : color;
+  if (hex.length === 3) {
+    hex = hex.split('').map(x => x + x).join('');
+  }
+
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+
+  if (isNaN(r) || isNaN(g) || isNaN(b)) {
+    return true; 
+  }
+
+  const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+  return yiq >= 128;
+});
+
 const availableCount = computed(() => settings.maxValue - settings.count);
 
-// --- 统计计算 ---
 const last30DaysStats = computed(() => {
-  const now = new Date();
-  const cutoff = new Date(now.setDate(now.getDate() - 30));
+  const cutoffTime = Date.now() - 30 * 24 * 60 * 60 * 1000;
   let totalDuration = 0, totalCount = 0;
+  
   history.value.forEach(item => {
-    const itemDate = new Date(item.createdAt);
-    if (itemDate >= cutoff) {
+    const itemDate = new Date(item.createdAt).getTime();
+    if (itemDate >= cutoffTime) {
       totalDuration += (item.data.duration || 0);
       totalCount += (item.data.count || 0);
     }
   });
+  
   const avgEfficiency = totalCount > 0 ? (totalDuration / totalCount).toFixed(2) : '0.00';
   return { totalDuration, totalCount, avgEfficiency };
 });
 
 const selectedStats = computed(() => {
+  const _trigger = selectedIds.value.size; 
+
   let totalDuration = 0, totalCount = 0;
   history.value.forEach(item => {
     if (selectedIds.value.has(item._id)) {
@@ -292,15 +354,19 @@ const selectedStats = computed(() => {
   return { totalDuration, totalCount, avgEfficiency };
 });
 
-const increment = () => { settings.count++; };
-const decrement = () => settings.count--;
+const increment = () => { 
+  if (settings.limitsEnabled && settings.count >= settings.maxValue) return;
+  settings.count++; 
+};
+
+const decrement = () => { 
+  if (settings.count > 0) settings.count--; 
+};
 
 const triggerReset = () => { 
   resetInputs.hr = ''; resetInputs.min = ''; resetInputs.sec = '';
   showResetModal.value = true; 
 };
-
-// === 后端 API 核心逻辑 ===
 
 const getCurrentUser = () => {
   const userStr = sessionStorage.getItem('current_user');
@@ -326,9 +392,9 @@ const fetchHistory = async () => {
 };
 
 const confirmSaveAndReset = async () => {
-  const h = Number(resetInputs.hr) || 0;
-  const m = Number(resetInputs.min) || 0;
-  const s = Number(resetInputs.sec) || 0;
+  const h = Math.max(0, Number(resetInputs.hr) || 0);
+  const m = Math.max(0, Number(resetInputs.min) || 0);
+  const s = Math.max(0, Number(resetInputs.sec) || 0);
 
   if (settings.count === 0 && h === 0 && m === 0 && s === 0) {
     showResetModal.value = false;
@@ -337,30 +403,31 @@ const confirmSaveAndReset = async () => {
 
   const totalMinutes = h * 60 + m + (s / 60);
 
-  if (currentUser.value) {
-    try {
-      const res = await axios.post('/api/history', {
-        userId: currentUser.value.id,
-        count: settings.count,
-        duration: totalMinutes,
-        date: new Date().toISOString()
-      });
-      
-      const newRecord = {
-        _id: res.data._id,
-        createdAt: res.data.date,
-        data: {
-          count: res.data.count,
-          duration: res.data.duration
-        }
-      };
-      history.value.unshift(newRecord);
-    } catch (err) {
-      console.error("Save failed:", err);
-      alert("Failed to save to cloud");
-    }
-  } else {
+  if (!currentUser.value) {
     alert("Please login to save history.");
+    return; 
+  }
+
+  try {
+    const res = await axios.post('/api/history', {
+      userId: currentUser.value.id,
+      count: settings.count,
+      duration: totalMinutes,
+      date: new Date().toISOString()
+    });
+    
+    const newRecord = {
+      _id: res.data._id,
+      createdAt: res.data.date,
+      data: {
+        count: res.data.count,
+        duration: res.data.duration
+      }
+    };
+    history.value.unshift(newRecord);
+  } catch (err) {
+    console.error("Save failed:", err);
+    alert("Failed to save to cloud");
   }
 
   settings.count = 0;
@@ -384,37 +451,64 @@ const openHistory = () => {
   fetchHistory(); 
 };
 
+const closeHistory = () => {
+  if (pendingDeleteId) {
+    executeRealDelete(pendingDeleteId);
+  }
+  showHistory.value = false;
+};
+
 const handleClear = async () => {
+  if (pendingDeleteId) {
+    executeRealDelete(pendingDeleteId);
+    pendingDeleteId = null;
+    showUndoToast.value = false;
+    pauseUndoTimer();
+  }
+
+  let idsToDelete = [];
   if (selectedIds.value.size > 0) {
     if (confirm(`Delete ${selectedIds.value.size} selected records?`)) {
-      for (const id of selectedIds.value) {
-        try {
-          await axios.delete(`/api/history/${id}`);
-        } catch (e) { console.error(e); }
-      }
-      history.value = history.value.filter(item => !selectedIds.value.has(item._id));
-      selectedIds.value.clear();
+      idsToDelete = Array.from(selectedIds.value);
     }
   } else {
     if (history.value.length === 0) return;
     if (confirm("Delete ALL history records? This cannot be undone.")) {
-       for (const item of history.value) {
-          try {
-            await axios.delete(`/api/history/${item._id}`);
-          } catch (e) { console.error(e); }
-       }
-       history.value = [];
+      idsToDelete = history.value.map(item => item._id);
     }
+  }
+
+  if (idsToDelete.length === 0) return;
+
+  try {
+    await axios.post('/api/history/batch-delete', { ids: idsToDelete });
+    const idsSet = new Set(idsToDelete);
+    history.value = history.value.filter(item => !idsSet.has(item._id));
+    selectedIds.value.clear();
+  } catch (e) {
+    console.error("Batch delete failed:", e);
+    alert("Delete failed, check console.");
   }
 };
 
 const saveHistoryForm = async () => {
-  const h = Number(formData.hr) || 0;
-  const m = Number(formData.min) || 0;
-  const s = Number(formData.sec) || 0;
-  const totalMinutes = (h * 60) + m + (s / 60);
+  if (!formData.date) {
+    alert("Please enter a valid date.");
+    return;
+  }
+  
   const dateObj = new Date(formData.date);
+  if (isNaN(dateObj.getTime())) {
+    alert("Invalid date format.");
+    return;
+  }
+  
   const isoDate = dateObj.toISOString();
+
+  const h = Math.max(0, Number(formData.hr) || 0);
+  const m = Math.max(0, Number(formData.min) || 0);
+  const s = Math.max(0, Number(formData.sec) || 0);
+  const totalMinutes = (h * 60) + m + (s / 60);
 
   if (!currentUser.value) return;
 
@@ -422,7 +516,7 @@ const saveHistoryForm = async () => {
     if (formMode.value === 'add') {
       const res = await axios.post('/api/history', {
         userId: currentUser.value.id,
-        count: formData.count,
+        count: Math.max(0, formData.count),
         duration: totalMinutes,
         date: isoDate
       });
@@ -432,9 +526,10 @@ const saveHistoryForm = async () => {
         data: { count: res.data.count, duration: res.data.duration }
       };
       history.value.unshift(newRecord);
+      history.value.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     } else {
       const res = await axios.put(`/api/history/${editingId.value}`, {
-        count: formData.count,
+        count: Math.max(0, formData.count),
         duration: totalMinutes,
         date: isoDate
       });
@@ -443,6 +538,7 @@ const saveHistoryForm = async () => {
         history.value[index].createdAt = res.data.date;
         history.value[index].data.count = res.data.count;
         history.value[index].data.duration = res.data.duration;
+        history.value.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       }
     }
     isHistoryEditing.value = false;
@@ -452,77 +548,67 @@ const saveHistoryForm = async () => {
   }
 };
 
-// === Undo 功能核心逻辑 ===
+const executeRealDelete = async (id) => {
+  try {
+    await axios.delete(`/api/history/${id}`);
+  } catch (err) {
+    console.error("Delayed delete failed on backend", err);
+  }
+};
 
-// 暂停倒计时 (鼠标悬停)
 const pauseUndoTimer = () => {
   if (undoTimer) clearTimeout(undoTimer);
 };
 
-// 恢复倒计时 (鼠标移开 / 刚删除)
 const resumeUndoTimer = () => {
   if (undoTimer) clearTimeout(undoTimer);
   undoTimer = setTimeout(() => {
+    if (pendingDeleteId) {
+      executeRealDelete(pendingDeleteId);
+    }
     showUndoToast.value = false;
     undoItem.value = null; 
-  }, 2500);
+    pendingDeleteId = null;
+  }, 3500);
 };
 
-const deleteHistory = async (index) => {
+const deleteHistory = (id) => {
+  if (pendingDeleteId && pendingDeleteId !== id) {
+    executeRealDelete(pendingDeleteId);
+  }
+
+  const index = history.value.findIndex(item => item._id === id);
+  if (index === -1) return;
+
   const itemToDelete = history.value[index];
-  undoItem.value = { ...itemToDelete };
+  const wasSelected = selectedIds.value.has(id);
   
-  try {
-    await axios.delete(`/api/history/${itemToDelete._id}`);
-    
-    if (selectedIds.value.has(itemToDelete._id)) {
-      selectedIds.value.delete(itemToDelete._id);
-    }
-    history.value.splice(index, 1);
-
-    showUndoToast.value = true;
-    
-    // 启动/重置计时器
-    resumeUndoTimer();
-
-  } catch (err) {
-    console.error("Delete failed", err);
-    alert("Delete failed");
+  undoItem.value = { ...itemToDelete, _wasSelected: wasSelected };
+  pendingDeleteId = id;
+  
+  if (wasSelected) {
+    selectedIds.value.delete(id);
   }
+  history.value.splice(index, 1);
+  showUndoToast.value = true;
+  
+  resumeUndoTimer();
 };
 
-const handleUndo = async () => {
-  if (!undoItem.value || !currentUser.value) return;
+const handleUndo = () => {
+  if (!undoItem.value) return;
 
-  const payload = {
-    userId: currentUser.value.id,
-    count: undoItem.value.data.count,
-    duration: undoItem.value.data.duration,
-    date: undoItem.value.createdAt
-  };
+  history.value.unshift(undoItem.value);
+  history.value.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-  try {
-    const res = await axios.post('/api/history', payload);
-    const restoredRecord = {
-      _id: res.data._id,
-      createdAt: res.data.date,
-      data: {
-        count: res.data.count,
-        duration: res.data.duration
-      }
-    };
-
-    history.value.unshift(restoredRecord);
-    history.value.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-    showUndoToast.value = false;
-    pauseUndoTimer(); // 清理计时器
-    undoItem.value = null;
-
-  } catch (err) {
-    console.error("Undo failed", err);
-    alert("Failed to undo");
+  if (undoItem.value._wasSelected) {
+    selectedIds.value.add(undoItem.value._id);
   }
+
+  showUndoToast.value = false;
+  pauseUndoTimer();
+  undoItem.value = null;
+  pendingDeleteId = null;
 };
 
 const toggleSelection = (id) => {
@@ -580,6 +666,13 @@ const handleScreenClick = (e) => {
   if (e.target.closest('button') || e.target.closest('.modal-container') || e.target.closest('.reset-content') || e.target.closest('.history-form')) return;
 };
 
+onBeforeUnmount(() => {
+  if (pendingDeleteId) {
+    executeRealDelete(pendingDeleteId);
+    clearTimeout(undoTimer);
+  }
+});
+
 onMounted(() => {
   currentUser.value = getCurrentUser();
 
@@ -598,6 +691,7 @@ onMounted(() => {
   fetchHistory();
 });
 
+// v-model 会实时更新 settings.bgColor，watch 监听到后全局同步
 watch(settings, (val) => {
   if (currentUser.value) {
     const userKey = `nook-settings-${currentUser.value.id}`;
@@ -605,14 +699,24 @@ watch(settings, (val) => {
   }
   updateTheme(val.bgColor);
 }, { deep: true });
+
+watch(showHistory, (newVal) => {
+  if (!newVal && pendingDeleteId) {
+    executeRealDelete(pendingDeleteId);
+    pendingDeleteId = null;
+    undoItem.value = null;
+    showUndoToast.value = false;
+    pauseUndoTimer();
+  }
+});
 </script>
 
 <style scoped>
-/* ================= 基础样式保持不变 ================= */
+/* ================= 基础样式 ================= */
 .fullscreen-counter {
   position: relative; 
   height: 100%; width: 100%; display: flex; justify-content: center; align-items: center;
-  color: white; transition: background-color 0.3s ease; overflow: hidden; cursor: pointer;
+  color: white; transition: background-color 0.1s ease; overflow: hidden; cursor: pointer;
 }
 .fullscreen-counter.light-theme { color: black !important; }
 .fullscreen-counter.light-theme .side-btn { border-color: rgba(0, 0, 0, 0.2); color: black; }
@@ -630,7 +734,7 @@ watch(settings, (val) => {
   color: white; transition: background-color 0.3s ease;
 }
 
-/* --- 其他样式保持 --- */
+/* --- 其他样式 --- */
 .top-bar { position: absolute; top: 25px; display: flex; gap: 25px; z-index: 10; }
 .icon-btn { background: none; border: none; color: rgba(255,255,255,0.8); cursor: pointer; padding: 5px; }
 .icon-btn:hover { opacity: 0.7; }
@@ -657,6 +761,7 @@ watch(settings, (val) => {
   display: flex; flex-direction: column; gap: 15px; width: 280px; padding: 25px; border-radius: 24px;
   color: white; box-shadow: 0 20px 60px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.15);
   opacity: 0.95; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); transition: all 0.3s ease;
+  position: relative; 
 }
 .setting-card {
   background: transparent; border: 1px solid rgba(255,255,255,0.3); 
@@ -669,6 +774,8 @@ watch(settings, (val) => {
 }
 .dark-input { width: 100%; box-sizing: border-box; }
 .text-underline { text-decoration: underline; text-underline-offset: 4px; }
+
+/* --- 浅色模式弹窗适配 --- */
 .modal-container.light-theme-modal {
   color: black !important; border-color: rgba(0,0,0,0.1); box-shadow: 0 20px 60px rgba(0,0,0,0.2);
 }
@@ -679,25 +786,43 @@ watch(settings, (val) => {
 .modal-container.light-theme-modal .selection-stats, .modal-container.light-theme-modal .stats-overview { background: rgba(0,0,0,0.05); border-top-color: rgba(0,0,0,0.1); }
 .modal-container.light-theme-modal .custom-checkbox { border-color: rgba(0,0,0,0.3); }
 
-/* === Selection Stats & Undo Toast (统一风格) === */
-.selection-stats, .undo-toast {
+/* === Selection Stats & Undo Toast === */
+.selection-stats {
   position: absolute; bottom: 0; left: 0; width: 100%;
   background: rgba(255,255,255,0.1); border-top: 1px solid rgba(255,255,255,0.2);
   backdrop-filter: blur(10px);
   padding: 15px 25px; box-sizing: border-box;
   display: flex; justify-content: space-between; align-items: center;
   border-radius: 0 0 24px 24px; 
+  z-index: 20; 
 }
 .stat-col { display: flex; flex-direction: column; align-items: center; font-size: 0.8rem; }
 .stat-label { opacity: 0.6; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 2px; }
 .stat-val { font-weight: bold; }
 .highlight .stat-val { color: #69f0ae; }
 
-/* Undo Toast 特有样式 */
 .undo-toast {
-  z-index: 10;
+  position: absolute; bottom: 0; left: 0; width: 100%;
+  background: rgba(255,255,255,0.1); border-top: 1px solid rgba(255,255,255,0.2);
+  backdrop-filter: blur(10px);
+  padding: 15px 25px; box-sizing: border-box;
+  display: flex; justify-content: space-between; align-items: center;
+  border-radius: 0 0 24px 24px; 
+  z-index: 21; 
   font-size: 1rem; font-weight: 500; color: inherit;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+.undo-toast.has-selection {
+  bottom: 65px; 
+  width: calc(100% - 30px);
+  left: 15px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.85);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  border-top: none;
+}
+
 .undo-text { opacity: 0.9; display: flex; align-items: center; gap: 8px; }
 .undo-text::before { content: "🗑"; font-size: 1.1rem; }
 .undo-btn { 
@@ -707,15 +832,19 @@ watch(settings, (val) => {
 }
 .undo-btn:hover { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.8); }
 
-/* 浅色模式适配 */
-.modal-container.light-theme-modal .selection-stats, 
+.modal-container.light-theme-modal .selection-stats,
 .modal-container.light-theme-modal .undo-toast { 
   background: rgba(0,0,0,0.05); border-top-color: rgba(0,0,0,0.1); 
+}
+.modal-container.light-theme-modal .undo-toast.has-selection {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  border: 1px solid rgba(0,0,0,0.1);
 }
 .modal-container.light-theme-modal .undo-btn { border-color: rgba(0,0,0,0.2); }
 .modal-container.light-theme-modal .undo-btn:hover { background: rgba(0,0,0,0.05); border-color: rgba(0,0,0,0.6); }
 
-/* === 其他样式 === */
+/* === 表单与网格样式 === */
 .column-layout { flex-direction: column; align-items: stretch; }
 .row-between { display: flex; justify-content: space-between; align-items: center; }
 .mt-3 { margin-top: 15px; }
@@ -725,9 +854,27 @@ watch(settings, (val) => {
 .slider:before { position: absolute; content: ""; height: 24px; width: 24px; left: 2px; bottom: 2px; background-color: white; border-radius: 50%; transition: .3s; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
 input:checked + .slider { background-color: #2196f3; border-color: #2196f3; }
 input:checked + .slider:before { transform: translateX(24px); }
+
+/* == 调色板网格及新增取色器样式 == */
 .color-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; width: 100%; }
 .color-item { aspect-ratio: 1; border-radius: 8px; cursor: pointer; border: 2px solid rgba(255,255,255,0.1); }
 .color-item.active { border-color: white !important; box-shadow: 0 0 10px rgba(255,255,255,0.5); }
+
+/* 【新增】自定义颜色选取器圆圈样式：彩虹背景 */
+.custom-color-picker {
+  position: relative;
+  overflow: hidden;
+  /* 用锥形渐变画一个彩虹色轮，让用户一眼看出这是调色盘 */
+  background: conic-gradient(from 90deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+}
+/* 隐藏原生 input 默认的外观，但保持它占满整个圆圈以接受点击 */
+.hidden-color-input {
+  position: absolute;
+  top: -10px; left: -10px; width: 150%; height: 150%;
+  opacity: 0;
+  cursor: pointer;
+}
+
 .fade-enter-active, .fade-leave-active { transition: opacity 0.25s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
@@ -742,7 +889,6 @@ input:checked + .slider:before { transform: translateX(24px); }
 .reset-content { display: flex; flex-direction: column; align-items: center; gap: 30px; width: 100%; max-width: 320px; }
 .reset-title { font-size: 2.2rem; font-weight: 400; margin: 0; }
 
-/* === 三栏输入框样式 === */
 .time-input-row { display: flex; align-items: flex-end; justify-content: center; gap: 10px; width: 100%; }
 .time-input-row.compact { gap: 5px; } 
 .time-group { display: flex; flex-direction: column; align-items: center; width: 60px; }
@@ -785,7 +931,7 @@ input:checked + .slider:before { transform: translateX(24px); }
 .stats-sub-vals { font-size: 0.8rem; opacity: 0.7; display: flex; justify-content: center; gap: 10px; }
 .separator { opacity: 0.3; }
 
-.history-list { overflow-y: auto; flex: 1; padding-right: 2px; max-height: 400px; padding-bottom: 80px; }
+.history-list { overflow-y: auto; flex: 1; padding-right: 2px; max-height: 400px; padding-bottom: 80px; min-height: 0; }
 .empty-history { text-align: center; opacity: 0.5; padding: 20px; }
 .history-item { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
 .checkbox-wrapper { cursor: pointer; padding: 5px; }
@@ -809,7 +955,6 @@ input:checked + .slider:before { transform: translateX(24px); }
 .form-group { display: flex; flex-direction: column; gap: 5px; }
 .form-group label { font-size: 0.8rem; opacity: 0.7; text-transform: uppercase; }
 
-/* 动画：底部滑入滑出 */
 .slide-up-enter-active, .slide-up-leave-active { transition: all 0.3s ease; }
 .slide-up-enter-from, .slide-up-leave-to { transform: translateY(100%); opacity: 0; }
 </style>
