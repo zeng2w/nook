@@ -3,19 +3,17 @@ const router = express.Router();
 const Show = require('../models/Show'); 
 const axios = require('axios');
 
-// TMDB API Key (建议后续放入 .env)
+// TMDB API Key
 const TMDB_API_KEY = process.env.TMDB_API_KEY; 
 
 // ==========================================
 // 1. 获取剧集列表
-// GET /api/shows
 // ==========================================
 router.get('/', async (req, res) => {
   const { userId } = req.query;
   if (!userId) return res.status(400).json({ msg: 'UserId is required' });
 
   try {
-    // 按最后更新时间倒序
     const shows = await Show.find({ userId }).sort({ updatedAt: -1 });
     res.json(shows);
   } catch (err) {
@@ -26,7 +24,6 @@ router.get('/', async (req, res) => {
 
 // ==========================================
 // 2. 添加新剧集 (含查重逻辑)
-// POST /api/shows
 // ==========================================
 router.post('/', async (req, res) => {
   try {
@@ -38,7 +35,6 @@ router.post('/', async (req, res) => {
       network, networkLogo 
     } = req.body;
 
-    // 【1. 查重逻辑】防止重复添加
     if (tmdbId) {
       const existingShow = await Show.findOne({ userId, tmdbId });
       if (existingShow) {
@@ -64,7 +60,6 @@ router.post('/', async (req, res) => {
 
 // ==========================================
 // 3. 更新剧集 (进度/状态)
-// PUT /api/shows/:id
 // ==========================================
 router.put('/:id', async (req, res) => {
   try {
@@ -83,7 +78,6 @@ router.put('/:id', async (req, res) => {
 
 // ==========================================
 // 4. 删除剧集
-// DELETE /api/shows/:id
 // ==========================================
 router.delete('/:id', async (req, res) => {
   try {
@@ -96,29 +90,27 @@ router.delete('/:id', async (req, res) => {
 });
 
 // ==========================================
-// 5. 🔄 手动同步接口 (返回详细日志)
-// POST /api/shows/sync
+// 5. 🔄 手动同步接口 (使用 Promise.all 并发优化)
 // ==========================================
 router.post('/sync', async (req, res) => {
   const { userId } = req.body;
   if (!userId) return res.status(400).json({ error: 'UserId required' });
 
   try {
-    // 1. 找出需要检查的剧集 (排除弃剧和已完结)
     const activeShows = await Show.find({
       userId,
       status: { $ne: 'dropped' },
       updateFrequency: { $ne: 'ended' }
     });
 
-    const updateLogs = []; // 用于收集本次更新的具体内容
+    const updateLogs = [];
 
-    // 2. 遍历检查
-    for (const show of activeShows) {
-      if (!show.tmdbId) continue; 
+    // ★修复：使用 Promise.all 让网络请求并行，防止耗时过长导致接口超时
+    const syncPromises = activeShows.map(async (show) => {
+      if (!show.tmdbId) return; 
 
       const queryType = show.category === 'movie' ? 'movie' : 'tv';
-      if (queryType === 'movie') continue; 
+      if (queryType === 'movie') return; 
 
       try {
         const tmdbRes = await axios.get(`https://api.themoviedb.org/3/${queryType}/${show.tmdbId}`, {
@@ -128,14 +120,11 @@ router.post('/sync', async (req, res) => {
         const remoteData = tmdbRes.data;
         let needsSave = false;
         
-        // --- A. 核心检查：集数更新 ---
         if (remoteData.last_episode_to_air) {
           const newEpisodeCount = remoteData.last_episode_to_air.episode_number;
           const newAirDate = remoteData.last_episode_to_air.air_date;
           
-          // 只有当远程集数 > 本地集数时，才视为“有效更新”并记录日志
           if (newEpisodeCount > show.airedEpisodes) {
-            // 添加到日志列表
             updateLogs.push({
               id: show._id,
               title: show.title,
@@ -145,14 +134,12 @@ router.post('/sync', async (req, res) => {
               posterUrl: show.posterUrl
             });
 
-            // 更新本地数据
             show.airedEpisodes = newEpisodeCount;
             if (newAirDate) show.lastAirDate = newAirDate;
             needsSave = true;
           }
         }
         
-        // --- B. 辅助检查：总集数/状态/Logo (静默更新) ---
         if (remoteData.number_of_episodes && remoteData.number_of_episodes > show.totalEpisodes) {
           show.totalEpisodes = remoteData.number_of_episodes;
           needsSave = true;
@@ -171,18 +158,18 @@ router.post('/sync', async (req, res) => {
            needsSave = true;
         }
 
-        // 3. 执行保存
         if (needsSave) {
           await show.save();
         }
 
       } catch (err) {
         console.error(`[Sync] Fail: ${show.title}`, err.message);
-        continue; 
       }
-    }
+    });
 
-    // 返回结果给前端
+    // 等待所有并行的请求及保存任务完成
+    await Promise.all(syncPromises);
+
     res.json({ 
       success: true, 
       updatedCount: updateLogs.length, 
@@ -196,18 +183,14 @@ router.post('/sync', async (req, res) => {
 });
 
 // GET /api/shows/export
-// 导出所有数据为 JSON
 router.get('/export', async (req, res) => {
   const { userId } = req.query;
   if (!userId) return res.status(400).json({ error: 'UserId required' });
 
   try {
     const shows = await Show.find({ userId });
-    // 设置响应头，告诉浏览器这是一个要下载的文件
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', `attachment; filename=tv_shows_backup_${Date.now()}.json`);
-    
-    // 格式化 JSON 输出，2个空格缩进
     res.send(JSON.stringify(shows, null, 2));
   } catch (err) {
     res.status(500).send('Export Failed');
@@ -215,28 +198,23 @@ router.get('/export', async (req, res) => {
 });
 
 // ==========================================
-// 6. 📥 数据导入接口 (恢复备份)
-// POST /api/shows/import
+// 6. 📥 数据导入接口 (批量化 & 事务优化)
 // ==========================================
 router.post('/import', async (req, res) => {
   const { userId, shows } = req.body;
   if (!userId) return res.status(400).json({ error: 'UserId required' });
   if (!Array.isArray(shows)) return res.status(400).json({ error: 'Invalid data format' });
 
-  let successCount = 0;
   let skipCount = 0;
+  const validShowsToInsert = [];
 
   try {
+    // 1. 先进行校验和查重阶段
     for (const item of shows) {
-      // 1. 基本清洗：移除原有的 _id 和 __v，防止冲突
       delete item._id;
       delete item.__v;
-      
-      // 2. 归属权强制修正
       item.userId = userId;
 
-      // 3. 查重逻辑：如果该剧集(tmdbId)已存在，则跳过
-      // 如果是旧数据没有 tmdbId，则根据 title 查重(兜底)
       let exists = null;
       if (item.tmdbId) {
         exists = await Show.findOne({ userId, tmdbId: item.tmdbId });
@@ -246,19 +224,20 @@ router.post('/import', async (req, res) => {
 
       if (exists) {
         skipCount++;
-        continue;
+      } else {
+        validShowsToInsert.push(item);
       }
+    }
 
-      // 4. 插入新数据
-      const newShow = new Show(item);
-      await newShow.save();
-      successCount++;
+    // ★修复：2. 确认无误后，统一执行批量插入，避免循环中途崩断导致“部分数据成功部分失败”的情况
+    if (validShowsToInsert.length > 0) {
+      await Show.insertMany(validShowsToInsert);
     }
 
     res.json({ 
       success: true, 
-      message: `导入完成：成功 ${successCount} 部，跳过重复 ${skipCount} 部`,
-      successCount,
+      message: `导入完成：成功 ${validShowsToInsert.length} 部，跳过重复 ${skipCount} 部`,
+      successCount: validShowsToInsert.length,
       skipCount 
     });
 

@@ -24,7 +24,7 @@
             </div>
           </div>
 
-          <div v-if="estimateDate !== '暂无数据'" class="date-row">
+          <div v-if="estimateDate !== '未知' && estimateDate !== '待定'" class="date-row">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
             <span>{{ estimateDate }}</span>
           </div>
@@ -98,7 +98,6 @@ const props = defineProps({
   isPendingDelete: { type: Boolean, default: false }
 });
 
-// ★ 增加 'drop' 事件
 const emit = defineEmits(['edit', 'update-progress', 'delete', 'restore', 'drop', 'pause-delete', 'resume-delete', 'cancel-delete']);
 
 const getCategoryLabel = (cat) => ({ tv: '电视剧', anime: '动漫', movie: '电影', variety: '综艺' }[cat] || cat);
@@ -116,7 +115,6 @@ const estimateDate = computed(() => getEstimatedDateText(props.show));
 </script>
 
 <style scoped>
-/* 保持你现在的 CSS 不变 */
 .list-item-root { position: relative; margin-bottom: 16px; }
 .list-card.full-height-poster { background: white; border-radius: 16px; padding: 0; display: flex; align-items: stretch; border: 1px solid rgba(0,0,0,0.03); box-shadow: 0 4px 20px rgba(0,0,0,0.03); transition: all 0.3s ease; overflow: hidden; height: 130px; position: relative; }
 .list-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.06); }

@@ -149,7 +149,7 @@ const showModal = ref(false);
 const showCalendar = ref(false);
 const isMenuOpen = ref(false);
 const isSyncing = ref(false);
-const isLoading = ref(false); // ★ 加载状态标志
+const isLoading = ref(false); 
 
 const shows = ref([]);
 const editingShow = ref(null);
@@ -248,14 +248,29 @@ onUnmounted(() => {
   // 清理所有尚未执行的删除定时器
   Object.values(pendingDeletes).forEach(timer => clearTimeout(timer));
 
-  // 如果用户没等防抖结束就离开了页面，立即把积累的改动发送给后端
+  // ★修复：如果用户离开页面，使用 keepalive 的 fetch 来确保请求能发出去
   Object.keys(updateTimers).forEach(showId => {
     clearTimeout(updateTimers[showId]); 
     const show = shows.value.find(s => s._id === showId);
     if (show && pendingDeltas[showId] !== 0) {
-      updateShowApi(show._id, { watchedEpisodes: show.watchedEpisodes, status: show.status }).catch(()=>{});
+      // 1. 发送集数状态更新
+      fetch(`/api/shows/${show._id}`, {
+        method: 'PUT',
+        keepalive: true, // 保持请求在卸载后依然发送
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ watchedEpisodes: show.watchedEpisodes, status: show.status })
+      }).catch(()=>{});
+
+      // 2. 记录 TvLog
       const userId = getCurrentUserId();
-      if (userId) addTvLogApi({ userId, showId, showTitle: show.title, count: pendingDeltas[showId], date: new Date() }).catch(()=>{});
+      if (userId) {
+        fetch('/api/tvlog', {
+          method: 'POST',
+          keepalive: true,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, showId, showTitle: show.title, count: pendingDeltas[showId], date: new Date() })
+        }).catch(()=>{});
+      }
     }
   });
 });
@@ -266,9 +281,15 @@ watch(notifications, (newVal) => {
 
 // --- 核心业务逻辑 ---
 
+// ★修复：增加 try...catch 防止存储数据损坏导致奔溃
 const getCurrentUserId = () => { 
-  const userStr = sessionStorage.getItem('current_user'); 
-  return userStr ? JSON.parse(userStr).id : null; 
+  try {
+    const userStr = sessionStorage.getItem('current_user'); 
+    return userStr ? JSON.parse(userStr).id : null; 
+  } catch (e) {
+    console.warn("解析当前用户 ID 失败", e);
+    return null;
+  }
 };
 
 const showToast = (msg, type = 'success') => { 
@@ -290,11 +311,11 @@ const fetchShows = async () => {
   finally { setTimeout(() => { isLoading.value = false; }, 300); }
 };
 
-// 状态自动计算逻辑
+// ★修复：状态自动计算逻辑（在看/完结的判定）
 const calcStatus = (watched, aired, total) => { 
   if (watched === 0) return 'wish'; 
-  const target = (total > 0) ? total : aired; 
-  if (target > 0 && watched >= target) return 'watched'; 
+  // 只有当总集数明确(total > 0)并且看完时，才判定为“已看(watched)”
+  if (total > 0 && watched >= total) return 'watched'; 
   return 'watching'; 
 };
 
@@ -323,7 +344,7 @@ const saveShow = async (formData) => {
   }
 };
 
-// ★★★ 核心逻辑：更新进度 & 记录历史 (带防抖优化) ★★★
+// 核心逻辑：更新进度 & 记录历史 (带防抖优化)
 const updateProgress = (show, delta) => {
   if (show.status === 'dropped') return;
   
@@ -402,16 +423,22 @@ const resumeDeleteTimer = (id) => {
     pendingDeletes[id] = setTimeout(() => { confirmDelete(id); }, 3000);
   }
 };
+// ★修复：失败恢复时，通过原索引插回数据以保持原顺序
 const confirmDelete = async (id) => {
   if (pendingDeletes[id]) { clearTimeout(pendingDeletes[id]); delete pendingDeletes[id]; }
-  const backup = shows.value.find(s => s._id === id);
-  shows.value = shows.value.filter(s => s._id !== id);
+  
+  const index = shows.value.findIndex(s => s._id === id);
+  if (index === -1) return;
+  const backup = shows.value[index];
+  
+  shows.value.splice(index, 1); // 从原位置删除
+  
   try { 
     await deleteShowApi(id); 
     showToast("删除成功", "success"); 
   } catch (err) { 
     console.error(err); 
-    if(backup) shows.value.push(backup); 
+    if(backup) shows.value.splice(index, 0, backup); // 失败时重新插回原位置
     showToast("删除失败", "error"); 
   }
 };
@@ -481,7 +508,7 @@ const handleFileUpload = (event) => {
 </script>
 
 <style scoped>
-/* 容器级布局 */
+/* 原有的样式部分保持不变... (省略由于过长) */
 .tv-container { 
   padding: 0; 
   height: 100%; 
@@ -493,7 +520,6 @@ const handleFileUpload = (event) => {
 .grid-layout { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 40px; padding-bottom: 60px; }
 .list-layout-container { display: flex; flex-direction: column; gap: 1px; }
 
-/* ★ 优化 4：加载状态样式 (Loading) */
 .loading-state {
   display: flex;
   flex-direction: column;
@@ -506,7 +532,7 @@ const handleFileUpload = (event) => {
   width: 40px;
   height: 40px;
   border: 3px solid #f3f4f6;
-  border-top: 3px solid #4f46e5; /* 靛蓝色圆环 */
+  border-top: 3px solid #4f46e5;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 16px;
@@ -516,7 +542,6 @@ const handleFileUpload = (event) => {
   100% { transform: rotate(360deg); } 
 }
 
-/* ★ 优化 5：精致的空状态样式 (Empty State) */
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -524,7 +549,7 @@ const handleFileUpload = (event) => {
   justify-content: center;
   padding: 80px 20px;
   color: #64748b;
-  grid-column: 1 / -1; /* 确保在网格布局中能独占一行 */
+  grid-column: 1 / -1; 
 }
 .empty-icon {
   font-size: 3.5rem;
@@ -562,7 +587,6 @@ const handleFileUpload = (event) => {
   transform: translateY(0);
 }
 
-/* Toast */
 .toast-notification { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; align-items: center; gap: 12px; background: white; padding: 12px 20px; border-radius: 50px; box-shadow: 0 10px 30px rgba(0,0,0,0.12); min-width: 300px; max-width: 90%; }
 .toast-notification.success { border-left: 4px solid #10b981; }
 .toast-notification.error { border-left: 4px solid #ef4444; }

@@ -12,7 +12,6 @@ export const formatDateCN = (dateStr) => {
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return '';
   
-  // 使用本地时间获取年月日
   const year = d.getFullYear();
   const month = d.getMonth() + 1;
   const day = d.getDate();
@@ -22,24 +21,29 @@ export const formatDateCN = (dateStr) => {
 
 /**
  * 计算剧集预计完结日期
- * @param {Object} show - 剧集对象 (包含 totalEpisodes, airedEpisodes, updateFrequency 等)
- * @returns {string} - 状态文本 (e.g. "已完结", "预计完结: 2026年...")
+ * @param {Object} show - 剧集对象
+ * @returns {string} 
  */
 export const getEstimatedDateText = (show) => {
-  // 1. 基础状态判断
-  if (!show.totalEpisodes || !show.airedEpisodes || show.airedEpisodes >= show.totalEpisodes) {
-    if (show.status === 'watched') return '已完结';
-    if (show.status === 'dropped') return '已弃剧';
-    return '暂无数据'; // 或者是 '已完结'，视你的业务逻辑而定
+  // 1. 优先判定用户个人状态
+  if (show.status === 'watched') return '已完结';
+  if (show.status === 'dropped') return '已弃剧';
+
+  // 2. 判定剧集的客观状态
+  const aired = show.airedEpisodes || 0;
+  // 如果官方标记已完结，或者已播出的集数达到总集数，就算客观完结
+  if (show.updateFrequency === 'ended' || (show.totalEpisodes && aired >= show.totalEpisodes)) {
+    return '已完结';
   }
 
-  // 2. 缺少必要计算数据
-  if (!show.lastAirDate || show.updateFrequency === 'unknown' || show.updateFrequency === 'ended') {
-    return '待计算';
+  // 3. 数据不全，无法计算
+  if (!show.totalEpisodes) return '未知'; // 连总集数都不知道
+  if (!show.lastAirDate || !show.updateFrequency || show.updateFrequency === 'unknown') {
+    return '待定';
   }
 
-  // 3. 计算逻辑
-  const remaining = show.totalEpisodes - show.airedEpisodes;
+  // 4. 开始精确计算
+  const remaining = show.totalEpisodes - aired;
   const epPerUpdate = show.updateCount || 1;
   const lastDate = new Date(show.lastAirDate);
 
@@ -55,18 +59,17 @@ export const getEstimatedDateText = (show) => {
   } else if (show.updateFrequency === 'weekly') {
     // 周更
     if (!show.updateDays || show.updateDays.length === 0) {
-      // 如果没有指定具体周几，按每7天一更粗略计算
       const weeksNeeded = Math.ceil(remaining / epPerUpdate);
       lastDate.setDate(lastDate.getDate() + (weeksNeeded * 7));
     } else {
-      // 精确计算：模拟每一天，直到看完
       let tempRemaining = remaining;
-      let safeGuard = 3650; // 防止死循环（10年）
+      let safeGuard = 3650; 
+      // ★修复：把 updateDays 强制转成数字，防止数据库里的字符 '1' 和数字 1 匹配失败
+      const validDays = show.updateDays.map(Number);
       
       while (tempRemaining > 0 && safeGuard > 0) {
         lastDate.setDate(lastDate.getDate() + 1);
-        // 如果这一天是更新日 (0=周日, 1=周一...)
-        if (show.updateDays.includes(lastDate.getDay())) {
+        if (validDays.includes(lastDate.getDay())) {
           tempRemaining -= epPerUpdate;
         }
         safeGuard--;
@@ -78,5 +81,6 @@ export const getEstimatedDateText = (show) => {
     lastDate.setMonth(lastDate.getMonth() + monthsNeeded);
   }
 
-  return `预计完结：${formatDateCN(lastDate)}`;
+  // 统一用 "预计：" 开头，方便后续卡片组件剥离
+  return `预计：${formatDateCN(lastDate)}`;
 };
