@@ -90,7 +90,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // ==========================================
-// 5. 🔄 手动同步接口 (使用 Promise.all 并发优化)
+// 5. 🔄 手动同步接口 (修复：串行执行 + 延时控制防封 IP)
 // ==========================================
 router.post('/sync', async (req, res) => {
   const { userId } = req.body;
@@ -105,12 +105,12 @@ router.post('/sync', async (req, res) => {
 
     const updateLogs = [];
 
-    // ★修复：使用 Promise.all 让网络请求并行，防止耗时过长导致接口超时
-    const syncPromises = activeShows.map(async (show) => {
-      if (!show.tmdbId) return; 
+    // ★ 修复：改用 for...of 串行处理，保护 TMDB API 额度
+    for (const show of activeShows) {
+      if (!show.tmdbId) continue; 
 
       const queryType = show.category === 'movie' ? 'movie' : 'tv';
-      if (queryType === 'movie') return; 
+      if (queryType === 'movie') continue; 
 
       try {
         const tmdbRes = await axios.get(`https://api.themoviedb.org/3/${queryType}/${show.tmdbId}`, {
@@ -162,13 +162,13 @@ router.post('/sync', async (req, res) => {
           await show.save();
         }
 
+        // ★ 每次请求后暂停 200 毫秒
+        await new Promise(resolve => setTimeout(resolve, 200));
+
       } catch (err) {
         console.error(`[Sync] Fail: ${show.title}`, err.message);
       }
-    });
-
-    // 等待所有并行的请求及保存任务完成
-    await Promise.all(syncPromises);
+    }
 
     res.json({ 
       success: true, 
@@ -209,7 +209,6 @@ router.post('/import', async (req, res) => {
   const validShowsToInsert = [];
 
   try {
-    // 1. 先进行校验和查重阶段
     for (const item of shows) {
       delete item._id;
       delete item.__v;
@@ -229,7 +228,6 @@ router.post('/import', async (req, res) => {
       }
     }
 
-    // ★修复：2. 确认无误后，统一执行批量插入，避免循环中途崩断导致“部分数据成功部分失败”的情况
     if (validShowsToInsert.length > 0) {
       await Show.insertMany(validShowsToInsert);
     }

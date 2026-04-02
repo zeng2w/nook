@@ -231,8 +231,16 @@ const handleScroll = () => {
   lastScrollY = currentScrollY;
 };
 
+// ★ 修复：引入 requestAnimationFrame 优化 mousemove 性能
+let isTicking = false;
 const handleMouseMove = (e) => { 
-  if (e.clientY < 50) isHeaderVisible.value = true; 
+  if (!isTicking) {
+    window.requestAnimationFrame(() => {
+      if (e.clientY < 50) isHeaderVisible.value = true;
+      isTicking = false;
+    });
+    isTicking = true;
+  }
 };
 
 // --- 生命周期 ---
@@ -376,7 +384,7 @@ const updateProgress = (show, delta) => {
   }, 500); 
 };
 
-// ★★★ 新增：处理喜爱标记的乐观更新 ★★★
+// 处理喜爱标记的乐观更新
 const toggleFavorite = async (show) => {
   const originalState = !!show.isFavorite; 
   const newState = !originalState;
