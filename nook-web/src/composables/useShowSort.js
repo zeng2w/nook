@@ -23,14 +23,15 @@ export function useShowSort(showsRef) {
     // 2. 执行排序
     return list.sort((a, b) => {
       
-      // ★★★ 新增逻辑：弃剧 (dropped) 永远沉底 ★★★
-      // 逻辑：如果 a 是弃剧且 b 不是，返回 1 (a 排后面)
-      //       如果 b 是弃剧且 a 不是，返回 -1 (b 排后面)
-      // 注意：这里直接返回 1/-1，不受 sortDesc 升降序影响，保证始终在底部
+      // ★★★ 最高优先级：喜爱的剧集永远置顶 ★★★
+      if (a.isFavorite && !b.isFavorite) return -1;
+      if (!a.isFavorite && b.isFavorite) return 1;
+
+      // ★★★ 第二优先级：弃剧 (dropped) 永远沉底 ★★★
       if (a.status === 'dropped' && b.status !== 'dropped') return 1;
       if (b.status === 'dropped' && a.status !== 'dropped') return -1;
 
-      // --- 下面是常规排序逻辑 (当两者状态相同时执行) ---
+      // --- 下面是常规排序逻辑 (当两者前置状态相同时执行) ---
       let valA, valB;
 
       if (sortBy.value === 'date') {
@@ -48,7 +49,7 @@ export function useShowSort(showsRef) {
       // 3. 处理相等情况 (按标题兜底，保证列表稳定)
       if (valA === valB) return 0;
 
-      // 4. 升降序 (弃剧逻辑已经在上面处理过了，这里只处理正常的数值)
+      // 4. 升降序
       return sortDesc.value ? (valB - valA) : (valA - valB);
     });
   });

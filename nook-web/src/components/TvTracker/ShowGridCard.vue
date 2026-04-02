@@ -7,28 +7,30 @@
         <div class="card-face front">
           
           <div class="top-actions" v-if="!isPendingDelete">
-            <button class="action-circle-btn edit" @click.stop="$emit('edit', show)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            <button 
+              class="action-circle-btn favorite-btn" 
+              :class="{ 'active': show.isFavorite }" 
+              @click.stop="$emit('toggle-favorite', show)"
+              title="标记喜爱并置顶"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" :fill="show.isFavorite ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+              </svg>
             </button>
+
+            <button class="action-circle-btn edit" @click.stop="$emit('edit', show)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
             <template v-if="show.status === 'dropped'">
-              <button class="action-circle-btn restore" @click.stop="$emit('restore', show)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"></path></svg>
-              </button>
-              <button class="action-circle-btn hard-delete" @click.stop="$emit('delete', show._id)">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-              </button>
+              <button class="action-circle-btn restore" @click.stop="$emit('restore', show)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"></path></svg></button>
+              <button class="action-circle-btn hard-delete" @click.stop="$emit('delete', show._id)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
             </template>
             <template v-else>
-              <button class="action-circle-btn soft-delete" @click.stop="$emit('drop', show)">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-              </button>
+              <button class="action-circle-btn soft-delete" @click.stop="$emit('drop', show)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
             </template>
           </div>
           
           <div class="card-header-grid">
             <div class="poster-mini trigger-flip" :style="{ backgroundColor: getCategoryColor(show.category) }" @mouseenter="flipped = true">
-              <img v-if="show.posterUrl" :src="show.posterUrl" class="mini-img" loading="lazy" />
-              <span v-else>{{ show.title.charAt(0) }}</span>
+              <img v-if="show.posterUrl" :src="show.posterUrl" class="mini-img" loading="lazy" /><span v-else>{{ show.title.charAt(0) }}</span>
               <div class="flip-hint">↻</div>
             </div>
             <div class="header-info">
@@ -79,7 +81,7 @@
             <div class="v-divider"></div>
             <div class="footer-col date-col">
               <span class="f-label">预计完结</span>
-              <span class="f-val date-text" :title="cleanEstimateDate">{{ cleanEstimateDate }}</span>
+              <span class="f-val date-text">{{ cleanEstimateDate }}</span>
             </div>
           </div>
 
@@ -115,7 +117,8 @@ const props = defineProps({
   isPendingDelete: { type: Boolean, default: false }
 });
 
-const emit = defineEmits(['edit', 'update-progress', 'delete', 'drop', 'restore', 'pause-delete', 'resume-delete', 'cancel-delete']);
+// ★ 增加 'toggle-favorite' 事件
+const emit = defineEmits(['edit', 'update-progress', 'delete', 'drop', 'restore', 'pause-delete', 'resume-delete', 'cancel-delete', 'toggle-favorite']);
 
 const flipped = ref(false);
 
@@ -123,13 +126,10 @@ const getCategoryLabel = (cat) => ({ tv: '电视剧', anime: '动漫', movie: '�
 const getCategoryColor = (cat) => ({ tv: '#e5e7eb', anime: '#f3e8ff', movie: '#e0f2fe', variety: '#ffedd5' }[cat] || '#eee');
 const getStatusLabel = (st) => ({ wish: '想看', watching: '在看', watched: '已看', dropped: '弃剧' }[st] || st);
 
-// ★ 逻辑修复：只去除"预计"等前缀，保留"已完结"、"待定"等状态词汇
 const cleanEstimateDate = computed(() => {
   const txt = getEstimatedDateText(props.show);
   if (!txt) return '-';
-  // 去除 "预计" 或 "预计完结" 及冒号等符号
-  let res = txt.replace(/^(预计完结|预计)[:：]?\s*/g, '').trim();
-  return res || '-'; 
+  return txt.replace(/^(预计完结|预计|完结|暂无数据)[:：]?\s*/g, '').trim();
 });
 
 const unwatchedCount = computed(() => {
@@ -163,12 +163,17 @@ const progressPercent = computed(() => {
 .action-circle-btn { background: white; border-radius: 50%; border: 1px solid #f3f4f6; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
 .action-circle-btn:hover { transform: scale(1.1); }
 
+/* ★ 喜爱按钮样式 */
+.favorite-btn { color: #94a3b8; }
+.favorite-btn:hover { color: #f43f5e; background: #ffe4e6; border-color: #fecdd3; }
+.favorite-btn.active { color: #f43f5e; }
+
 .card-header-grid { display: flex; align-items: center; gap: 10px; padding-right: 70px; }
 .poster-mini { width: 80px; height: 120px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; background: #f3f4f6; cursor: pointer; position: relative; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.05); z-index: 10; }
 .poster-mini .mini-img { width: 100%; height: 100%; object-fit: cover; }
 .flip-hint { position: absolute; inset: 0; background: rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: white; font-size: 1.2rem; opacity: 0; transition: opacity 0.2s; }
 .poster-mini:hover .flip-hint { opacity: 1; }
-.header-info h3 { margin: 0 0 6px 0; font-size: 1rem; font-weight: 700; color: #1f2937; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.header-info h3 { margin: 0 0 6px 0; font-size: 1rem; font-weight: 700; color: #1f2937; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;}
 .tags-line { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .tag-badge, .status-tag, .network-tag-logo, .network-text { height: 20px; display: inline-flex; align-items: center; justify-content: center; line-height: 1; box-sizing: border-box; border-radius: 4px; font-size: 0.7rem; font-weight: 600; vertical-align: middle; }
 .tag-badge, .status-tag, .network-text { padding: 0 6px; }
@@ -188,6 +193,7 @@ const progressPercent = computed(() => {
 .status-capsule { font-size: 0.7rem; font-weight: 700; padding: 2px 10px; border-radius: 12px; letter-spacing: 0.5px; transition: all 0.3s; margin-bottom: 2px; }
 .status-capsule.has-new { background: #eff6ff; color: #3b82f6; } 
 .status-capsule.all-done { background: #f8fafc; color: #94a3b8; }
+
 .main-stats { display: flex; align-items: baseline; line-height: 1; }
 .stat-watched { font-size: 2.2rem; font-weight: 900; color: #0f172a; letter-spacing: -1.5px; font-variant-numeric: tabular-nums; }
 .mini-progress-track { width: 70px; height: 5px; background: #f1f5f9; border-radius: 10px; overflow: hidden; margin-top: 6px; }

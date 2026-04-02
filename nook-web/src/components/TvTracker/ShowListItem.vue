@@ -11,6 +11,17 @@
         <div class="list-info-col">
           <div class="title-row" @click="$emit('edit', show)" style="cursor:pointer">
             <h3>{{ show.title }}</h3>
+            <div 
+              class="hover-action-btn favorite-btn" 
+              :class="{ 'active': show.isFavorite }" 
+              @click.stop="$emit('toggle-favorite', show)" 
+              title="标记喜爱并置顶"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" :fill="show.isFavorite ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+              </svg>
+            </div>
+            
             <div class="hover-action-btn edit-btn" title="编辑">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
             </div>
@@ -24,7 +35,7 @@
             </div>
           </div>
 
-          <div v-if="estimateDate !== '未知' && estimateDate !== '待定'" class="date-row">
+          <div v-if="estimateDate !== '暂无数据'" class="date-row">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
             <span>{{ estimateDate }}</span>
           </div>
@@ -98,7 +109,8 @@ const props = defineProps({
   isPendingDelete: { type: Boolean, default: false }
 });
 
-const emit = defineEmits(['edit', 'update-progress', 'delete', 'restore', 'drop', 'pause-delete', 'resume-delete', 'cancel-delete']);
+// ★ 增加 'toggle-favorite' 事件
+const emit = defineEmits(['edit', 'update-progress', 'delete', 'restore', 'drop', 'pause-delete', 'resume-delete', 'cancel-delete', 'toggle-favorite']);
 
 const getCategoryLabel = (cat) => ({ tv: '电视剧', anime: '动漫', movie: '电影', variety: '综艺' }[cat] || cat);
 const getCategoryColor = (cat) => ({ tv: '#e5e7eb', anime: '#f3e8ff', movie: '#e0f2fe', variety: '#ffedd5' }[cat] || '#eee');
@@ -127,6 +139,11 @@ const estimateDate = computed(() => getEstimatedDateText(props.show));
 .list-info-col { flex: 0 0 200px; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
 .title-row { display: flex; align-items: center; gap: 8px; }
 .list-info-col h3 { margin: 0; font-size: 1.15rem; font-weight: 700; color: #1d1d1f; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ★ 喜爱按钮样式 */
+.hover-action-btn.favorite-btn.active { opacity: 1; transform: none; color: #f43f5e; }
+.favorite-btn:hover { color: #f43f5e; background: #ffe4e6; }
+
 .list-meta { display: flex; gap: 6px; align-items: center; }
 .tag-badge, .status-tag { height: 20px; padding: 0 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 600; display: inline-flex; align-items: center; }
 .tag-badge.tv { background: #eff6ff; color: #1d4ed8; }

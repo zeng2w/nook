@@ -26,9 +26,12 @@ const ShowSchema = new mongoose.Schema({
   // 媒体信息
   posterUrl: { type: String, default: '' },
   
-  // 【新增】播放平台信息
-  network: { type: String, default: '' },      // 例如: "Netflix", "Bilibili"
-  networkLogo: { type: String, default: '' },  // 例如: "https://image.tmdb.org/.../logo.png"
+  // 播放平台信息
+  network: { type: String, default: '' },      
+  networkLogo: { type: String, default: '' },  
+
+  // 【新增】喜爱置顶标记
+  isFavorite: { type: Boolean, default: false },
 
   tmdbId: { type: Number },
   createdAt: { type: Date, default: Date.now },
