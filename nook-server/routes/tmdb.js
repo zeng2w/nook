@@ -143,4 +143,33 @@ router.get('/details/:type/:id', async (req, res) => {
   }
 });
 
+// 3. 获取热门剧集排行榜 (Top 10)
+router.get('/trending', async (req, res) => {
+  try {
+    const response = await axios.get(`${BASE_URL}/tv/popular`, {
+      params: { api_key: TMDB_API_KEY, language: 'zh-CN', page: 1 }
+    });
+    // 只取前 10 条数据减轻前端渲染压力
+    const popularShows = response.data.results.slice(0, 10);
+    res.json(popularShows);
+  } catch (err) {
+    console.error('TMDB Popular Fetch Error:', err.message);
+    res.status(500).json({ error: '无法获取热门剧集' });
+  }
+});
+
+// 4. 获取最新开播剧集
+router.get('/new-releases', async (req, res) => {
+  try {
+    const response = await axios.get(`${BASE_URL}/tv/on_the_air`, {
+      params: { api_key: TMDB_API_KEY, language: 'zh-CN', page: 1 }
+    });
+    const newShows = response.data.results.slice(0, 10);
+    res.json(newShows);
+  } catch (err) {
+    console.error('TMDB New Releases Fetch Error:', err.message);
+    res.status(500).json({ error: '无法获取最新剧集' });
+  }
+});
+
 module.exports = router;

@@ -1,5 +1,5 @@
 <template>
-  <div class="tv-container" ref="mainContainer">
+  <div class="tv-page-layout">
     
     <transition name="toast-slide">
       <div v-if="toast.visible" class="toast-notification" :class="toast.type">
@@ -8,89 +8,100 @@
       </div>
     </transition>
 
-    <TvHeader 
-      :is-visible="isHeaderVisible"
-      :notifications="notifications"
-      :has-new="hasNewNotis"
-      :view-mode="viewMode"
-      :total-count="shows.length"
-      @update:viewMode="viewMode = $event"
-      @add="openAddModal"
-      @remove-noti="removeNotification"
-      @clear-notis="clearNotifications"
-      @noti-read="hasNewNotis = false"
-    >
-      <template #filters>
-        <FilterBar 
-          v-model:category="currentCategory"
-          v-model:status="currentStatus"
-          v-model:network="currentNetwork"
-          :networks="uniqueNetworks"
-          :shows="shows"
-        />
-      </template>
-    </TvHeader>
+    <div class="top-header-section">
+      <TvHeader 
+        :is-visible="isHeaderVisible"
+        :notifications="notifications"
+        :has-new="hasNewNotis"
+        :view-mode="viewMode"
+        :total-count="shows.length"
+        @update:viewMode="viewMode = $event"
+        @add="openAddModal"
+        @remove-noti="removeNotification"
+        @clear-notis="clearNotifications"
+        @noti-read="hasNewNotis = false"
+      >
+        </TvHeader>
+    </div>
 
-    <div class="content-body">
+    <div class="bottom-main-layout">
       
-      <ShowSortToolbar 
-        v-if="!isLoading && displayShows.length > 0"
-        :sortBy="sortBy" 
-        :sortDesc="sortDesc" 
-        @change="handleSort" 
-      />
-
-      <div v-if="isLoading" class="loading-state">
-        <div class="spinner"></div>
-        <p>数据加载中...</p>
-      </div>
-
-      <div v-else-if="displayShows.length === 0" class="empty-state">
-        <div class="empty-icon">🍿</div>
-        <h3>这里空空如也</h3>
-        <p>没有找到相关剧集，快去添加一部吧！</p>
-        <button class="add-action-btn" @click="openAddModal">
-          去添加
-        </button>
-      </div>
-
-      <template v-else>
-        <div v-if="viewMode === 'grid'" class="grid-layout">
-          <ShowGridCard 
-            v-for="show in displayShows" 
-            :key="show._id" 
-            :show="show"
-            :is-pending-delete="!!pendingDeletes[show._id]"
-            @edit="openEditModal"
-            @update-progress="updateProgress"
-            @delete="requestHardDelete"
-            @restore="restoreShow"
-            @drop="dropShow"
-            @cancel-delete="cancelDelete"
-            @pause-delete="pauseDeleteTimer"
-            @resume-delete="resumeDeleteTimer"
-            @toggle-favorite="toggleFavorite"
+      <div class="main-content-column" ref="mainContainer">
+        
+        <div class="filter-bar-container">
+          <FilterBar 
+            v-model:category="currentCategory"
+            v-model:status="currentStatus"
+            v-model:network="currentNetwork"
+            :networks="uniqueNetworks"
+            :shows="shows"
           />
         </div>
 
-        <div v-else class="list-layout-container">
-          <ShowListItem
-            v-for="show in displayShows" 
-            :key="show._id" 
-            :show="show"
-            :is-pending-delete="!!pendingDeletes[show._id]"
-            @edit="openEditModal"
-            @update-progress="updateProgress"
-            @delete="requestHardDelete"
-            @restore="restoreShow"
-            @drop="dropShow"
-            @cancel-delete="cancelDelete(show._id)"
-            @pause-delete="pauseDeleteTimer"
-            @resume-delete="resumeDeleteTimer"
-            @toggle-favorite="toggleFavorite"
+        <div class="content-body">
+          <ShowSortToolbar 
+            v-if="!isLoading && displayShows.length > 0"
+            :sortBy="sortBy" 
+            :sortDesc="sortDesc" 
+            @change="handleSort" 
           />
+
+          <div v-if="isLoading" class="loading-state">
+            <div class="spinner"></div>
+            <p>数据加载中...</p>
+          </div>
+
+          <div v-else-if="displayShows.length === 0" class="empty-state">
+            <div class="empty-icon">🍿</div>
+            <h3>这里空空如也</h3>
+            <p>没有找到相关剧集，快去添加一部吧！</p>
+            <button class="add-action-btn" @click="openAddModal">
+              去添加
+            </button>
+          </div>
+
+          <template v-else>
+            <div v-if="viewMode === 'grid'" class="grid-layout">
+              <ShowGridCard 
+                v-for="show in displayShows" 
+                :key="show._id" 
+                :show="show"
+                :is-pending-delete="!!pendingDeletes[show._id]"
+                @edit="openEditModal"
+                @update-progress="updateProgress"
+                @delete="requestHardDelete"
+                @restore="restoreShow"
+                @drop="dropShow"
+                @cancel-delete="cancelDelete"
+                @pause-delete="pauseDeleteTimer"
+                @resume-delete="resumeDeleteTimer"
+                @toggle-favorite="toggleFavorite"
+              />
+            </div>
+
+            <div v-else class="list-layout-container">
+              <ShowListItem
+                v-for="show in displayShows" 
+                :key="show._id" 
+                :show="show"
+                :is-pending-delete="!!pendingDeletes[show._id]"
+                @edit="openEditModal"
+                @update-progress="updateProgress"
+                @delete="requestHardDelete"
+                @restore="restoreShow"
+                @drop="dropShow"
+                @cancel-delete="cancelDelete(show._id)"
+                @pause-delete="pauseDeleteTimer"
+                @resume-delete="resumeDeleteTimer"
+                @toggle-favorite="toggleFavorite"
+              />
+            </div>
+          </template>
         </div>
-      </template>
+      </div>
+
+      <TrendingSidebar />
+
     </div>
 
     <EditShowModal 
@@ -137,6 +148,9 @@ import ShowListItem from '@/components/TvTracker/ShowListItem.vue';
 import EditShowModal from '@/components/TvTracker/EditShowModal.vue';
 import CalendarModal from '@/components/TvTracker/CalendarModal.vue';
 import FabMenu from '@/components/TvTracker/FabMenu.vue';
+
+// 引入侧边栏组件
+import TrendingSidebar from '@/components/TvTracker/TrendingSidebar.vue';
 
 // 引入排序逻辑
 import { useShowSort } from '@/composables/useShowSort';
@@ -231,7 +245,7 @@ const handleScroll = () => {
   lastScrollY = currentScrollY;
 };
 
-// ★ 修复：引入 requestAnimationFrame 优化 mousemove 性能
+// 引入 requestAnimationFrame 优化 mousemove 性能
 let isTicking = false;
 const handleMouseMove = (e) => { 
   if (!isTicking) {
@@ -511,16 +525,74 @@ const handleFileUpload = (event) => {
 </script>
 
 <style scoped>
-.tv-container { 
-  padding: 0; 
-  height: 100%; 
-  overflow-y: auto; 
-  background-color: #f7f9fc; 
+/* =========================================
+   全局布局 CSS 
+   ========================================= */
+
+/* 最外层容器：垂直排布，防止页面级滚动 */
+.tv-page-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden; 
+  background-color: #f7f9fc;
   color: #333; 
 }
-.content-body { padding: 30px 60px 40px 40px; }
-.grid-layout { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 40px; padding-bottom: 60px; }
-.list-layout-container { display: flex; flex-direction: column; gap: 1px; }
+
+/* 顶部 Head Bar 容器 */
+.top-header-section {
+  width: 100%;
+  flex-shrink: 0;
+  z-index: 10; /* 保证层级在主体内容之上 */
+}
+
+/* 底部主体布局：水平排列 */
+.bottom-main-layout {
+  display: flex;
+  flex: 1;
+  width: 100%;
+  overflow: hidden; /* 核心：交给内部容器去滚动 */
+}
+
+/* 左/中侧主内容列 */
+.main-content-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto; /* 这一块可以独立上下滚动 */
+  position: relative;
+}
+
+/* 新加入的 Filter Bar 容器 */
+.filter-bar-container {
+  padding: 20px 60px 0 40px;
+  background-color: transparent;
+  flex-shrink: 0;
+}
+
+/* 剧集列表主体区域 */
+.content-body { 
+  padding: 20px 60px 40px 40px; 
+  flex: 1;
+}
+
+.grid-layout { 
+  display: grid; 
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); 
+  gap: 40px; 
+  padding-bottom: 60px; 
+}
+
+.list-layout-container { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 1px; 
+}
+
+/* =========================================
+   内部组件状态 CSS 
+   ========================================= */
 
 .loading-state {
   display: flex;
@@ -530,6 +602,7 @@ const handleFileUpload = (event) => {
   padding: 80px 0;
   color: #94a3b8;
 }
+
 .spinner {
   width: 40px;
   height: 40px;
@@ -556,10 +629,23 @@ const handleFileUpload = (event) => {
 .empty-icon { font-size: 3.5rem; margin-bottom: 16px; opacity: 0.9; }
 .empty-state h3 { font-size: 1.25rem; color: #1e293b; margin: 0 0 8px 0; font-weight: 700; }
 .empty-state p { font-size: 0.95rem; margin: 0 0 24px 0; }
-.add-action-btn { background: #111; color: white; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 600; font-size: 0.95rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); }
+
+.add-action-btn { 
+  background: #111; 
+  color: white; 
+  border: none; 
+  padding: 10px 24px; 
+  border-radius: 8px; 
+  font-weight: 600; 
+  font-size: 0.95rem; 
+  cursor: pointer; 
+  transition: all 0.2s; 
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); 
+}
 .add-action-btn:hover { background: #333; transform: translateY(-2px); box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15); }
 .add-action-btn:active { transform: translateY(0); }
 
+/* Toast */
 .toast-notification { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; align-items: center; gap: 12px; background: white; padding: 12px 20px; border-radius: 50px; box-shadow: 0 10px 30px rgba(0,0,0,0.12); min-width: 300px; max-width: 90%; }
 .toast-notification.success { border-left: 4px solid #10b981; }
 .toast-notification.error { border-left: 4px solid #ef4444; }
@@ -568,7 +654,16 @@ const handleFileUpload = (event) => {
 .toast-slide-enter-active, .toast-slide-leave-active { transition: all 0.3s ease; }
 .toast-slide-enter-from, .toast-slide-leave-to { opacity: 0; transform: translate(-50%, -20px); }
 
+/* =========================================
+   移动端响应式适配 
+   ========================================= */
 @media (max-width: 768px) {
+  /* 移动端恢复为全垂直排布 */
+  .tv-page-layout { height: auto; overflow: visible; }
+  .bottom-main-layout { flex-direction: column; overflow: visible; }
+  .main-content-column { overflow-y: visible; height: auto; flex: none; }
+  
+  .filter-bar-container { padding: 15px 15px 0 15px; }
   .content-body { padding: 15px; }
   .grid-layout { grid-template-columns: repeat(2, 1fr); gap: 10px; padding-bottom: 100px; }
 }
