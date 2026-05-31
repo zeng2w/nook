@@ -15,37 +15,44 @@
         :has-new="hasNewNotis"
         :view-mode="viewMode"
         :total-count="shows.length"
+        :is-syncing="isSyncing"
         @update:viewMode="viewMode = $event"
         @add="openAddModal"
+        @sync="syncData"
+        @export="exportData"
+        @import="triggerImport"
+        @open-calendar="showCalendar = true"
         @remove-noti="removeNotification"
         @clear-notis="clearNotifications"
         @noti-read="hasNewNotis = false"
       >
-        </TvHeader>
+      </TvHeader>
     </div>
 
     <div class="bottom-main-layout">
       
       <div class="main-content-column" ref="mainContainer">
         
-        <div class="filter-bar-container">
-          <FilterBar 
-            v-model:category="currentCategory"
-            v-model:status="currentStatus"
-            v-model:network="currentNetwork"
-            :networks="uniqueNetworks"
-            :shows="shows"
-          />
+        <div class="toolbar-row" v-if="!isLoading && shows.length > 0">
+          <div class="filter-section">
+            <FilterBar 
+              v-model:category="currentCategory"
+              v-model:status="currentStatus"
+              v-model:network="currentNetwork"
+              :networks="uniqueNetworks"
+              :shows="shows"
+            />
+          </div>
+          <div class="sort-section" v-if="displayShows.length > 0">
+            <ShowSortToolbar 
+              :sortBy="sortBy" 
+              :sortDesc="sortDesc" 
+              @change="handleSort" 
+            />
+          </div>
         </div>
 
         <div class="content-body">
-          <ShowSortToolbar 
-            v-if="!isLoading && displayShows.length > 0"
-            :sortBy="sortBy" 
-            :sortDesc="sortDesc" 
-            @change="handleSort" 
-          />
-
           <div v-if="isLoading" class="loading-state">
             <div class="spinner"></div>
             <p>数据加载中...</p>
@@ -114,16 +121,6 @@
       v-model:visible="showCalendar"
       :shows="shows"
     />
-
-    <FabMenu 
-      :is-open="isMenuOpen"
-      :is-syncing="isSyncing"
-      @toggle="isMenuOpen = !isMenuOpen"
-      @sync="syncData"
-      @export="exportData"
-      @import="triggerImport"
-      @open-calendar="showCalendar = true"
-    />
     
     <input type="file" ref="fileInput" style="display: none" accept=".json" @change="handleFileUpload" />
 
@@ -133,57 +130,43 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { updateTheme } from '../store';
-
-// 导入封装好的 API 方法
 import { 
   fetchShowsApi, addShowApi, updateShowApi, deleteShowApi, 
   syncShowsApi, importShowsApi, addTvLogApi 
 } from '@/api/shows';
 
-// 引入组件
 import TvHeader from '@/components/TvTracker/TvHeader.vue';
 import FilterBar from '@/components/TvTracker/FilterBar.vue';
 import ShowGridCard from '@/components/TvTracker/ShowGridCard.vue';
 import ShowListItem from '@/components/TvTracker/ShowListItem.vue';
 import EditShowModal from '@/components/TvTracker/EditShowModal.vue';
 import CalendarModal from '@/components/TvTracker/CalendarModal.vue';
-import FabMenu from '@/components/TvTracker/FabMenu.vue';
-
-// 引入侧边栏组件
 import TrendingSidebar from '@/components/TvTracker/TrendingSidebar.vue';
-
-// 引入排序逻辑
 import { useShowSort } from '@/composables/useShowSort';
 import ShowSortToolbar from '@/components/TvTracker/ShowSortToolbar.vue';
 
-// --- 状态定义 ---
 const viewMode = ref('grid');
 const currentCategory = ref('all');
 const currentStatus = ref('watching'); 
 const currentNetwork = ref('all');
 const showModal = ref(false);
 const showCalendar = ref(false);
-const isMenuOpen = ref(false);
 const isSyncing = ref(false);
 const isLoading = ref(false); 
 
 const shows = ref([]);
 const editingShow = ref(null);
 const pendingDeletes = reactive({});
-
-// 用于存放各个剧集的防抖定时器和累计变化量
 const updateTimers = {};
 const pendingDeltas = {}; 
-
 const notifications = ref([]);
 const hasNewNotis = ref(false);
 const fileInput = ref(null);
-
 const toast = reactive({ visible: false, message: '', type: 'success' });
 
-// --- 计算属性 ---
+const isHeaderVisible = ref(true);
+const mainContainer = ref(null);
 
-// 提取所有不重复的播放平台
 const uniqueNetworks = computed(() => {
   const nets = new Map();
   shows.value.forEach(s => {
@@ -194,7 +177,6 @@ const uniqueNetworks = computed(() => {
   return Array.from(nets.values()).sort((a, b) => a.name.localeCompare(b.name));
 });
 
-// 筛选逻辑 (Category/Status/Network)
 const filteredShows = computed(() => {
   return shows.value.filter(s => {
     const catMatch = currentCategory.value === 'all' || s.category === currentCategory.value;
@@ -204,18 +186,14 @@ const filteredShows = computed(() => {
   });
 });
 
-// 排序逻辑 (使用 Composable)
 const { sortBy, sortDesc, sortedShows, handleSort } = useShowSort(filteredShows);
 
-// 处理“全部”分类下的强制排序
 const displayShows = computed(() => {
   if (currentStatus.value === 'all') {
     const statusOrder = { 'watching': 1, 'wish': 2, 'watched': 3, 'dropped': 4 };
     return [...sortedShows.value].sort((a, b) => {
-      // 在“全部”分类下，依然保证最优先置顶喜爱剧集
       if (a.isFavorite && !b.isFavorite) return -1;
       if (!a.isFavorite && b.isFavorite) return 1;
-      
       const orderA = statusOrder[a.status] || 99;
       const orderB = statusOrder[b.status] || 99;
       return orderA - orderB; 
@@ -224,57 +202,15 @@ const displayShows = computed(() => {
   return sortedShows.value;
 });
 
-// --- 滚动与交互逻辑 ---
-const isHeaderVisible = ref(true);
-const mainContainer = ref(null);
-let lastScrollY = 0;
-
-const handleScroll = () => {
-  const container = mainContainer.value;
-  if (!container) return;
-  const currentScrollY = container.scrollTop;
-  
-  if (currentScrollY < 10) { 
-    isHeaderVisible.value = true; 
-    lastScrollY = currentScrollY; 
-    return; 
-  }
-  
-  if (Math.abs(currentScrollY - lastScrollY) < 10) return;
-  isHeaderVisible.value = currentScrollY <= lastScrollY || (lastScrollY - currentScrollY > 20);
-  lastScrollY = currentScrollY;
-};
-
-// 引入 requestAnimationFrame 优化 mousemove 性能
-let isTicking = false;
-const handleMouseMove = (e) => { 
-  if (!isTicking) {
-    window.requestAnimationFrame(() => {
-      if (e.clientY < 50) isHeaderVisible.value = true;
-      isTicking = false;
-    });
-    isTicking = true;
-  }
-};
-
-// --- 生命周期 ---
 onMounted(() => {
   fetchShows();
   updateTheme('#fcfcfc');
-  
   const savedNotis = localStorage.getItem('tv_notifications');
   if (savedNotis) notifications.value = JSON.parse(savedNotis);
-  
-  if (mainContainer.value) mainContainer.value.addEventListener('scroll', handleScroll);
-  window.addEventListener('mousemove', handleMouseMove);
 });
 
 onUnmounted(() => {
-  if (mainContainer.value) mainContainer.value.removeEventListener('scroll', handleScroll);
-  window.removeEventListener('mousemove', handleMouseMove);
-  
   Object.values(pendingDeletes).forEach(timer => clearTimeout(timer));
-
   Object.keys(updateTimers).forEach(showId => {
     clearTimeout(updateTimers[showId]); 
     const show = shows.value.find(s => s._id === showId);
@@ -290,8 +226,6 @@ watch(notifications, (newVal) => {
   localStorage.setItem('tv_notifications', JSON.stringify(newVal)); 
 }, { deep: true });
 
-// --- 核心业务逻辑 ---
-
 const getCurrentUserId = () => { 
   const userStr = sessionStorage.getItem('current_user'); 
   return userStr ? JSON.parse(userStr).id : null; 
@@ -304,7 +238,6 @@ const showToast = (msg, type = 'success') => {
   setTimeout(() => { toast.visible = false; }, 3000); 
 };
 
-// 获取剧集列表
 const fetchShows = async () => {
   const userId = getCurrentUserId();
   if (!userId) return;
@@ -316,7 +249,6 @@ const fetchShows = async () => {
   finally { setTimeout(() => { isLoading.value = false; }, 300); }
 };
 
-// 状态自动计算逻辑
 const calcStatus = (watched, aired, total) => { 
   if (watched === 0) return 'wish'; 
   const target = (total > 0) ? total : aired; 
@@ -324,11 +256,9 @@ const calcStatus = (watched, aired, total) => {
   return 'watching'; 
 };
 
-// 保存/添加剧集
 const saveShow = async (formData) => {
   const userId = getCurrentUserId();
   if (!userId || !formData.title) return showToast("请输入作品名称", "error");
-  
   try {
     let res;
     if (editingShow.value && editingShow.value._id) {
@@ -349,45 +279,25 @@ const saveShow = async (formData) => {
   }
 };
 
-// 更新进度
 const updateProgress = (show, delta) => {
   if (show.status === 'dropped') return;
-  
   const newVal = Math.max(0, show.watchedEpisodes + delta);
   if (newVal === show.watchedEpisodes && delta < 0) return; 
-
   show.watchedEpisodes = newVal;
   const newStatus = calcStatus(newVal, show.airedEpisodes, show.totalEpisodes);
   if (newStatus !== show.status) show.status = newStatus;
-
   pendingDeltas[show._id] = (pendingDeltas[show._id] || 0) + delta;
-
-  if (updateTimers[show._id]) {
-    clearTimeout(updateTimers[show._id]);
-  }
-
+  if (updateTimers[show._id]) clearTimeout(updateTimers[show._id]);
   updateTimers[show._id] = setTimeout(async () => {
     const finalDelta = pendingDeltas[show._id];
     delete pendingDeltas[show._id];
     delete updateTimers[show._id];
-
     if (finalDelta === 0) return; 
-
     try {
-      await updateShowApi(show._id, { 
-        watchedEpisodes: show.watchedEpisodes, 
-        status: show.status 
-      });
-
+      await updateShowApi(show._id, { watchedEpisodes: show.watchedEpisodes, status: show.status });
       const userId = getCurrentUserId();
       if (userId) {
-        await addTvLogApi({
-          userId: userId,
-          showId: show._id,
-          showTitle: show.title,
-          count: finalDelta, 
-          date: new Date()
-        });
+        await addTvLogApi({ userId: userId, showId: show._id, showTitle: show.title, count: finalDelta, date: new Date() });
       }
     } catch (e) {
       console.error(e);
@@ -398,52 +308,39 @@ const updateProgress = (show, delta) => {
   }, 500); 
 };
 
-// 处理喜爱标记的乐观更新
 const toggleFavorite = async (show) => {
   const originalState = !!show.isFavorite; 
   const newState = !originalState;
-  
-  // 乐观更新
   show.isFavorite = newState; 
-
   try {
     await updateShowApi(show._id, { isFavorite: newState });
     showToast(newState ? "已加入喜爱并置顶" : "已取消喜爱", "success");
   } catch (err) {
     console.error("更新喜爱状态失败:", err);
-    show.isFavorite = originalState; // 失败回滚
+    show.isFavorite = originalState; 
     showToast("状态更新失败，请重试", "error");
   }
 };
 
 const openAddModal = () => { editingShow.value = null; showModal.value = true; };
 const openEditModal = (show) => { editingShow.value = { ...show }; showModal.value = true; };
-
 const dropShow = async (show) => {
   show.status = 'dropped';
   try { await updateShowApi(show._id, { status: 'dropped' }); } catch(e){}
 };
-
 const restoreShow = async (show) => {
   const correctStatus = calcStatus(show.watchedEpisodes, show.airedEpisodes, show.totalEpisodes);
   show.status = correctStatus;
   try { await updateShowApi(show._id, { status: correctStatus }); } catch(e){}
 };
 
-// --- 删除逻辑 ---
-const requestHardDelete = (id) => { 
-  pendingDeletes[id] = setTimeout(() => { confirmDelete(id); }, 3000); 
-};
-const cancelDelete = (id) => { 
-  if (pendingDeletes[id]) { clearTimeout(pendingDeletes[id]); delete pendingDeletes[id]; } 
-};
-const pauseDeleteTimer = (id) => { 
-  if (pendingDeletes[id]) clearTimeout(pendingDeletes[id]); 
-};
+const requestHardDelete = (id) => { pendingDeletes[id] = setTimeout(() => confirmDelete(id), 3000); };
+const cancelDelete = (id) => { if (pendingDeletes[id]) { clearTimeout(pendingDeletes[id]); delete pendingDeletes[id]; } };
+const pauseDeleteTimer = (id) => { if (pendingDeletes[id]) clearTimeout(pendingDeletes[id]); };
 const resumeDeleteTimer = (id) => {
   if (pendingDeletes[id] !== undefined) {
     clearTimeout(pendingDeletes[id]); 
-    pendingDeletes[id] = setTimeout(() => { confirmDelete(id); }, 3000);
+    pendingDeletes[id] = setTimeout(() => confirmDelete(id), 3000);
   }
 };
 const confirmDelete = async (id) => {
@@ -460,7 +357,6 @@ const confirmDelete = async (id) => {
   }
 };
 
-// --- 通知与同步 ---
 const clearNotifications = () => { notifications.value = []; };
 const removeNotification = (index) => { notifications.value.splice(index, 1); };
 
@@ -472,14 +368,12 @@ const syncData = async () => {
   try {
     const res = await syncShowsApi(userId);
     await fetchShows();
-    
     if (res.data.updatedCount > 0) {
       if (res.data.logs?.length) {
         const existingSignatures = new Set(notifications.value.map(n => `${n.title}|${n.newEp}|${n.updateDate}`));
         const uniqueNewItems = res.data.logs
           .filter(log => !existingSignatures.has(`${log.title}|${log.newEp}|${log.date}`))
           .map(log => ({ ...log, updateDate: log.date, uniqueId: Date.now() + Math.random() }));
-          
         if (uniqueNewItems.length) { 
           notifications.value = [...uniqueNewItems, ...notifications.value]; 
           hasNewNotis.value = true; 
@@ -497,7 +391,6 @@ const syncData = async () => {
   }
 };
 
-// --- 导入导出 ---
 const triggerImport = () => { fileInput.value.click(); };
 const exportData = () => { 
   const userId = getCurrentUserId(); 
@@ -525,62 +418,72 @@ const handleFileUpload = (event) => {
 </script>
 
 <style scoped>
-/* =========================================
-   全局布局 CSS 
-   ========================================= */
-
-/* 最外层容器：垂直排布，防止页面级滚动 */
 .tv-page-layout {
   display: flex;
   flex-direction: column;
   height: 100vh;
   width: 100%;
   overflow: hidden; 
-  background-color: #f7f9fc;
+  background-color: #f5f5f7; 
   color: #333; 
 }
 
-/* 顶部 Head Bar 容器 */
 .top-header-section {
   width: 100%;
   flex-shrink: 0;
-  z-index: 10; /* 保证层级在主体内容之上 */
+  background-color: #ffffff;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03), 0 4px 16px rgba(0, 0, 0, 0.02);
+  z-index: 10;
 }
 
-/* 底部主体布局：水平排列 */
 .bottom-main-layout {
   display: flex;
   flex: 1;
   width: 100%;
-  overflow: hidden; /* 核心：交给内部容器去滚动 */
+  overflow: hidden; 
 }
 
-/* 左/中侧主内容列 */
 .main-content-column {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow-y: auto; /* 这一块可以独立上下滚动 */
+  overflow-y: auto; 
   position: relative;
 }
 
-/* 新加入的 Filter Bar 容器 */
-.filter-bar-container {
-  padding: 20px 60px 0 40px;
-  background-color: transparent;
+/* ✨ 核心改动：将 Filter 整合进入的现代化单行一体化控制栏 */
+.toolbar-row {
+  margin: 24px 40px 0 40px; 
+  padding: 8px 20px; /* 极端紧凑的内边距 */
+  background-color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.01), 0 1px 3px rgba(0, 0, 0, 0.01);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
   flex-shrink: 0;
 }
 
-/* 剧集列表主体区域 */
+.filter-section {
+  flex: 1;
+  min-width: 0;
+}
+
+.sort-section {
+  flex-shrink: 0;
+}
+
+/* 稍微把内容区的顶部间距缩紧，因为 toolbar 面板已经带有外边距 */
 .content-body { 
-  padding: 20px 60px 40px 40px; 
+  padding: 20px 40px 60px 40px; 
   flex: 1;
 }
 
 .grid-layout { 
   display: grid; 
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); 
-  gap: 40px; 
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); 
+  gap: 28px 28px; 
   padding-bottom: 60px; 
 }
 
@@ -589,10 +492,6 @@ const handleFileUpload = (event) => {
   flex-direction: column; 
   gap: 1px; 
 }
-
-/* =========================================
-   内部组件状态 CSS 
-   ========================================= */
 
 .loading-state {
   display: flex;
@@ -654,16 +553,11 @@ const handleFileUpload = (event) => {
 .toast-slide-enter-active, .toast-slide-leave-active { transition: all 0.3s ease; }
 .toast-slide-enter-from, .toast-slide-leave-to { opacity: 0; transform: translate(-50%, -20px); }
 
-/* =========================================
-   移动端响应式适配 
-   ========================================= */
 @media (max-width: 768px) {
-  /* 移动端恢复为全垂直排布 */
   .tv-page-layout { height: auto; overflow: visible; }
   .bottom-main-layout { flex-direction: column; overflow: visible; }
   .main-content-column { overflow-y: visible; height: auto; flex: none; }
-  
-  .filter-bar-container { padding: 15px 15px 0 15px; }
+  .filter-bar-container { margin: 15px 15px 0 15px; padding: 12px; }
   .content-body { padding: 15px; }
   .grid-layout { grid-template-columns: repeat(2, 1fr); gap: 10px; padding-bottom: 100px; }
 }
