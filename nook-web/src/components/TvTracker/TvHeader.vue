@@ -11,8 +11,20 @@
         </div>
       </div>
       
+      <div class="header-center">
+        <div class="search-box">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input 
+            type="text" 
+            placeholder="搜索剧集名称..." 
+            :value="searchQuery"
+            @input="$emit('update:searchQuery', $event.target.value)"
+          />
+          <button v-if="searchQuery" class="clear-btn" @click="$emit('update:searchQuery', '')">×</button>
+        </div>
+      </div>
+      
       <div class="header-right">
-        
         <div class="action-group">
           <button class="icon-action-btn" :disabled="isSyncing" @click="$emit('sync')" title="同步 TMDB 数据">
             <svg class="icon" :class="{ 'spin': isSyncing }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -92,11 +104,11 @@ defineProps({
   notifications: { type: Array, default: () => [] },
   hasNew: { type: Boolean, default: false },
   totalCount: { type: Number, default: 0 },
-  isSyncing: { type: Boolean, default: false }
+  isSyncing: { type: Boolean, default: false },
+  searchQuery: { type: String, default: '' } // 接收搜索词
 });
 
-// 移除了 'update:viewMode'
-defineEmits(['add', 'remove-noti', 'clear-notis', 'noti-read', 'sync', 'export', 'import', 'open-calendar']);
+defineEmits(['add', 'remove-noti', 'clear-notis', 'noti-read', 'sync', 'export', 'import', 'open-calendar', 'update:searchQuery']);
 
 const showNotiPanel = ref(false);
 const toggleNoti = () => {
@@ -106,18 +118,54 @@ const toggleNoti = () => {
 </script>
 
 <style scoped>
-/* 保持原有样式完全不变，仅移除与 view-toggle 相关的 CSS */
-.sticky-header-wrapper { position: sticky; top: 0; z-index: 99; background-color: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-bottom: 1px solid #e5e7eb; padding: 12px 40px; }
-.header { display: flex; justify-content: space-between; align-items: center; }
-.page-title { margin: 0; font-size: 1.25rem; font-weight: 800; color: #111; }
-.subtitle { color: #666; margin: 2px 0 0 0; font-size: 0.85rem; }
-.header-right { display: flex; align-items: center; gap: 12px; }
-.action-group { display: flex; gap: 4px; }
-.icon-action-btn { background: transparent; border: none; padding: 6px 10px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; color: #64748b; transition: all 0.2s; }
-.icon-action-btn:hover { background: #f1f5f9; color: #0f172a; }
+/* ✨ 去除原本的白底和边框，使其与页面背景一样透明 */
+.sticky-header-wrapper { position: sticky; top: 0; z-index: 99; background-color: transparent; padding: 16px 40px; }
+.header { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+
+/* ✨ 修复点 1：左侧保持内容原有宽度，不被压缩 */
+.header-left { flex-shrink: 0; display: flex; align-items: center; }
+.page-title { margin: 0; font-size: 1.3rem; font-weight: 800; color: #111; letter-spacing: -0.5px; }
+.subtitle { color: #64748b; margin: 4px 0 0 0; font-size: 0.85rem; font-weight: 500; }
+.count-badge { color: var(--theme-primary, #6366F1); font-weight: 600; }
+
+/* ✨ 修复点 2：让中间的搜索栏去占据剩余的所有弹性空间 */
+.header-center { flex: 1; display: flex; justify-content: center; padding: 0 20px; }
+.search-box { display: flex; align-items: center; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0 12px; width: 100%; max-width: 400px; height: 38px; transition: all 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
+.search-box:focus-within { border-color: var(--theme-primary, #6366F1); box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1); }
+.search-icon { color: #94a3b8; margin-right: 8px; flex-shrink: 0; }
+.search-box input { border: none; background: transparent; outline: none; width: 100%; font-size: 0.9rem; color: #334155; }
+.search-box input::placeholder { color: #94a3b8; }
+.clear-btn { background: none; border: none; color: #94a3b8; font-size: 1.2rem; cursor: pointer; padding: 0 4px; }
+.clear-btn:hover { color: #475569; }
+
+/* ✨ 修复点 3：右侧按钮组不缩小，并强制按钮内文字不换行 */
+.header-right { flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
+.action-group { display: flex; gap: 6px; }
+
+/* 加上 white-space: nowrap 和 flex-shrink: 0 彻底防止按钮文字溢出挤压 */
+.icon-action-btn { 
+  background: transparent; border: none; padding: 8px 12px; border-radius: 8px; cursor: pointer; 
+  display: flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: #64748b; 
+  transition: all 0.2s; white-space: nowrap; flex-shrink: 0; height: 38px;
+}
+.icon-action-btn:hover { background: #ffffff; color: #0f172a; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+
 .divider { width: 1px; height: 20px; background: #e2e8f0; margin: 0 4px; }
-.icon-btn { width: 36px; height: 36px; border-radius: 8px; border: 1px solid #eee; background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #666; }
-.add-btn { background: #000; color: #fff; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.85rem; }
+
+.icon-btn { 
+  width: 38px; height: 38px; border-radius: 10px; border: 1px solid #e2e8f0; background: white; cursor: pointer; 
+  display: flex; align-items: center; justify-content: center; color: #666; transition: border-color 0.2s; flex-shrink: 0;
+}
+.icon-btn:hover { border-color: #cbd5e1; }
+
+.add-btn { 
+  background: var(--theme-primary, #6366F1); color: #fff; border: none; padding: 0 20px; border-radius: 10px; 
+  font-weight: 600; cursor: pointer; font-size: 0.9rem; transition: background 0.2s; 
+  display: flex; align-items: center; justify-content: center; height: 38px; white-space: nowrap; flex-shrink: 0;
+}
+.add-btn:hover { background: var(--theme-primary-hover, #4F46E5); }
+
+/* --- 下面是通知面板样式，保持不变 --- */
 .spin { animation: spin-anim 1s linear infinite; }
 @keyframes spin-anim { 100% { transform: rotate(360deg); } }
 .notification-wrapper { position: relative; display: flex; align-items: center; }
@@ -147,13 +195,10 @@ const toggleNoti = () => {
 .fade-slide-enter-active, .fade-slide-leave-active { transition: all 0.2s ease; }
 .fade-slide-enter-from, .fade-slide-leave-to { opacity: 0; transform: translateY(10px); }
 
-@media (max-width: 768px) {
-  .header { padding: 15px 20px; flex-direction: column; align-items: flex-start; gap: 15px; }
-  .header-actions { width: 100%; justify-content: space-between; }
-  .page-title { font-size: 1.5rem; }
-  .subtitle { display: none; }
-  .add-btn { padding: 8px 14px; font-size: 0.85rem; }
-  .noti-dropdown { width: 90vw; right: -10px; top: 120%; }
-  .noti-delete-btn { opacity: 1; }
+@media (max-width: 1024px) {
+  .header { flex-direction: column; align-items: flex-start; gap: 15px; }
+  .header-center { width: 100%; padding: 0; order: 3; }
+  .search-box { max-width: 100%; }
+  .header-right { width: 100%; justify-content: space-between; }
 }
 </style>

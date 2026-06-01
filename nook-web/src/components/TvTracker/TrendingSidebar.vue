@@ -1,5 +1,5 @@
 <template>
-  <div class="trending-sidebar">
+  <div class="trending-sidebar-modern">
     <div class="sidebar-header">
       <h3>探索发现</h3>
     </div>
@@ -62,20 +62,20 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.trending-sidebar {
-  /* ✨ 优化：将宽度缩小到 280px */
-  width: 280px; 
-  background: #ffffff;
-  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.03); 
-  padding: 30px 20px;
+/* ✨ 彻底解绑固定宽度，让其填满父级的 16vw */
+.trending-sidebar-modern {
+  width: 100%; 
+  height: 100%;
+  background-color: var(--theme-surface, #ffffff);
+  padding: 24px 1.5vw; /* 使用 vw 适配宽度呼吸感 */
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  z-index: 5;
+  overflow-x: hidden;
 }
 
 .sidebar-header h3 {
-  font-size: 1.25rem;
+  font-size: 1.15rem;
   font-weight: 800;
   color: #1e293b;
   margin-bottom: 20px;
@@ -88,6 +88,7 @@ onMounted(async () => {
   border-radius: 12px;
   padding: 4px;
   margin-bottom: 24px;
+  flex-shrink: 0;
 }
 
 .tabs button {
@@ -97,35 +98,33 @@ onMounted(async () => {
   padding: 8px 0;
   border-radius: 8px;
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   color: #64748b;
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* 动态主题色：选中时文字呈现 SaaS 科技蓝紫 */
 .tabs button.active {
-  background: #ffffff;
-  color: #0f172a;
+  background: var(--theme-surface, #ffffff);
+  color: var(--theme-primary, #0f172a);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); 
 }
 
-/* ✨ 优化：把侧边栏列表项变成一张张独立的“卡片” */
 .show-item { 
   display: flex; 
   gap: 12px; 
-  /* 增加卡片之间的上下间距 */
   margin-bottom: 16px; 
   align-items: center; 
-  padding: 12px;
+  padding: 10px;
   border-radius: 12px;
-  background: #ffffff; /* 独立纯白背景 */
-  border: 1px solid #f1f5f9; /* 描边确立卡片边界 */
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02); /* 微弱的底部阴影 */
+  background-color: var(--theme-surface, #ffffff);
+  border: 1px solid #f1f5f9; 
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02); 
   transition: all 0.2s ease;
   cursor: pointer;
 }
 
-/* 悬浮时卡片浮起，间距感更强 */
 .show-item:hover {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
   transform: translateY(-2px);
@@ -133,34 +132,33 @@ onMounted(async () => {
 }
 
 .mini-poster { 
-  width: 48px; /* 侧边栏变窄，海报稍微缩小一点适配 */
+  width: 44px; 
   border-radius: 6px; 
+  object-fit: cover;
+  aspect-ratio: 2/3;
 }
 
 .show-info {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex: 1; /* 让文字部分占据剩余空间 */
+  flex: 1; 
+  min-width: 0; /* 防止文字过长撑破 Flex 容器 */
 }
 
 .title { 
   font-weight: 700; 
-  font-size: 0.9rem; 
+  font-size: 0.85rem; 
   color: #1e293b;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  line-height: 1.3;
 }
 
-.meta { font-size: 0.75rem; color: #94a3b8; font-weight: 500; }
-.rank { font-weight: 800; font-size: 1rem; color: #cbd5e1; width: 20px; text-align: center; flex-shrink: 0; }
+.meta { font-size: 0.7rem; color: #94a3b8; font-weight: 500; }
+.rank { font-weight: 800; font-size: 1rem; color: #cbd5e1; width: 18px; text-align: center; flex-shrink: 0; }
 
-.loading-state {
-  text-align: center;
-  color: #94a3b8;
-  margin-top: 40px;
-  font-size: 0.9rem;
-}
+.loading-state { text-align: center; color: #94a3b8; margin-top: 40px; font-size: 0.9rem; }
 </style>

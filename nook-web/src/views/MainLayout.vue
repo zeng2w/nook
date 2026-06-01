@@ -4,6 +4,7 @@
     :style="{ backgroundColor: store.themeColor }"
   >
     <Sidebar 
+      :class="{ 'sidebar-open-width': isSidebarOpen }"
       :username="currentUsername" 
       :is-open="isSidebarOpen"
       @logout="handleLogout"
@@ -39,7 +40,6 @@ onMounted(() => {
 
 const handleLogout = () => {
   sessionStorage.removeItem('current_user');
-  // 退出时恢复默认白底
   updateTheme('#ffffff');
   router.push('/login');
 };
@@ -50,10 +50,15 @@ const handleLogout = () => {
   display: flex;
   height: 100vh;
   width: 100vw;
-  /* 背景色的改变自动带有过渡动画 */
   transition: background-color 0.3s ease; 
   overflow: hidden;
   position: relative;
+}
+
+/* ✨ 修复点：将固定的 class 改为专属的展开状态 class */
+.sidebar-open-width {
+  width: 16vw !important;
+  flex-shrink: 0;
 }
 
 .content-area {

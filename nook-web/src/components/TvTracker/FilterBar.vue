@@ -232,14 +232,23 @@ const getNetworkCount = (val) => {
 </script>
 
 <style scoped>
-.filter-bar-wrapper { width: 100%; position: relative; }
+.filter-bar-wrapper { 
+  width: 100%; 
+  position: relative; 
+  /* ✨ 核心模块化样式：白色背景、圆角、柔和阴影 */
+  background-color: var(--theme-surface, #ffffff);
+  border-radius: 16px;
+  padding: 12px 20px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
 .main-toolbar { 
   display: flex; 
   justify-content: space-between; 
   align-items: center; 
   width: 100%; 
   position: relative; 
-  z-index: 1001; /* 修改这里：从 2 改为 1001 */
+  z-index: 1001; 
 }
 /* 状态页签 */
 .status-group { display: flex; gap: 6px; background: #f1f5f9; padding: 4px; border-radius: 30px; }

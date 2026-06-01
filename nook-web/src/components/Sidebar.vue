@@ -70,10 +70,8 @@ defineEmits(['logout', 'toggle-menu']);
   flex-direction: column; 
   padding: 20px; 
   box-sizing: border-box;
-  /* 增加了颜色的过渡效果，切换时更丝滑 */
   transition: width 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
               color 0.3s ease, border-color 0.3s ease;
-  
   overflow-y: auto; 
   overflow-x: hidden; 
   background-color: transparent; 
@@ -95,7 +93,17 @@ defineEmits(['logout', 'toggle-menu']);
   transition: all 0.2s; white-space: nowrap; cursor: pointer; height: 48px;
   flex-shrink: 0; 
 }
-.nav-item:hover, .nav-item.active { background-color: rgba(0,0,0,0.05); color: #000; }
+
+/* ✨ 修复点：绑定动态主题变量 */
+.nav-item:hover { 
+  background-color: rgba(0,0,0,0.05); 
+  color: #000; 
+}
+.nav-item.active { 
+  background-color: var(--theme-primary-light, rgba(0,0,0,0.05)); 
+  color: var(--theme-primary, #000); 
+}
+
 .sidebar.closed .nav-item { justify-content: center; }
 .nav-item.disabled { opacity: 0.3; cursor: not-allowed; }
 .icon { min-width: 24px; }
@@ -128,35 +136,25 @@ defineEmits(['logout', 'toggle-menu']);
 .sidebar.closed .logout-btn { justify-content: center; }
 
 
-/* ==================== 深色主题覆盖 (深色背景，亮色文字) ==================== */
+/* ==================== 深色主题覆盖 ==================== */
 .sidebar.dark-theme {
   color: rgba(255, 255, 255, 0.7); 
   border-right-color: rgba(255, 255, 255, 0.1);
 }
-
 .sidebar.dark-theme .username,
-.sidebar.dark-theme .menu-toggle-btn {
-  color: #ffffff;
-}
+.sidebar.dark-theme .menu-toggle-btn { color: #ffffff; }
+.sidebar.dark-theme .menu-toggle-btn:hover { background-color: rgba(255, 255, 255, 0.1); }
 
-.sidebar.dark-theme .menu-toggle-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-.sidebar.dark-theme .nav-item:hover, 
-.sidebar.dark-theme .nav-item.active {
+.sidebar.dark-theme .nav-item:hover {
   background-color: rgba(255, 255, 255, 0.15); 
   color: #ffffff;
 }
-
-.sidebar.dark-theme .logout-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1); 
-  color: #ff8a80; /* 深色模式下红色稍微亮一点 */
+/* ✨ 修复点：深色模式下的动态激活颜色 */
+.sidebar.dark-theme .nav-item.active {
+  background-color: var(--theme-primary, rgba(255, 255, 255, 0.15)); 
+  color: #ffffff;
 }
 
-/* 深色模式下头像翻转为白底黑字 */
-.sidebar.dark-theme .avatar-placeholder {
-  background-color: #ffffff;
-  color: #333333;
-}
+.sidebar.dark-theme .logout-btn:hover { background-color: rgba(255, 255, 255, 0.1); color: #ff8a80; }
+.sidebar.dark-theme .avatar-placeholder { background-color: #ffffff; color: #333333; }
 </style>

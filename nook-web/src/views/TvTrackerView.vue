@@ -1,5 +1,5 @@
 <template>
-  <div class="tv-page-layout">
+  <div class="tv-page-modern-layout">
     
     <transition name="toast-slide">
       <div v-if="toast.visible" class="toast-notification" :class="toast.type">
@@ -8,14 +8,14 @@
       </div>
     </transition>
 
-    <div class="top-header-section">
+    <header class="top-header-section">
       <TvHeader 
         :is-visible="isHeaderVisible"
         :notifications="notifications"
         :has-new="hasNewNotis"
         :total-count="shows.length"
         :is-syncing="isSyncing"
-        @add="openAddModal"
+        v-model:searchQuery="searchQuery"  @add="openAddModal"
         @sync="syncData"
         @export="exportData"
         @import="triggerImport"
@@ -23,35 +23,25 @@
         @remove-noti="removeNotification"
         @clear-notis="clearNotifications"
         @noti-read="hasNewNotis = false"
-      >
-      </TvHeader>
-    </div>
+      />
+    </header>
 
     <div class="bottom-main-layout">
       
       <div class="main-content-column" ref="mainContainer">
         
-        <div class="toolbar-row" v-if="!isLoading && shows.length > 0">
-          <div class="filter-section">
-            <FilterBar 
-             v-model:category="currentCategory"
-              v-model:status="currentStatus"
-              v-model:network="currentNetwork"
-              v-model:viewMode="viewMode"
-              :sortBy="sortBy"          
-              :sortDesc="sortDesc"      
-              :networks="uniqueNetworks"
-              :shows="shows"
-              @change-sort="handleSort"
-            />
-          </div>
-          <!-- <div class="sort-section" v-if="displayShows.length > 0">
-            <ShowSortToolbar 
-              :sortBy="sortBy" 
-              :sortDesc="sortDesc" 
-              @change="handleSort" 
-            />
-          </div> -->
+        <div class="sticky-filter-bar" v-if="!isLoading && shows.length > 0">
+          <FilterBar 
+            v-model:category="currentCategory"
+            v-model:status="currentStatus"
+            v-model:network="currentNetwork"
+            v-model:viewMode="viewMode"
+            :sortBy="sortBy"          
+            :sortDesc="sortDesc"      
+            :networks="uniqueNetworks"
+            :shows="shows"
+            @change-sort="handleSort"
+          />
         </div>
 
         <div class="content-body">
@@ -64,9 +54,7 @@
             <div class="empty-icon">🍿</div>
             <h3>这里空空如也</h3>
             <p>没有找到相关剧集，快去添加一部吧！</p>
-            <button class="add-action-btn" @click="openAddModal">
-              去添加
-            </button>
+            <button class="add-action-btn" @click="openAddModal">去添加</button>
           </div>
 
           <template v-else>
@@ -109,33 +97,26 @@
         </div>
       </div>
 
-      <TrendingSidebar />
+      <div class="discovery-sidebar-column">
+        <TrendingSidebar 
+          :shows="shows"
+          @open-calendar="showCalendar = true"
+          @edit="openEditModal"
+        />
+      </div>
 
     </div>
 
-    <EditShowModal 
-      v-model:visible="showModal"
-      :edit-data="editingShow"
-      @save="saveShow" 
-    />
-    
-    <CalendarModal 
-      v-model:visible="showCalendar"
-      :shows="shows"
-    />
-    
+    <EditShowModal v-model:visible="showModal" :edit-data="editingShow" @save="saveShow" />
+    <CalendarModal v-model:visible="showCalendar" :shows="shows" />
     <input type="file" ref="fileInput" style="display: none" accept=".json" @change="handleFileUpload" />
-
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { updateTheme } from '../store';
-import { 
-  fetchShowsApi, addShowApi, updateShowApi, deleteShowApi, 
-  syncShowsApi, importShowsApi, addTvLogApi 
-} from '@/api/shows';
+import { fetchShowsApi, addShowApi, updateShowApi, deleteShowApi, syncShowsApi, importShowsApi, addTvLogApi } from '@/api/shows';
 
 import TvHeader from '@/components/TvTracker/TvHeader.vue';
 import FilterBar from '@/components/TvTracker/FilterBar.vue';
@@ -145,8 +126,28 @@ import EditShowModal from '@/components/TvTracker/EditShowModal.vue';
 import CalendarModal from '@/components/TvTracker/CalendarModal.vue';
 import TrendingSidebar from '@/components/TvTracker/TrendingSidebar.vue';
 import { useShowSort } from '@/composables/useShowSort';
-import ShowSortToolbar from '@/components/TvTracker/ShowSortToolbar.vue';
 
+// 🎨 动态主题注入逻辑 (科技蓝紫方案)
+const THEME_SAAS = {
+  '--theme-primary': '#6366F1',
+  '--theme-primary-hover': '#4F46E5',
+  '--theme-primary-light': '#E0E7FF',
+  '--theme-bg': '#F9FAFB',
+  '--theme-surface': '#FFFFFF',
+};
+const searchQuery = ref('');
+
+const applyModernTheme = () => {
+  const root = document.documentElement;
+  Object.entries(THEME_SAAS).forEach(([key, value]) => root.style.setProperty(key, value));
+};
+
+const removeModernTheme = () => {
+  const root = document.documentElement;
+  Object.keys(THEME_SAAS).forEach(key => root.style.removeProperty(key));
+};
+
+// --- 以下为你原有的业务逻辑 (完全保留) ---
 const viewMode = ref('grid');
 const currentCategory = ref('all');
 const currentStatus = ref('watching'); 
@@ -165,26 +166,30 @@ const notifications = ref([]);
 const hasNewNotis = ref(false);
 const fileInput = ref(null);
 const toast = reactive({ visible: false, message: '', type: 'success' });
-
 const isHeaderVisible = ref(true);
 const mainContainer = ref(null);
 
 const uniqueNetworks = computed(() => {
   const nets = new Map();
   shows.value.forEach(s => {
-    if (s.network && !nets.has(s.network)) {
-      nets.set(s.network, { name: s.network, logo: s.networkLogo });
-    }
+    if (s.network && !nets.has(s.network)) nets.set(s.network, { name: s.network, logo: s.networkLogo });
   });
   return Array.from(nets.values()).sort((a, b) => a.name.localeCompare(b.name));
 });
 
 const filteredShows = computed(() => {
   return shows.value.filter(s => {
+    // 类型、状态、平台过滤 (原本的逻辑)
     const catMatch = currentCategory.value === 'all' || s.category === currentCategory.value;
     const statusMatch = currentStatus.value === 'all' || s.status === currentStatus.value;
     const netMatch = currentNetwork.value === 'all' || s.network === currentNetwork.value;
-    return catMatch && statusMatch && netMatch;
+    
+    // ✨ 新增：本地名字搜索过滤 (忽略大小写)
+    const searchMatch = !searchQuery.value || 
+      (s.title && s.title.toLowerCase().includes(searchQuery.value.toLowerCase())) ||
+      (s.name && s.name.toLowerCase().includes(searchQuery.value.toLowerCase()));
+
+    return catMatch && statusMatch && netMatch && searchMatch;
   });
 });
 
@@ -206,12 +211,17 @@ const displayShows = computed(() => {
 
 onMounted(() => {
   fetchShows();
-  updateTheme('#fcfcfc');
+  applyModernTheme(); // 挂载时注入主题
+  // ✨ 关键修复：让主布局的 :style 背景色变成我们的 SaaS 浅灰
+  updateTheme('#F9FAFB');
   const savedNotis = localStorage.getItem('tv_notifications');
   if (savedNotis) notifications.value = JSON.parse(savedNotis);
 });
 
 onUnmounted(() => {
+  removeModernTheme(); // 卸载时恢复原来颜色
+  // ✨ 关键修复：离开 TvTracker 时，恢复你原本的全局白底
+  updateTheme('#ffffff');
   Object.values(pendingDeletes).forEach(timer => clearTimeout(timer));
   Object.keys(updateTimers).forEach(showId => {
     clearTimeout(updateTimers[showId]); 
@@ -224,21 +234,10 @@ onUnmounted(() => {
   });
 });
 
-watch(notifications, (newVal) => { 
-  localStorage.setItem('tv_notifications', JSON.stringify(newVal)); 
-}, { deep: true });
+watch(notifications, (newVal) => { localStorage.setItem('tv_notifications', JSON.stringify(newVal)); }, { deep: true });
 
-const getCurrentUserId = () => { 
-  const userStr = sessionStorage.getItem('current_user'); 
-  return userStr ? JSON.parse(userStr).id : null; 
-};
-
-const showToast = (msg, type = 'success') => { 
-  toast.message = msg; 
-  toast.type = type; 
-  toast.visible = true; 
-  setTimeout(() => { toast.visible = false; }, 3000); 
-};
+const getCurrentUserId = () => { const userStr = sessionStorage.getItem('current_user'); return userStr ? JSON.parse(userStr).id : null; };
+const showToast = (msg, type = 'success') => { toast.message = msg; toast.type = type; toast.visible = true; setTimeout(() => { toast.visible = false; }, 3000); };
 
 const fetchShows = async () => {
   const userId = getCurrentUserId();
@@ -326,37 +325,17 @@ const toggleFavorite = async (show) => {
 
 const openAddModal = () => { editingShow.value = null; showModal.value = true; };
 const openEditModal = (show) => { editingShow.value = { ...show }; showModal.value = true; };
-const dropShow = async (show) => {
-  show.status = 'dropped';
-  try { await updateShowApi(show._id, { status: 'dropped' }); } catch(e){}
-};
-const restoreShow = async (show) => {
-  const correctStatus = calcStatus(show.watchedEpisodes, show.airedEpisodes, show.totalEpisodes);
-  show.status = correctStatus;
-  try { await updateShowApi(show._id, { status: correctStatus }); } catch(e){}
-};
-
+const dropShow = async (show) => { show.status = 'dropped'; try { await updateShowApi(show._id, { status: 'dropped' }); } catch(e){} };
+const restoreShow = async (show) => { const correctStatus = calcStatus(show.watchedEpisodes, show.airedEpisodes, show.totalEpisodes); show.status = correctStatus; try { await updateShowApi(show._id, { status: correctStatus }); } catch(e){} };
 const requestHardDelete = (id) => { pendingDeletes[id] = setTimeout(() => confirmDelete(id), 3000); };
 const cancelDelete = (id) => { if (pendingDeletes[id]) { clearTimeout(pendingDeletes[id]); delete pendingDeletes[id]; } };
 const pauseDeleteTimer = (id) => { if (pendingDeletes[id]) clearTimeout(pendingDeletes[id]); };
-const resumeDeleteTimer = (id) => {
-  if (pendingDeletes[id] !== undefined) {
-    clearTimeout(pendingDeletes[id]); 
-    pendingDeletes[id] = setTimeout(() => confirmDelete(id), 3000);
-  }
-};
+const resumeDeleteTimer = (id) => { if (pendingDeletes[id] !== undefined) { clearTimeout(pendingDeletes[id]); pendingDeletes[id] = setTimeout(() => confirmDelete(id), 3000); } };
 const confirmDelete = async (id) => {
   if (pendingDeletes[id]) { clearTimeout(pendingDeletes[id]); delete pendingDeletes[id]; }
   const backup = shows.value.find(s => s._id === id);
   shows.value = shows.value.filter(s => s._id !== id);
-  try { 
-    await deleteShowApi(id); 
-    showToast("删除成功", "success"); 
-  } catch (err) { 
-    console.error(err); 
-    if(backup) shows.value.push(backup); 
-    showToast("删除失败", "error"); 
-  }
+  try { await deleteShowApi(id); showToast("删除成功", "success"); } catch (err) { console.error(err); if(backup) shows.value.push(backup); showToast("删除失败", "error"); }
 };
 
 const clearNotifications = () => { notifications.value = []; };
@@ -376,30 +355,15 @@ const syncData = async () => {
         const uniqueNewItems = res.data.logs
           .filter(log => !existingSignatures.has(`${log.title}|${log.newEp}|${log.date}`))
           .map(log => ({ ...log, updateDate: log.date, uniqueId: Date.now() + Math.random() }));
-        if (uniqueNewItems.length) { 
-          notifications.value = [...uniqueNewItems, ...notifications.value]; 
-          hasNewNotis.value = true; 
-        }
+        if (uniqueNewItems.length) { notifications.value = [...uniqueNewItems, ...notifications.value]; hasNewNotis.value = true; }
       }
       showToast(`同步完成！更新 ${res.data.updatedCount} 部`, "success");
-    } else { 
-      showToast('暂无新内容', "success"); 
-    }
-  } catch (err) { 
-    console.error(err); 
-    showToast('同步失败', "error"); 
-  } finally { 
-    isSyncing.value = false; 
-  }
+    } else { showToast('暂无新内容', "success"); }
+  } catch (err) { console.error(err); showToast('同步失败', "error"); } finally { isSyncing.value = false; }
 };
 
 const triggerImport = () => { fileInput.value.click(); };
-const exportData = () => { 
-  const userId = getCurrentUserId(); 
-  if (!userId) return; 
-  window.open(`/api/shows/export?userId=${userId}`, '_blank'); 
-  showToast("备份下载中...", "success"); 
-};
+const exportData = () => { const userId = getCurrentUserId(); if (!userId) return; window.open(`/api/shows/export?userId=${userId}`, '_blank'); showToast("备份下载中...", "success"); };
 const handleFileUpload = (event) => {
   const file = event.target.files[0]; if (!file) return;
   const reader = new FileReader();
@@ -412,167 +376,96 @@ const handleFileUpload = (event) => {
       await importShowsApi(userId, parsedData);
       showToast("导入成功", "success");
       await fetchShows();
-    } catch (err) { showToast("导入失败", "error"); } 
-    finally { event.target.value = ''; }
+    } catch (err) { showToast("导入失败", "error"); } finally { event.target.value = ''; }
   };
   reader.readAsText(file);
 };
 </script>
 
 <style scoped>
-.tv-page-layout {
+.tv-page-modern-layout {
   display: flex;
   flex-direction: column;
   height: 100vh;
   width: 100%;
   overflow: hidden; 
-  background-color: #f5f5f7; 
-  color: #333; 
+  background-color: var(--theme-bg, #F9FAFB); 
+  color: #0f172a; 
 }
 
 .top-header-section {
   width: 100%;
   flex-shrink: 0;
-  background-color: #ffffff;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03), 0 4px 16px rgba(0, 0, 0, 0.02);
-  z-index: 10;
+  background-color: transparent; 
+  border-bottom: none; 
+  z-index: 30;
 }
 
 .bottom-main-layout {
   display: flex;
-  flex: 1;
   width: 100%;
+  flex: 1;
   overflow: hidden; 
 }
 
+/* 🎯 关键：核心列表区锁定 68vw */
 .main-content-column {
-  flex: 1;
+  width: 68vw; 
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   overflow-y: auto; 
   position: relative;
 }
 
-/* ✨ 核心改动：将 Filter 整合进入的现代化单行一体化控制栏 */
-.toolbar-row {
-  /* 让外部边距和下方内容区的 40px padding 完全保持一致 */
-  margin: 24px 40px 0 40px; 
-  padding: 10px 20px; 
-  
-  /* 半透明背景保持不变 */
-  background-color: rgba(255, 255, 255, 0.85); 
-  backdrop-filter: blur(12px); 
-  border: 1px solid rgba(255, 255, 255, 0.5); 
-  border-radius: 16px; 
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.03); 
-  
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+/* 🎯 关键：侧边探索区锁定 16vw */
+.discovery-sidebar-column {
+  width: 16vw;
   flex-shrink: 0;
-  
-  /* ✨ 核心：确保内边距不会撑大整个卡片的宽度 */
-  box-sizing: border-box; 
+  background-color: var(--theme-surface, #ffffff);
+  border-left: 1px solid rgba(226, 232, 240, 0.6);
+  z-index: 10;
 }
 
-.filter-section {
-  flex: 1;
-  min-width: 0;
+.sticky-filter-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  /* 取消这里的 rgba 白色和毛玻璃，只保留 padding 让出呼吸空间 */
+  background: transparent; 
+  padding: 16px 3vw; 
+  border-bottom: none;
 }
 
-.sort-section {
-  flex-shrink: 0;
-}
-
-/* 稍微把内容区的顶部间距缩紧，因为 toolbar 面板已经带有外边距 */
 .content-body { 
-  padding: 15px 60px 60px 40px; 
+  padding: 24px 3vw 60px 3vw; 
   flex: 1;
 }
 
 .grid-layout { 
   display: grid; 
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); 
-  gap: 28px 28px; 
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); 
+  gap: 32px 24px; 
   padding-bottom: 60px; 
 }
 
-.list-layout-container { 
-  display: flex; 
-  flex-direction: column; 
-  gap: 1px; 
-  width: 100%; 
-  max-width: 100%; /* ✨ 防止容器本身溢出 */
-  box-sizing: border-box;
-}
+.list-layout-container { display: flex; flex-direction: column; gap: 8px; width: 100%; box-sizing: border-box; }
 
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 80px 0;
-  color: #94a3b8;
-}
+.add-action-btn { background-color: var(--theme-primary, #6366F1); color: white; border: none; padding: 12px 28px; border-radius: 10px; font-weight: 600; cursor: pointer; transition: all 0.2s; margin-top: 16px; }
+.add-action-btn:hover { background-color: var(--theme-primary-hover, #4F46E5); transform: translateY(-2px); }
 
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid #f3f4f6;
-  border-top: 3px solid #4f46e5; 
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 16px;
-}
-@keyframes spin { 
-  0% { transform: rotate(0deg); } 
-  100% { transform: rotate(360deg); } 
-}
+.loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 0; color: #94a3b8; }
+.spinner { width: 40px; height: 40px; border: 3px solid #f1f5f9; border-top: 3px solid var(--theme-primary, #6366F1); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 80px 20px;
-  color: #64748b;
-  grid-column: 1 / -1; 
-}
-.empty-icon { font-size: 3.5rem; margin-bottom: 16px; opacity: 0.9; }
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; color: #64748b; }
+.empty-icon { font-size: 4rem; margin-bottom: 16px; opacity: 0.8; }
 .empty-state h3 { font-size: 1.25rem; color: #1e293b; margin: 0 0 8px 0; font-weight: 700; }
-.empty-state p { font-size: 0.95rem; margin: 0 0 24px 0; }
-
-.add-action-btn { 
-  background: #111; 
-  color: white; 
-  border: none; 
-  padding: 10px 24px; 
-  border-radius: 8px; 
-  font-weight: 600; 
-  font-size: 0.95rem; 
-  cursor: pointer; 
-  transition: all 0.2s; 
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); 
-}
-.add-action-btn:hover { background: #333; transform: translateY(-2px); box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15); }
-.add-action-btn:active { transform: translateY(0); }
 
 /* Toast */
-.toast-notification { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; align-items: center; gap: 12px; background: white; padding: 12px 20px; border-radius: 50px; box-shadow: 0 10px 30px rgba(0,0,0,0.12); min-width: 300px; max-width: 90%; }
+.toast-notification { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; align-items: center; gap: 12px; background: white; padding: 14px 24px; border-radius: 50px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); min-width: 300px; max-width: 90%; font-weight: 500; }
 .toast-notification.success { border-left: 4px solid #10b981; }
 .toast-notification.error { border-left: 4px solid #ef4444; }
-.toast-icon { font-size: 1.2rem; }
-.toast-content { font-size: 0.95rem; font-weight: 500; color: #333; }
-.toast-slide-enter-active, .toast-slide-leave-active { transition: all 0.3s ease; }
-.toast-slide-enter-from, .toast-slide-leave-to { opacity: 0; transform: translate(-50%, -20px); }
-
-@media (max-width: 768px) {
-  .toolbar-row { margin: 15px 15px 0 15px; padding: 10px; }
-  .tv-page-layout { height: auto; overflow: visible; }
-  .bottom-main-layout { flex-direction: column; overflow: visible; }
-  .main-content-column { overflow-y: visible; height: auto; flex: none; }
-  .filter-bar-container { margin: 15px 15px 0 15px; padding: 12px; }
-  .content-body { padding: 15px; }
-  .grid-layout { grid-template-columns: repeat(2, 1fr); gap: 10px; padding-bottom: 100px; }
-}
+.toast-slide-enter-active, .toast-slide-leave-active { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+.toast-slide-enter-from, .toast-slide-leave-to { opacity: 0; transform: translate(-50%, -20px) scale(0.95); }
 </style>
