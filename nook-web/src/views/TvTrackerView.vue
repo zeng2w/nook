@@ -13,10 +13,8 @@
         :is-visible="isHeaderVisible"
         :notifications="notifications"
         :has-new="hasNewNotis"
-        :view-mode="viewMode"
         :total-count="shows.length"
         :is-syncing="isSyncing"
-        @update:viewMode="viewMode = $event"
         @add="openAddModal"
         @sync="syncData"
         @export="exportData"
@@ -36,20 +34,24 @@
         <div class="toolbar-row" v-if="!isLoading && shows.length > 0">
           <div class="filter-section">
             <FilterBar 
-              v-model:category="currentCategory"
+             v-model:category="currentCategory"
               v-model:status="currentStatus"
               v-model:network="currentNetwork"
+              v-model:viewMode="viewMode"
+              :sortBy="sortBy"          
+              :sortDesc="sortDesc"      
               :networks="uniqueNetworks"
               :shows="shows"
+              @change-sort="handleSort"
             />
           </div>
-          <div class="sort-section" v-if="displayShows.length > 0">
+          <!-- <div class="sort-section" v-if="displayShows.length > 0">
             <ShowSortToolbar 
               :sortBy="sortBy" 
               :sortDesc="sortDesc" 
               @change="handleSort" 
             />
-          </div>
+          </div> -->
         </div>
 
         <div class="content-body">
@@ -453,16 +455,24 @@ const handleFileUpload = (event) => {
 
 /* ✨ 核心改动：将 Filter 整合进入的现代化单行一体化控制栏 */
 .toolbar-row {
+  /* 让外部边距和下方内容区的 40px padding 完全保持一致 */
   margin: 24px 40px 0 40px; 
-  padding: 8px 20px; /* 极端紧凑的内边距 */
-  background-color: #ffffff;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.01), 0 1px 3px rgba(0, 0, 0, 0.01);
+  padding: 10px 20px; 
+  
+  /* 半透明背景保持不变 */
+  background-color: rgba(255, 255, 255, 0.85); 
+  backdrop-filter: blur(12px); 
+  border: 1px solid rgba(255, 255, 255, 0.5); 
+  border-radius: 16px; 
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.03); 
+  
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 20px;
   flex-shrink: 0;
+  
+  /* ✨ 核心：确保内边距不会撑大整个卡片的宽度 */
+  box-sizing: border-box; 
 }
 
 .filter-section {
@@ -476,7 +486,7 @@ const handleFileUpload = (event) => {
 
 /* 稍微把内容区的顶部间距缩紧，因为 toolbar 面板已经带有外边距 */
 .content-body { 
-  padding: 20px 40px 60px 40px; 
+  padding: 15px 60px 60px 40px; 
   flex: 1;
 }
 
@@ -491,6 +501,9 @@ const handleFileUpload = (event) => {
   display: flex; 
   flex-direction: column; 
   gap: 1px; 
+  width: 100%; 
+  max-width: 100%; /* ✨ 防止容器本身溢出 */
+  box-sizing: border-box;
 }
 
 .loading-state {
@@ -554,6 +567,7 @@ const handleFileUpload = (event) => {
 .toast-slide-enter-from, .toast-slide-leave-to { opacity: 0; transform: translate(-50%, -20px); }
 
 @media (max-width: 768px) {
+  .toolbar-row { margin: 15px 15px 0 15px; padding: 10px; }
   .tv-page-layout { height: auto; overflow: visible; }
   .bottom-main-layout { flex-direction: column; overflow: visible; }
   .main-content-column { overflow-y: visible; height: auto; flex: none; }

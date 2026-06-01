@@ -127,16 +127,35 @@ const estimateDate = computed(() => getEstimatedDateText(props.show));
 </script>
 
 <style scoped>
-.list-item-root { position: relative; margin-bottom: 16px; }
-.list-card.full-height-poster { background: white; border-radius: 16px; padding: 0; display: flex; align-items: stretch; border: 1px solid rgba(0,0,0,0.03); box-shadow: 0 4px 20px rgba(0,0,0,0.03); transition: all 0.3s ease; overflow: hidden; height: 130px; position: relative; }
+.list-item-root { 
+  position: relative; 
+  margin-bottom: 16px; 
+  width: 100%; 
+  box-sizing: border-box; 
+}
+.list-card.full-height-poster { 
+  width: 100%; /* 确保填满父容器 */
+  box-sizing: border-box; /* ✨ 核心：把 border 算进内部，防止右侧溢出 */
+  background: white; 
+  border-radius: 16px; 
+  padding: 0; 
+  display: flex; 
+  align-items: stretch; 
+  border: 1px solid rgba(0,0,0,0.03); 
+  box-shadow: 0 4px 20px rgba(0,0,0,0.03); 
+  transition: all 0.3s ease; 
+  overflow: hidden; 
+  height: 130px; 
+  position: relative; 
+}
 .list-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.06); }
 .list-card.dropped-card { filter: grayscale(100%); opacity: 0.6; background-color: #f9fafb; }
 .list-card.blur-bg { pointer-events: none; opacity: 0.5; }
 .list-poster-side { width: 90px; flex-shrink: 0; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #f3f4f6; }
 .list-poster-side img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s; }
 .list-card:hover .list-poster-side img { transform: scale(1.05); }
-.list-main-content { flex: 1; display: flex; align-items: center; padding: 0 24px; gap: 24px; }
-.list-info-col { flex: 0 0 200px; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
+.list-main-content { flex: 1; min-width: 0; /* ✨ 防撑破神器 */ display: flex; align-items: center; padding: 0 24px; gap: 24px; }
+.list-info-col { flex: 0 0 200px; min-width: 0; /* ✨ 防撑破神器 */ display: flex; flex-direction: column; justify-content: center; gap: 6px; }
 .title-row { display: flex; align-items: center; gap: 8px; }
 .list-info-col h3 { margin: 0; font-size: 1.15rem; font-weight: 700; color: #1d1d1f; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -158,7 +177,7 @@ const estimateDate = computed(() => getEstimatedDateText(props.show));
 .network-tag-logo img { height: 12px; width: auto; }
 .network-text { background: #f3f4f6; color: #4b5563; border: 1px solid #e5e7eb; height: 20px; padding: 0 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 600; display: inline-flex; align-items: center; }
 .date-row { display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #9ca3af; margin-top: 2px; }
-.list-stats-col { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+.list-stats-col { flex: 1; min-width: 0; /* ✨ 防撑破神器 */ display: flex; flex-direction: column; justify-content: center; gap: 8px; }
 .bars-container { display: flex; flex-direction: column; gap: 6px; }
 .bar-line { display: flex; flex-direction: column; gap: 2px; }
 .bar-header { display: flex; justify-content: space-between; font-size: 0.7rem; color: #6b7280; padding: 0 1px; }

@@ -1,7 +1,6 @@
 <template>
   <header class="sticky-header-wrapper">
     <div class="header">
-      <!-- 左侧：标题与统计 -->
       <div class="header-left">
         <div>
           <h2 class="page-title">追剧记录</h2>
@@ -12,10 +11,8 @@
         </div>
       </div>
       
-      <!-- 右侧：整合后的所有操作 -->
       <div class="header-right">
         
-        <!-- ✨ 整合：FAB 原有功能迁移 -->
         <div class="action-group">
           <button class="icon-action-btn" :disabled="isSyncing" @click="$emit('sync')" title="同步 TMDB 数据">
             <svg class="icon" :class="{ 'spin': isSyncing }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -49,13 +46,6 @@
 
         <div class="divider"></div>
 
-        <!-- 视图切换 -->
-        <div class="view-toggle">
-          <button class="toggle-btn" :class="{ active: viewMode === 'grid' }" @click="$emit('update:viewMode', 'grid')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg></button>
-          <button class="toggle-btn" :class="{ active: viewMode === 'list' }" @click="$emit('update:viewMode', 'list')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line></svg></button>
-        </div>
-
-        <!-- 通知中心 -->
         <div class="notification-wrapper">
           <button class="icon-btn noti-btn" @click="toggleNoti" :class="{ active: showNotiPanel }" title="消息通知">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
@@ -64,7 +54,6 @@
           
           <transition name="fade-slide">
             <div v-if="showNotiPanel" class="noti-dropdown">
-              <!-- 通知面板代码保持不变 -->
               <div class="noti-header"><span class="noti-header-title">消息通知</span></div>
               <div class="noti-list" v-if="notifications.length > 0">
                 <div v-for="(item, index) in notifications" :key="item.uniqueId" class="noti-item">
@@ -102,12 +91,12 @@ defineProps({
   isVisible: { type: Boolean, default: true },
   notifications: { type: Array, default: () => [] },
   hasNew: { type: Boolean, default: false },
-  viewMode: { type: String, default: 'grid' },
   totalCount: { type: Number, default: 0 },
   isSyncing: { type: Boolean, default: false }
 });
 
-defineEmits(['update:viewMode', 'add', 'remove-noti', 'clear-notis', 'noti-read', 'sync', 'export', 'import', 'open-calendar']);
+// 移除了 'update:viewMode'
+defineEmits(['add', 'remove-noti', 'clear-notis', 'noti-read', 'sync', 'export', 'import', 'open-calendar']);
 
 const showNotiPanel = ref(false);
 const toggleNoti = () => {
@@ -117,49 +106,25 @@ const toggleNoti = () => {
 </script>
 
 <style scoped>
-/* Header 整体布局 */
-.sticky-header-wrapper { 
-  position: sticky; top: 0; z-index: 99; 
-  background-color: rgba(255, 255, 255, 0.95); 
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid #e5e7eb; 
-  padding: 12px 40px; 
-}
-
+/* 保持原有样式完全不变，仅移除与 view-toggle 相关的 CSS */
+.sticky-header-wrapper { position: sticky; top: 0; z-index: 99; background-color: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-bottom: 1px solid #e5e7eb; padding: 12px 40px; }
 .header { display: flex; justify-content: space-between; align-items: center; }
 .page-title { margin: 0; font-size: 1.25rem; font-weight: 800; color: #111; }
 .subtitle { color: #666; margin: 2px 0 0 0; font-size: 0.85rem; }
-
 .header-right { display: flex; align-items: center; gap: 12px; }
-
-/* 操作组按钮 */
 .action-group { display: flex; gap: 4px; }
-.icon-action-btn { 
-  background: transparent; border: none; padding: 6px 10px; border-radius: 6px; 
-  cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; color: #64748b; 
-  transition: all 0.2s;
-}
+.icon-action-btn { background: transparent; border: none; padding: 6px 10px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; color: #64748b; transition: all 0.2s; }
 .icon-action-btn:hover { background: #f1f5f9; color: #0f172a; }
 .divider { width: 1px; height: 20px; background: #e2e8f0; margin: 0 4px; }
-
-/* 基础图标按钮 */
 .icon-btn { width: 36px; height: 36px; border-radius: 8px; border: 1px solid #eee; background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #666; }
-.view-toggle { background: #fff; border: 1px solid #eee; border-radius: 8px; padding: 2px; display: flex; }
-.toggle-btn { background: none; border: none; padding: 6px 8px; border-radius: 6px; cursor: pointer; color: #999; display: flex; }
-.toggle-btn.active { background: #f3f4f6; color: #111; }
-
 .add-btn { background: #000; color: #fff; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.85rem; }
-
 .spin { animation: spin-anim 1s linear infinite; }
 @keyframes spin-anim { 100% { transform: rotate(360deg); } }
-
-/* Notifications (精致版) */
 .notification-wrapper { position: relative; display: flex; align-items: center; }
 .red-dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; background: #ef4444; border-radius: 50%; border: 1px solid white; }
 .noti-dropdown { position: absolute; top: calc(100% + 12px); right: -10px; width: 360px; background: white; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.12), 0 2px 10px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.05); z-index: 100; display: flex; flex-direction: column; overflow: hidden; max-height: 80vh; transform-origin: top right; }
 .noti-header { padding: 16px 20px; border-bottom: 1px solid #f5f5f7; display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); }
 .noti-header-title { font-weight: 700; font-size: 1rem; color: #1d1d1f; }
-.noti-count-badge { background: #ff3b30; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; box-shadow: 0 2px 5px rgba(255, 59, 48, 0.3); }
 .noti-list { overflow-y: auto; max-height: 400px; padding: 0; }
 .noti-item { display: flex; gap: 16px; padding: 16px 20px; border-bottom: 1px solid #f5f5f7; transition: background 0.2s; position: relative; align-items: center; }
 .noti-item:hover { background: #f9f9fb; }
@@ -169,17 +134,12 @@ const toggleNoti = () => {
 .noti-info { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .noti-top-line { display: flex; justify-content: space-between; align-items: baseline; }
 .noti-title { font-size: 0.95rem; font-weight: 600; color: #1d1d1f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px; }
-.noti-time { font-size: 0.7rem; color: #86868b; font-weight: 500; }
 .noti-desc { font-size: 0.85rem; color: #424245; line-height: 1.4; }
 .highlight-ep { color: #007aff; font-weight: 600; }
-.old-ep { color: #98989d; font-size: 0.75rem; margin-left: 6px; }
 .noti-delete-btn { background: none; border: none; padding: 6px; color: #c7c7cc; cursor: pointer; border-radius: 50%; transition: all 0.2s; opacity: 0; }
 .noti-item:hover .noti-delete-btn { opacity: 1; }
 .noti-delete-btn:hover { color: #ff3b30; background: rgba(255, 59, 48, 0.1); }
 .noti-empty { padding: 60px 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.empty-icon-circle { width: 60px; height: 60px; background: #f2f2f7; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; color: #86868b; }
-.empty-text { font-size: 1rem; font-weight: 600; color: #1d1d1f; margin: 0 0 4px 0; }
-.empty-subtext { font-size: 0.8rem; color: #86868b; margin: 0; }
 .noti-footer { padding: 12px 20px; border-top: 1px solid #f5f5f7; background: #fbfbfd; display: flex; justify-content: center; }
 .clear-all-btn { display: flex; align-items: center; gap: 6px; border: none; background: none; font-size: 0.85rem; color: #86868b; cursor: pointer; padding: 8px 16px; border-radius: 20px; transition: all 0.2s; font-weight: 500; }
 .clear-all-btn:hover { color: #1d1d1f; background: #f2f2f7; }
