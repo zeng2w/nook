@@ -84,3 +84,56 @@ export const getEstimatedDateText = (show) => {
   // 统一用 "预计：" 开头，方便后续卡片组件剥离
   return `预计：${formatDateCN(lastDate)}`;
 };
+
+/**
+ * 核心逻辑：基于上次更新时间和频率计算目标日期应显示的集数
+ * 兼容 UTC 时区偏差和夏/冬令时问题
+ * @param {Object} show - 剧集对象数据
+ * @param {Date} targetDate - 目标查询日期
+ * @returns {String} - 格式化后的集数文本 (例如 "Ep 12", "13-14", "完结")
+ */
+export const calculateEpisodeForDate = (show, targetDate) => {
+  if (!show.lastAirDate) return `${show.airedEpisodes}集`;
+  
+  // 1. 修复时区问题：
+  // 将 API 里的 UTC 日期强制转换为本地日历日期
+  const rawDate = new Date(show.lastAirDate);
+  const lastUpdate = new Date(
+    rawDate.getUTCFullYear(),
+    rawDate.getUTCMonth(),
+    rawDate.getUTCDate()
+  );
+  lastUpdate.setHours(12, 0, 0, 0); // 设定为中午12点，避免边界效应
+
+  const target = new Date(targetDate);
+  target.setHours(12, 0, 0, 0);
+  
+  const diffTime = target.getTime() - lastUpdate.getTime();
+  
+  // 2. 修复夏令时/冬令时问题：使用 Math.round
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+  
+  let cycleOffset = 0;
+  if (show.updateFrequency === 'daily') {
+    cycleOffset = diffDays;
+  } else if (show.updateFrequency === 'weekly') {
+    cycleOffset = Math.floor(diffDays / 7);
+    if (diffDays % 7 === 0) cycleOffset = diffDays / 7;
+  }
+  
+  const updateCount = show.updateCount || 1;
+  const endEpisode = show.airedEpisodes + (cycleOffset * updateCount);
+  let startEpisode = endEpisode - updateCount + 1;
+  
+  if (endEpisode <= 0) return '待定';
+  if (show.totalEpisodes && startEpisode > show.totalEpisodes) return '完结';
+  if (startEpisode < 1) startEpisode = 1;
+  
+  const displayEnd = show.totalEpisodes ? Math.min(endEpisode, show.totalEpisodes) : endEpisode;
+  
+  if (updateCount === 1 || startEpisode === displayEnd) {
+    return `Ep ${displayEnd}`;
+  } else {
+    return `${startEpisode}-${displayEnd}`;
+  }
+};

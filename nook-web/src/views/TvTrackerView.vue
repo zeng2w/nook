@@ -103,6 +103,8 @@
           @open-calendar="showCalendar = true"
           @edit="openEditModal"
         />
+        <UpdateCalendar :shows="shows" />
+
       </div>
 
     </div>
@@ -125,6 +127,8 @@ import ShowListItem from '@/components/TvTracker/ShowListItem.vue';
 import EditShowModal from '@/components/TvTracker/EditShowModal.vue';
 import CalendarModal from '@/components/TvTracker/CalendarModal.vue';
 import TrendingSidebar from '@/components/TvTracker/TrendingSidebar.vue';
+// ✨ 引入你刚刚封装好的 UpdateCalendar
+import UpdateCalendar from '@/components/TvTracker/UpdateCalendar.vue'; 
 import { useShowSort } from '@/composables/useShowSort';
 
 // 🎨 动态主题注入逻辑 (科技蓝紫方案)
@@ -179,12 +183,10 @@ const uniqueNetworks = computed(() => {
 
 const filteredShows = computed(() => {
   return shows.value.filter(s => {
-    // 类型、状态、平台过滤 (原本的逻辑)
     const catMatch = currentCategory.value === 'all' || s.category === currentCategory.value;
     const statusMatch = currentStatus.value === 'all' || s.status === currentStatus.value;
     const netMatch = currentNetwork.value === 'all' || s.network === currentNetwork.value;
     
-    // ✨ 新增：本地名字搜索过滤 (忽略大小写)
     const searchMatch = !searchQuery.value || 
       (s.title && s.title.toLowerCase().includes(searchQuery.value.toLowerCase())) ||
       (s.name && s.name.toLowerCase().includes(searchQuery.value.toLowerCase()));
@@ -211,16 +213,14 @@ const displayShows = computed(() => {
 
 onMounted(() => {
   fetchShows();
-  applyModernTheme(); // 挂载时注入主题
-  // ✨ 关键修复：让主布局的 :style 背景色变成我们的 SaaS 浅灰
+  applyModernTheme(); 
   updateTheme('#F9FAFB');
   const savedNotis = localStorage.getItem('tv_notifications');
   if (savedNotis) notifications.value = JSON.parse(savedNotis);
 });
 
 onUnmounted(() => {
-  removeModernTheme(); // 卸载时恢复原来颜色
-  // ✨ 关键修复：离开 TvTracker 时，恢复你原本的全局白底
+  removeModernTheme(); 
   updateTheme('#ffffff');
   Object.values(pendingDeletes).forEach(timer => clearTimeout(timer));
   Object.keys(updateTimers).forEach(showId => {
@@ -408,9 +408,9 @@ const handleFileUpload = (event) => {
   overflow: hidden; 
 }
 
-/* 🎯 关键：核心列表区锁定 68vw */
+/* 🎯 改为 flex: 1，自适应占据剩余的宽度 */
 .main-content-column {
-  width: 68vw; 
+  flex: 1; 
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -418,27 +418,40 @@ const handleFileUpload = (event) => {
   position: relative;
 }
 
-/* 🎯 关键：侧边探索区锁定 16vw */
+/* 🎯 侧边栏整体父容器 */
 .discovery-sidebar-column {
-  width: 16vw;
+  width: 16vw; 
+  min-width: 240px; /* 稍微缩小最小宽度，防止把主内容挤压过小 */
   flex-shrink: 0;
-  background-color: var(--theme-surface, #ffffff);
-  border-left: 1px solid rgba(226, 232, 240, 0.6);
+  /* 关键：取消白色背景，使用透明，让底层的浅灰色透上来，从而凸显白色的卡片 */
+  background-color: transparent; 
   z-index: 10;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 14px; /* 给外围增加呼吸空间，推开屏幕边缘 */
+  gap: 5px; /* 两个卡片之间的完美间距 */
+  overflow-y: hidden; /* 隐藏整个边栏的滚动条，让卡片内部去滚动 */
+}
+
+/* 模块分割线 */
+.sidebar-divider {
+  height: 8px;
+  background-color: var(--theme-bg, #F9FAFB);
+  border-top: 1px solid rgba(226, 232, 240, 0.6);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
 }
 
 .sticky-filter-bar {
   position: sticky;
   top: 0;
   z-index: 20;
-  /* 取消这里的 rgba 白色和毛玻璃，只保留 padding 让出呼吸空间 */
   background: transparent; 
-  padding: 16px 3vw; 
+  padding: 10px 3vw; 
   border-bottom: none;
 }
 
 .content-body { 
-  padding: 24px 3vw 60px 3vw; 
+  padding: 0px 3vw 60px 3vw; 
   flex: 1;
 }
 

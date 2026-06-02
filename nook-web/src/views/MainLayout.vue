@@ -57,7 +57,7 @@ const handleLogout = () => {
 
 /* ✨ 修复点：将固定的 class 改为专属的展开状态 class */
 .sidebar-open-width {
-  width: 16vw !important;
+  width: 14vw !important;
   flex-shrink: 0;
 }
 

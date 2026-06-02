@@ -59,6 +59,8 @@
 
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
+// ★ 引入我们刚刚提取的公共工具函数
+import { calculateEpisodeForDate } from '@/utils/dateUtils';
 
 const props = defineProps({
   visible: Boolean,
@@ -81,7 +83,8 @@ const initCalendar = () => {
 
 const scrollToToday = () => {
   nextTick(() => {
-    const todayEl = dayColumns.value.find(el => el.classList.contains('is-today'));
+    // 增加了一个安全判断 el 是否存在
+    const todayEl = dayColumns.value.find(el => el && el.classList.contains('is-today'));
     if (todayEl) {
       todayEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
     }
@@ -122,65 +125,18 @@ const isDateToday = (dateObj) => {
   return dateObj.getDate() === today.getDate() && dateObj.getMonth() === today.getMonth() && dateObj.getFullYear() === today.getFullYear();
 };
 
-// ★ 核心修复：日期计算逻辑
-const getEpisodeTextForDate = (show, targetDate) => {
-  if (!show.lastAirDate) return `${show.airedEpisodes}集`;
-  
-  // 1. 修复时区问题：
-  // 将 API 里的 UTC 日期（如 2026-02-06T00:00Z）强制转换为本地日历的 2026-02-06
-  const rawDate = new Date(show.lastAirDate);
-  const lastUpdate = new Date(
-    rawDate.getUTCFullYear(),
-    rawDate.getUTCMonth(),
-    rawDate.getUTCDate()
-  );
-  lastUpdate.setHours(12, 0, 0, 0); // 设定为中午12点，避免边界效应
-
-  const target = new Date(targetDate);
-  target.setHours(12, 0, 0, 0);
-  
-  const diffTime = target.getTime() - lastUpdate.getTime();
-  
-  // 2. 修复夏令时/冬令时问题：
-  // 使用 Math.round 而不是 Math.ceil。
-  // 因为冬令时一天可能是25小时，25/24 = 1.04，ceil 会变成 2天，导致集数算错。round 则稳定为 1天。
-  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-  
-  let cycleOffset = 0;
-  if (show.updateFrequency === 'daily') {
-    cycleOffset = diffDays;
-  } else if (show.updateFrequency === 'weekly') {
-    cycleOffset = Math.floor(diffDays / 7);
-    if (diffDays % 7 === 0) cycleOffset = diffDays / 7;
-  }
-  
-  const updateCount = show.updateCount || 1;
-  const endEpisode = show.airedEpisodes + (cycleOffset * updateCount);
-  let startEpisode = endEpisode - updateCount + 1;
-  
-  if (endEpisode <= 0) return '待定';
-  if (show.totalEpisodes && startEpisode > show.totalEpisodes) return '完结';
-  if (startEpisode < 1) startEpisode = 1;
-  
-  const displayEnd = show.totalEpisodes ? Math.min(endEpisode, show.totalEpisodes) : endEpisode;
-  
-  if (updateCount === 1 || startEpisode === displayEnd) {
-    return `Ep ${displayEnd}`;
-  } else {
-    return `${startEpisode}-${displayEnd}`;
-  }
-};
-
+// ★ 核心替换：过滤剧集，并调用抽离出的工具函数计算集数
 const getShowsForDate = (dateObj) => {
   const dayIndex = dateObj.getDay();
-  // 注意：这里比较是否完结时，也要注意时区，不过对于 "estimatedFinishDate" 一般精度要求不高，暂保持原样
   const time = dateObj.getTime(); 
   const results = [];
   
   props.shows.forEach(s => {
+    // 过滤掉弃剧、已看完、或状态明确为已完结的
     if (s.status === 'dropped' || s.status === 'watched' || s.updateFrequency === 'ended') return;
+    
+    // 如果超过了预计完结日期加上一天的缓冲，过滤掉
     if (s.estimatedFinishDate) {
-      // 给预计完结时间加一点缓冲 (一天)，防止刚好当天完结不显示
       if (time > new Date(s.estimatedFinishDate).getTime() + 86400000) return;
     }
     
@@ -189,7 +145,8 @@ const getShowsForDate = (dateObj) => {
     else if (s.updateDays && s.updateDays.includes(dayIndex)) isAirDay = true;
     
     if (isAirDay) {
-      const epText = getEpisodeTextForDate(s, dateObj);
+      // ★ 直接调用 utils 里的函数
+      const epText = calculateEpisodeForDate(s, dateObj);
       if (epText !== '待定' && epText !== '完结') {
         results.push({ show: s, episodeText: epText });
       }

@@ -62,103 +62,64 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* ✨ 彻底解绑固定宽度，让其填满父级的 16vw */
+/* ★ 与 UpdateCalendar 保持 100% 一致的卡片风格 */
 .trending-sidebar-modern {
   width: 100%; 
-  height: 100%;
-  background-color: var(--theme-surface, #ffffff);
-  padding: 24px 1.5vw; /* 使用 vw 适配宽度呼吸感 */
+  flex: 1; /* 让它占满边栏剩下的所有空间 */
+  box-sizing: border-box;
+  background: #ffffff;
+  border-radius: 20px; /* 统一圆角 */
+  padding: 20px 16px; /* 统一内边距 */
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04); /* 统一阴影 */
+  border: 1px solid rgba(226, 232, 240, 0.8);
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden; /* 防止内部溢出破坏圆角 */
 }
 
 .sidebar-header h3 {
-  font-size: 1.15rem;
-  font-weight: 800;
+  font-size: 1.05rem; /* 与日历组件对齐 */
+  font-weight: 700;
   color: #1e293b;
-  margin-bottom: 20px;
-  letter-spacing: 0.5px;
+  margin: 0 0 16px 0;
 }
 
 .tabs {
   display: flex;
   background: #f1f5f9;
-  border-radius: 12px;
+  border-radius: 10px;
   padding: 4px;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
   flex-shrink: 0;
 }
 
 .tabs button {
+  flex: 1; border: none; background: transparent; padding: 6px 0; border-radius: 8px; font-weight: 600; font-size: 0.8rem; color: #64748b; cursor: pointer; transition: all 0.3s ease;
+}
+.tabs button.active { background: #ffffff; color: #0f172a; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); }
+
+/* ★ 加入内部独立滚动 */
+.show-list {
   flex: 1;
-  border: none;
-  background: transparent;
-  padding: 8px 0;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: #64748b;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* 动态主题色：选中时文字呈现 SaaS 科技蓝紫 */
-.tabs button.active {
-  background: var(--theme-surface, #ffffff);
-  color: var(--theme-primary, #0f172a);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); 
-}
-
-.show-item { 
-  display: flex; 
-  gap: 12px; 
-  margin-bottom: 16px; 
-  align-items: center; 
-  padding: 10px;
-  border-radius: 12px;
-  background-color: var(--theme-surface, #ffffff);
-  border: 1px solid #f1f5f9; 
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02); 
-  transition: all 0.2s ease;
-  cursor: pointer;
-}
-
-.show-item:hover {
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
-  transform: translateY(-2px);
-  border-color: #e2e8f0;
-}
-
-.mini-poster { 
-  width: 44px; 
-  border-radius: 6px; 
-  object-fit: cover;
-  aspect-ratio: 2/3;
-}
-
-.show-info {
+  overflow-y: auto;
+  padding-right: 4px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  flex: 1; 
-  min-width: 0; /* 防止文字过长撑破 Flex 容器 */
 }
+.show-list::-webkit-scrollbar { width: 4px; }
+.show-list::-webkit-scrollbar-track { background: transparent; }
+.show-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+.show-list::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-.title { 
-  font-weight: 700; 
-  font-size: 0.85rem; 
-  color: #1e293b;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  line-height: 1.3;
+.show-item { 
+  display: flex; gap: 12px; margin-bottom: 12px; align-items: center; padding: 8px; border-radius: 10px; background-color: #ffffff; border: 1px solid #f1f5f9; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02); transition: all 0.2s ease; cursor: pointer;
 }
+.show-item:hover { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06); transform: translateY(-2px); border-color: #e2e8f0; }
 
+.mini-poster { width: 36px; height: 50px; border-radius: 6px; object-fit: cover; }
+.show-info { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; justify-content: center; }
+.title { font-weight: 700; font-size: 0.85rem; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .meta { font-size: 0.7rem; color: #94a3b8; font-weight: 500; }
 .rank { font-weight: 800; font-size: 1rem; color: #cbd5e1; width: 18px; text-align: center; flex-shrink: 0; }
-
-.loading-state { text-align: center; color: #94a3b8; margin-top: 40px; font-size: 0.9rem; }
+.loading-state { text-align: center; color: #94a3b8; margin-top: 40px; font-size: 0.85rem; }
 </style>
