@@ -39,6 +39,19 @@ The Vite development server proxies `/api` requests to `http://localhost:5001`.
 - `SESSION_SECRET`: at least 32 random characters in production; signs the HttpOnly session cookie.
 - `CORS_ORIGIN`: optional comma-separated allowlist for trusted same-site frontend origins. It is not needed for the default same-origin deployment.
 
+## Vercel deployment
+
+Before deploying, add `MONGO_URI`, `TMDB_API_KEY`, and `SESSION_SECRET` in the
+project's Vercel Settings → Environment Variables. `SESSION_SECRET` must contain
+at least 32 random characters and must not be committed to Git. Apply the values
+to Production (and Preview if needed), then redeploy; environment-variable
+changes do not affect an existing deployment.
+
+After deployment, open `/api/health`. A working login configuration reports
+`"database":"connected"` and `"session":"configured"`. A missing or short
+session secret now returns a diagnostic `503` response instead of crashing the
+entire Serverless Function during startup.
+
 ## Verification
 
 ```sh

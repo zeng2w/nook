@@ -8,11 +8,13 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 const HOST = process.env.HOST || '127.0.0.1';
 const tmdbRoutes = require('./routes/tmdb');
-const { requireAuth, validateSessionConfiguration } = require('./middleware/auth');
+const {
+  isSessionConfigurationValid,
+  requireAuth,
+  requireSessionConfiguration
+} = require('./middleware/auth');
 const logger = require('./utils/logger');
 const { errorHandler, notFoundHandler } = require('./middleware/error');
-
-validateSessionConfiguration();
 
 // 中间件
 const allowedOrigins = (process.env.CORS_ORIGIN || '')
@@ -90,36 +92,46 @@ const authDatabaseRequired = (req, res, next) => {
   }
   return databaseRequired(req, res, next);
 };
+
+const authSessionConfigurationRequired = (req, res, next) => {
+  // 即使生产环境配置不完整，也允许用户清除旧 Cookie。
+  if (req.path === '/logout') return next();
+  return requireSessionConfiguration(req, res, next);
+};
 // =================================================
 
 // === 路由 ===
 app.get('/api/health', async (req, res) => {
+  const sessionConfigured = isSessionConfigurationValid();
   try {
     const connection = await connectDB();
     await connection.connection.db.admin().ping();
-    res.json({
-      status: 'ok',
+    const payload = {
+      status: sessionConfigured ? 'ok' : 'degraded',
       database: 'connected',
+      session: sessionConfigured ? 'configured' : 'misconfigured',
       tmdbConfigured: Boolean(process.env.TMDB_API_KEY),
       uptimeSeconds: Math.floor(process.uptime()),
       timestamp: new Date().toISOString()
-    });
+    };
+    res.status(sessionConfigured ? 200 : 503).json(payload);
   } catch (err) {
     logger.error('health_check_failed', { error: err });
     res.status(503).json({
       status: 'degraded',
       database: 'unavailable',
+      session: sessionConfigured ? 'configured' : 'misconfigured',
       tmdbConfigured: Boolean(process.env.TMDB_API_KEY),
       timestamp: new Date().toISOString()
     });
   }
 });
 
-app.use('/api/tmdb', requireAuth, tmdbRoutes);
-app.use('/api/auth', authDatabaseRequired, require('./routes/auth'));
-app.use('/api/history', requireAuth, databaseRequired, require('./routes/history'));
-app.use('/api/shows', requireAuth, databaseRequired, require('./routes/shows'));
-app.use('/api/tvlog', requireAuth, databaseRequired, require('./routes/tvlog'));
+app.use('/api/tmdb', requireSessionConfiguration, requireAuth, tmdbRoutes);
+app.use('/api/auth', authSessionConfigurationRequired, authDatabaseRequired, require('./routes/auth'));
+app.use('/api/history', requireSessionConfiguration, requireAuth, databaseRequired, require('./routes/history'));
+app.use('/api/shows', requireSessionConfiguration, requireAuth, databaseRequired, require('./routes/shows'));
+app.use('/api/tvlog', requireSessionConfiguration, requireAuth, databaseRequired, require('./routes/tvlog'));
 app.use('/api', notFoundHandler);
 app.use(errorHandler);
 

@@ -3,8 +3,10 @@ const assert = require('node:assert/strict');
 
 const {
   createSessionToken,
+  isSessionConfigurationValid,
   issueSession,
   requireAuth,
+  requireSessionConfiguration,
   verifySessionToken
 } = require('../middleware/auth');
 
@@ -82,4 +84,37 @@ test('session cookies are HttpOnly and restricted to same-site requests', () => 
   assert.match(headers['Set-Cookie'], /^nook_session=/);
   assert.match(headers['Set-Cookie'], /HttpOnly/);
   assert.match(headers['Set-Cookie'], /SameSite=Strict/);
+});
+
+test('invalid production session configuration returns a diagnosable response', () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalSecret = process.env.SESSION_SECRET;
+  const res = {
+    statusCode: null,
+    body: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(body) {
+      this.body = body;
+      return this;
+    }
+  };
+
+  try {
+    process.env.NODE_ENV = 'production';
+    process.env.SESSION_SECRET = 'too-short';
+
+    assert.equal(isSessionConfigurationValid(), false);
+    requireSessionConfiguration({}, res, () => assert.fail('next should not be called'));
+    assert.equal(res.statusCode, 503);
+    assert.equal(res.body.code, 'SESSION_CONFIGURATION_ERROR');
+    assert.match(res.body.error, /SESSION_SECRET/);
+  } finally {
+    if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = originalNodeEnv;
+    if (originalSecret === undefined) delete process.env.SESSION_SECRET;
+    else process.env.SESSION_SECRET = originalSecret;
+  }
 });

@@ -3,15 +3,25 @@ const crypto = require('crypto');
 const COOKIE_NAME = 'nook_session';
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 const DEV_SESSION_SECRET = 'nook-development-secret-change-before-production';
+const MIN_SESSION_SECRET_LENGTH = 32;
+const SESSION_CONFIGURATION_ERROR = {
+  code: 'SESSION_CONFIGURATION_ERROR',
+  error: '服务器登录配置不完整，请在部署环境中设置至少 32 位的 SESSION_SECRET 后重新部署。'
+};
+
+const isSessionConfigurationValid = () => (
+  process.env.NODE_ENV !== 'production' ||
+  (typeof process.env.SESSION_SECRET === 'string' &&
+    process.env.SESSION_SECRET.length >= MIN_SESSION_SECRET_LENGTH)
+);
 
 const getSessionSecret = () => {
   const secret = process.env.SESSION_SECRET;
 
-  if (process.env.NODE_ENV === 'production') {
-    if (!secret || secret.length < 32) {
+  if (!isSessionConfigurationValid()) {
+    if (process.env.NODE_ENV === 'production') {
       throw new Error('SESSION_SECRET must contain at least 32 characters in production');
     }
-    return secret;
   }
 
   return secret || DEV_SESSION_SECRET;
@@ -115,6 +125,13 @@ const validateSessionConfiguration = () => {
   getSessionSecret();
 };
 
+// Serverless 函数必须先完成模块加载才能返回可诊断的响应，因此不要在模块
+// 顶层抛出配置错误。由路由中间件在请求阶段返回明确的 503。
+const requireSessionConfiguration = (req, res, next) => {
+  if (isSessionConfigurationValid()) return next();
+  return res.status(503).json(SESSION_CONFIGURATION_ERROR);
+};
+
 const requireAuth = (req, res, next) => {
   const token = getCookie(req, COOKIE_NAME);
   const session = verifySessionToken(token);
@@ -133,8 +150,10 @@ const requireAuth = (req, res, next) => {
 module.exports = {
   clearSession,
   createSessionToken,
+  isSessionConfigurationValid,
   issueSession,
   requireAuth,
+  requireSessionConfiguration,
   validateSessionConfiguration,
   verifySessionToken
 };
