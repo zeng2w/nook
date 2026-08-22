@@ -12,8 +12,7 @@ const UserSchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true,
-    lowercase: true,
-    unique: true // 保证邮箱不能重复
+    lowercase: true
   },
   password: {
     type: String,
@@ -24,5 +23,14 @@ const UserSchema = new mongoose.Schema({
     default: Date.now // 默认记录注册时间
   }
 });
+
+UserSchema.index(
+  { email: 1 },
+  {
+    name: 'email_unique_case_insensitive',
+    unique: true,
+    collation: { locale: 'en', strength: 2 }
+  }
+);
 
 module.exports = mongoose.model('User', UserSchema);

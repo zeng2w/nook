@@ -22,4 +22,6 @@ const HistorySchema = new mongoose.Schema({
   }
 });
 
+HistorySchema.index({ userId: 1, date: -1 });
+
 module.exports = mongoose.model('History', HistorySchema);

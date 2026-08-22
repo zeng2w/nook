@@ -1,12 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const axios = require('axios');
 const { getAiredEpisodeCount } = require('../utils/tmdb');
+const { sendTmdbError, tmdbGet } = require('../utils/tmdbClient');
 
-// 【重要】请将此处替换为你申请到的 TMDB API Key
-const TMDB_API_KEY = process.env.TMDB_API_KEY; 
-
-const BASE_URL = 'https://api.themoviedb.org/3';
 const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500'; // w500 代表海报宽度
 
 // 辅助函数：拼接完整的海报 URL
@@ -22,9 +18,8 @@ router.get('/search', async (req, res) => {
     if (!query) return res.status(400).json({ msg: 'Query is required' });
 
     // 使用 multi search 同时搜索 剧集(tv) 和 电影(movie)
-    const response = await axios.get(`${BASE_URL}/search/multi`, {
+    const response = await tmdbGet('/search/multi', {
       params: {
-        api_key: TMDB_API_KEY,
         language: 'zh-CN', // 优先返回中文结果
         query: query,
         include_adult: false
@@ -49,8 +44,7 @@ router.get('/search', async (req, res) => {
 
     res.json(results);
   } catch (err) {
-    console.error('TMDB Search Error:', err.message);
-    res.status(500).send('TMDB API Error');
+    return sendTmdbError(res, err, 'search');
   }
 });
 
@@ -65,9 +59,12 @@ router.get('/details/:type/:id', async (req, res) => {
     // TMDB API 只有 'tv' 和 'movie' 两个端点
     // 如果前端传的是 'anime'，我们需要把它转回 'tv' 来查询
     const queryType = type === 'anime' ? 'tv' : type;
+    if (!['tv', 'movie'].includes(queryType) || !/^\d+$/.test(id)) {
+      return res.status(400).json({ msg: 'Invalid TMDB type or id' });
+    }
 
-    const response = await axios.get(`${BASE_URL}/${queryType}/${id}`, {
-      params: { api_key: TMDB_API_KEY, language: 'zh-CN' }
+    const response = await tmdbGet(`/${queryType}/${id}`, {
+      params: { language: 'zh-CN' }
     });
 
     const data = response.data;
@@ -139,37 +136,34 @@ router.get('/details/:type/:id', async (req, res) => {
 
     res.json(details);
   } catch (err) {
-    console.error('TMDB Details Error:', err.message);
-    res.status(500).send('TMDB Details Error');
+    return sendTmdbError(res, err, 'details');
   }
 });
 
 // 3. 获取热门剧集排行榜 (Top 10)
 router.get('/trending', async (req, res) => {
   try {
-    const response = await axios.get(`${BASE_URL}/tv/popular`, {
-      params: { api_key: TMDB_API_KEY, language: 'zh-CN', page: 1 }
+    const response = await tmdbGet('/tv/popular', {
+      params: { language: 'zh-CN', page: 1 }
     });
     // 只取前 10 条数据减轻前端渲染压力
     const popularShows = response.data.results.slice(0, 10);
     res.json(popularShows);
   } catch (err) {
-    console.error('TMDB Popular Fetch Error:', err.message);
-    res.status(500).json({ error: '无法获取热门剧集' });
+    return sendTmdbError(res, err, 'trending');
   }
 });
 
 // 4. 获取最新开播剧集
 router.get('/new-releases', async (req, res) => {
   try {
-    const response = await axios.get(`${BASE_URL}/tv/on_the_air`, {
-      params: { api_key: TMDB_API_KEY, language: 'zh-CN', page: 1 }
+    const response = await tmdbGet('/tv/on_the_air', {
+      params: { language: 'zh-CN', page: 1 }
     });
     const newShows = response.data.results.slice(0, 10);
     res.json(newShows);
   } catch (err) {
-    console.error('TMDB New Releases Fetch Error:', err.message);
-    res.status(500).json({ error: '无法获取最新剧集' });
+    return sendTmdbError(res, err, 'new-releases');
   }
 });
 

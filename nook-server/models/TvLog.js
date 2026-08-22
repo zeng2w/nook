@@ -30,4 +30,6 @@ const TvLogSchema = new mongoose.Schema({
   }
 });
 
+TvLogSchema.index({ userId: 1, date: -1 });
+
 module.exports = mongoose.model('TvLog', TvLogSchema);

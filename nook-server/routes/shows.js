@@ -1,11 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const Show = require('../models/Show'); 
-const axios = require('axios');
 const { getAiredEpisodeCount } = require('../utils/tmdb');
-
-// TMDB API Key
-const TMDB_API_KEY = process.env.TMDB_API_KEY; 
+const { classifyTmdbError, sendTmdbError, tmdbGet } = require('../utils/tmdbClient');
 
 const ALLOWED_SHOW_FIELDS = [
   'title',
@@ -119,6 +116,9 @@ router.post('/sync', async (req, res) => {
     });
 
     const updateLogs = [];
+    let attemptedCount = 0;
+    let failedCount = 0;
+    let firstFailure = null;
 
     // ★ 修复：改用 for...of 串行处理，保护 TMDB API 额度
     for (const show of activeShows) {
@@ -126,10 +126,11 @@ router.post('/sync', async (req, res) => {
 
       const queryType = show.category === 'movie' ? 'movie' : 'tv';
       if (queryType === 'movie') continue; 
+      attemptedCount++;
 
       try {
-        const tmdbRes = await axios.get(`https://api.themoviedb.org/3/${queryType}/${show.tmdbId}`, {
-          params: { api_key: TMDB_API_KEY, language: 'zh-CN' }
+        const tmdbRes = await tmdbGet(`/${queryType}/${show.tmdbId}`, {
+          params: { language: 'zh-CN' }
         });
         
         const remoteData = tmdbRes.data;
@@ -177,17 +178,25 @@ router.post('/sync', async (req, res) => {
           await show.save();
         }
 
-        // ★ 每次请求后暂停 200 毫秒
-        await new Promise(resolve => setTimeout(resolve, 200));
-
       } catch (err) {
-        console.error(`[Sync] Fail: ${show.title}`, err.message);
+        failedCount++;
+        firstFailure ||= err;
+        const failure = classifyTmdbError(err);
+        console.error(`[Sync] ${failure.code} for show ${show._id}`);
+      } finally {
+        // 每次请求后暂停 200 毫秒，避免短时间内触发上游限流。
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
+    }
+
+    if (attemptedCount > 0 && failedCount === attemptedCount) {
+      return sendTmdbError(res, firstFailure, 'sync');
     }
 
     res.json({ 
       success: true, 
       updatedCount: updateLogs.length, 
+      failedCount,
       logs: updateLogs 
     });
 

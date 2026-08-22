@@ -45,4 +45,7 @@ const ShowSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
+ShowSchema.index({ userId: 1, updatedAt: -1 });
+ShowSchema.index({ userId: 1, tmdbId: 1 });
+
 module.exports = mongoose.model('Show', ShowSchema);
