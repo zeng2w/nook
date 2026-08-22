@@ -52,6 +52,8 @@
 <script setup>
 import { store } from '../store'; 
 
+defineOptions({ name: 'AppSidebar' });
+
 defineProps({
   username: { type: String, default: 'User' },
   isOpen: { type: Boolean, default: true }

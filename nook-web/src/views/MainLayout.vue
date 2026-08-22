@@ -19,6 +19,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
+import axios from 'axios';
 import Sidebar from '../components/Sidebar.vue';
 import { store, updateTheme } from '../store'; 
 
@@ -31,17 +32,26 @@ const toggleSidebar = () => { isSidebarOpen.value = !isSidebarOpen.value; };
 onMounted(() => {
   const userStr = sessionStorage.getItem('current_user');
   if (userStr) {
-    const user = JSON.parse(userStr);
-    currentUsername.value = user.username || user.email;
+    try {
+      const user = JSON.parse(userStr);
+      currentUsername.value = user.username || user.email;
+    } catch {
+      sessionStorage.removeItem('current_user');
+      router.push('/login');
+    }
   } else {
     router.push('/login');
   }
 });
 
-const handleLogout = () => {
-  sessionStorage.removeItem('current_user');
-  updateTheme('#ffffff');
-  router.push('/login');
+const handleLogout = async () => {
+  try {
+    await axios.post('/api/auth/logout');
+  } finally {
+    sessionStorage.removeItem('current_user');
+    updateTheme('#ffffff');
+    router.push('/login');
+  }
 };
 </script>
 

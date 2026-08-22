@@ -1,11 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import axios from 'axios';
 
 // 引入组件
 import Login from '../components/Login.vue';
 import Register from '../components/Register.vue';
 import SimpleCounter from '../components/SimpleCounter.vue';
 import MainLayout from '../views/MainLayout.vue'; // 布局组件
-import DashboardHome from '../views//DashboardHome.vue'; // 仪表盘组件
+import DashboardHome from '../views/DashboardHome.vue'; // 仪表盘组件
 import TvTrackerView from '../views/TvTrackerView.vue'; // 【新增】追剧记录组件
 
 const routes = [
@@ -54,15 +55,25 @@ const router = createRouter({
   routes
 });
 
-// 路由守卫：检查用户是否已登录
-router.beforeEach((to, from, next) => {
-  const isAuthenticated = sessionStorage.getItem('current_user');
-  
-  // 如果页面需要权限 (meta.requiresAuth) 且用户没登录 -> 跳回 Login
-  if (to.meta.requiresAuth && !isAuthenticated) {
-    next('/login');
-  } else {
-    next();
+let sessionVerified = false;
+
+// 路由守卫：本地状态用于快速判断，服务端会话负责最终认证
+router.beforeEach(async (to) => {
+  if (!to.meta.requiresAuth) return true;
+
+  const storedUser = sessionStorage.getItem('current_user');
+  if (!storedUser) return '/login';
+  if (sessionVerified) return true;
+
+  try {
+    JSON.parse(storedUser);
+    const res = await axios.get('/api/auth/me');
+    sessionStorage.setItem('current_user', JSON.stringify(res.data.user));
+    sessionVerified = true;
+    return true;
+  } catch {
+    sessionStorage.removeItem('current_user');
+    return '/login';
   }
 });
 

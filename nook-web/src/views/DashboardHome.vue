@@ -108,7 +108,7 @@ const getCurrentUserId = () => {
   try {
     const userStr = sessionStorage.getItem('current_user'); 
     return userStr ? JSON.parse(userStr).id : null; 
-  } catch(e) {
+  } catch {
     return null;
   }
 };
@@ -117,7 +117,7 @@ const fetchHistory = async () => {
   const userId = getCurrentUserId();
   if (!userId) return;
   try {
-    const res = await fetchTvLogApi(userId); 
+    const res = await fetchTvLogApi();
     const map = {};
     if (Array.isArray(res.data)) {
       res.data.forEach(item => {
@@ -136,7 +136,7 @@ const fetchShows = async () => {
   const userId = getCurrentUserId();
   if (!userId) return;
   try {
-    const res = await fetchShowsApi(userId); 
+    const res = await fetchShowsApi();
     shows.value = res.data;
   } catch (err) {
     console.error("❌ 获取剧集数据失败:", err);

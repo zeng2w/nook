@@ -16,7 +16,7 @@
 
       <div class="form-group">
         <label>Password</label>
-        <input type="password" v-model="form.password" placeholder="Enter password (min 6 chars)" class="auth-input" />
+        <input type="password" v-model="form.password" placeholder="Enter password (min 8 chars)" class="auth-input" />
       </div>
 
       <div class="form-group">
@@ -60,6 +60,8 @@ import { reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 
+defineOptions({ name: 'RegisterPage' });
+
 const router = useRouter();
 const isLoading = ref(false); // 加载状态防止重复提交
 
@@ -95,8 +97,8 @@ const handleRegister = async () => {
     showToast("Please fill in all fields", "error");
     return;
   }
-  if (form.password.length < 6) {
-    showToast("Password must be at least 6 characters", "error");
+  if (form.password.length < 8) {
+    showToast("Password must be at least 8 characters", "error");
     return;
   }
   if (form.password !== form.confirmPassword) {
@@ -116,9 +118,7 @@ const handleRegister = async () => {
 
     // 3. 注册成功逻辑 (自动登录)
     const userData = res.data.user; // 获取后端返回的用户信息
-    console.log("Registered & Logged in:", userData);
-    
-    // 存入 Session (这就代表登录成功了)
+    // 用户信息只用于界面展示；认证凭证由 HttpOnly Cookie 保存
     sessionStorage.setItem('current_user', JSON.stringify(userData));
 
     showToast(`Welcome, ${userData.username}!`, "success");

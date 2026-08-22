@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
+const { getAiredEpisodeCount } = require('../utils/tmdb');
 
 // 【重要】请将此处替换为你申请到的 TMDB API Key
 const TMDB_API_KEY = process.env.TMDB_API_KEY; 
@@ -77,7 +78,7 @@ router.get('/details/:type/:id', async (req, res) => {
 
     // 如果有“最后一集”信息 (通常用于连载中的剧集)
     if (data.last_episode_to_air) {
-      currentAired = data.last_episode_to_air.episode_number; // 当前已播出到第几集
+      currentAired = getAiredEpisodeCount(data);
       lastAirDate = data.last_episode_to_air.air_date;        // 这一集的播出时间
     } else {
       // 如果是电影，或者数据缺失的老剧

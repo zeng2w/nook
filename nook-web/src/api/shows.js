@@ -2,8 +2,8 @@
 import axios from 'axios';
 
 // 1. 获取剧集列表
-export const fetchShowsApi = (userId) => {
-  return axios.get(`/api/shows?userId=${userId}&t=${new Date().getTime()}`);
+export const fetchShowsApi = () => {
+  return axios.get('/api/shows', { params: { t: Date.now() } });
 };
 
 // 2. 添加新剧集
@@ -22,13 +22,13 @@ export const deleteShowApi = (id) => {
 };
 
 // 5. 同步数据
-export const syncShowsApi = (userId) => {
-  return axios.post('/api/shows/sync', { userId });
+export const syncShowsApi = () => {
+  return axios.post('/api/shows/sync');
 };
 
 // 6. 导入数据
-export const importShowsApi = (userId, shows) => {
-  return axios.post('/api/shows/import', { userId, shows });
+export const importShowsApi = (shows) => {
+  return axios.post('/api/shows/import', { shows });
 };
 
 // 7. 记录观看历史 (TvLog 热力图使用)
@@ -37,6 +37,6 @@ export const addTvLogApi = (data) => {
 };
 
 // 8. 获取观看历史 (用于 Dashboard 热力图)
-export const fetchTvLogApi = (userId) => {
-  return axios.get(`/api/tvlog?userId=${userId}`);
+export const fetchTvLogApi = () => {
+  return axios.get('/api/tvlog');
 };

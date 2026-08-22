@@ -2,19 +2,46 @@ const express = require('express');
 const router = express.Router();
 const Show = require('../models/Show'); 
 const axios = require('axios');
+const { getAiredEpisodeCount } = require('../utils/tmdb');
 
 // TMDB API Key
 const TMDB_API_KEY = process.env.TMDB_API_KEY; 
+
+const ALLOWED_SHOW_FIELDS = [
+  'title',
+  'category',
+  'status',
+  'totalEpisodes',
+  'airedEpisodes',
+  'watchedEpisodes',
+  'posterUrl',
+  'tmdbId',
+  'updateFrequency',
+  'updateDays',
+  'updateCount',
+  'lastAirDate',
+  'estimatedFinishDate',
+  'network',
+  'networkLogo',
+  'isFavorite'
+];
+
+const pickShowFields = (source) => {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+
+  return Object.fromEntries(
+    ALLOWED_SHOW_FIELDS
+      .filter(field => Object.prototype.hasOwnProperty.call(source, field))
+      .map(field => [field, source[field]])
+  );
+};
 
 // ==========================================
 // 1. 获取剧集列表
 // ==========================================
 router.get('/', async (req, res) => {
-  const { userId } = req.query;
-  if (!userId) return res.status(400).json({ msg: 'UserId is required' });
-
   try {
-    const shows = await Show.find({ userId }).sort({ updatedAt: -1 });
+    const shows = await Show.find({ userId: req.user.id }).sort({ updatedAt: -1 });
     res.json(shows);
   } catch (err) {
     console.error(err);
@@ -27,28 +54,17 @@ router.get('/', async (req, res) => {
 // ==========================================
 router.post('/', async (req, res) => {
   try {
-    const { 
-      userId, title, category, status, 
-      totalEpisodes, airedEpisodes, watchedEpisodes,
-      posterUrl, tmdbId, updateFrequency, 
-      updateDays, updateCount, lastAirDate,
-      network, networkLogo 
-    } = req.body;
+    const showData = pickShowFields(req.body);
+    const { tmdbId } = showData;
 
     if (tmdbId) {
-      const existingShow = await Show.findOne({ userId, tmdbId });
+      const existingShow = await Show.findOne({ userId: req.user.id, tmdbId });
       if (existingShow) {
         return res.status(400).json({ error: `剧集《${existingShow.title}》已存在，请勿重复添加。` });
       }
     }
 
-    const newShow = new Show({
-      userId, title, category, status,
-      totalEpisodes, airedEpisodes, watchedEpisodes,
-      posterUrl, tmdbId, updateFrequency,
-      updateDays, updateCount, lastAirDate,
-      network, networkLogo
-    });
+    const newShow = new Show({ userId: req.user.id, ...showData });
 
     const show = await newShow.save();
     res.json(show);
@@ -63,12 +79,13 @@ router.post('/', async (req, res) => {
 // ==========================================
 router.put('/:id', async (req, res) => {
   try {
-    const updateData = { ...req.body, updatedAt: Date.now() };
-    const show = await Show.findByIdAndUpdate(
-      req.params.id,
+    const updateData = { ...pickShowFields(req.body), updatedAt: Date.now() };
+    const show = await Show.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user.id },
       { $set: updateData },
-      { new: true }
+      { new: true, runValidators: true }
     );
+    if (!show) return res.status(404).json({ msg: 'Show not found' });
     res.json(show);
   } catch (err) {
     console.error(err);
@@ -81,7 +98,8 @@ router.put('/:id', async (req, res) => {
 // ==========================================
 router.delete('/:id', async (req, res) => {
   try {
-    await Show.findByIdAndDelete(req.params.id);
+    const show = await Show.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+    if (!show) return res.status(404).json({ msg: 'Show not found' });
     res.json({ msg: 'Show removed' });
   } catch (err) {
     console.error(err);
@@ -93,12 +111,9 @@ router.delete('/:id', async (req, res) => {
 // 5. 🔄 手动同步接口 (修复：串行执行 + 延时控制防封 IP)
 // ==========================================
 router.post('/sync', async (req, res) => {
-  const { userId } = req.body;
-  if (!userId) return res.status(400).json({ error: 'UserId required' });
-
   try {
     const activeShows = await Show.find({
-      userId,
+      userId: req.user.id,
       status: { $ne: 'dropped' },
       updateFrequency: { $ne: 'ended' }
     });
@@ -121,7 +136,7 @@ router.post('/sync', async (req, res) => {
         let needsSave = false;
         
         if (remoteData.last_episode_to_air) {
-          const newEpisodeCount = remoteData.last_episode_to_air.episode_number;
+          const newEpisodeCount = getAiredEpisodeCount(remoteData);
           const newAirDate = remoteData.last_episode_to_air.air_date;
           
           if (newEpisodeCount > show.airedEpisodes) {
@@ -184,11 +199,8 @@ router.post('/sync', async (req, res) => {
 
 // GET /api/shows/export
 router.get('/export', async (req, res) => {
-  const { userId } = req.query;
-  if (!userId) return res.status(400).json({ error: 'UserId required' });
-
   try {
-    const shows = await Show.find({ userId });
+    const shows = await Show.find({ userId: req.user.id });
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', `attachment; filename=tv_shows_backup_${Date.now()}.json`);
     res.send(JSON.stringify(shows, null, 2));
@@ -201,30 +213,38 @@ router.get('/export', async (req, res) => {
 // 6. 📥 数据导入接口 (批量化 & 事务优化)
 // ==========================================
 router.post('/import', async (req, res) => {
-  const { userId, shows } = req.body;
-  if (!userId) return res.status(400).json({ error: 'UserId required' });
+  const { shows } = req.body || {};
   if (!Array.isArray(shows)) return res.status(400).json({ error: 'Invalid data format' });
+  if (shows.length > 1000) return res.status(400).json({ error: 'A maximum of 1000 shows can be imported at once' });
 
   let skipCount = 0;
   const validShowsToInsert = [];
+  const seenKeys = new Set();
 
   try {
     for (const item of shows) {
-      delete item._id;
-      delete item.__v;
-      item.userId = userId;
+      const showData = pickShowFields(item);
+      const duplicateKey = showData.tmdbId
+        ? `tmdb:${showData.tmdbId}`
+        : `title:${String(showData.title || '').trim().toLowerCase()}`;
+
+      if (seenKeys.has(duplicateKey)) {
+        skipCount++;
+        continue;
+      }
+      seenKeys.add(duplicateKey);
 
       let exists = null;
-      if (item.tmdbId) {
-        exists = await Show.findOne({ userId, tmdbId: item.tmdbId });
+      if (showData.tmdbId) {
+        exists = await Show.findOne({ userId: req.user.id, tmdbId: showData.tmdbId });
       } else {
-        exists = await Show.findOne({ userId, title: item.title });
+        exists = await Show.findOne({ userId: req.user.id, title: showData.title });
       }
 
       if (exists) {
         skipCount++;
       } else {
-        validShowsToInsert.push(item);
+        validShowsToInsert.push({ userId: req.user.id, ...showData });
       }
     }
 

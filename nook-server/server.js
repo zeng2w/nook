@@ -6,50 +6,79 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 5001;
 const tmdbRoutes = require('./routes/tmdb');
+const { requireAuth, validateSessionConfiguration } = require('./middleware/auth');
+
+validateSessionConfiguration();
 
 // 中间件
-app.use(cors({
-  origin: '*', // 允许所有域名访问 (最简单，适合个人项目)
-  credentials: true
-}));
-app.use(express.json());
+const allowedOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+if (allowedOrigins.length > 0) {
+  app.use(cors({
+    origin(origin, callback) {
+      callback(null, !origin || allowedOrigins.includes(origin));
+    },
+    credentials: true
+  }));
+}
+
+app.use(express.json({ limit: '1mb' }));
 
 // === 核心修改：Serverless 环境下的数据库连接逻辑 ===
 const uri = process.env.MONGO_URI;
 
-// 用一个变量来记录数据库连接状态 (0: disconnected, 1: connected, 2: connecting, 3: disconnecting)
-let isConnected = 0;
+let connectPromise = null;
 
 const connectDB = async () => {
-  // 如果已经连接上，就直接返回，不再重复连接
-  if (isConnected === 1) {
-    return;
+  if (!uri) throw new Error('MONGO_URI is not configured');
+  if (mongoose.connection.readyState === 1) return mongoose.connection;
+
+  if (!connectPromise) {
+    connectPromise = mongoose.connect(uri, { serverSelectionTimeoutMS: 8000 })
+      .then(connection => {
+        console.log('✅ MongoDB database connection established successfully');
+        return connection;
+      })
+      .catch(err => {
+        connectPromise = null;
+        throw err;
+      });
   }
-  
-  // 如果没有连接，则发起连接
+
+  return connectPromise;
+};
+
+const databaseRequired = async (req, res, next) => {
   try {
-    const db = await mongoose.connect(uri);
-    isConnected = db.connections[0].readyState; // 更新状态为已连接
-    console.log("✅ MongoDB database connection established successfully");
+    await connectDB();
+    next();
   } catch (err) {
-    console.error("❌ MongoDB connection error:", err);
+    console.error('❌ MongoDB connection error:', err.message);
+    res.status(503).json({
+      code: 'DATABASE_UNAVAILABLE',
+      msg: 'Database is unavailable. Check the server database connection and try again.'
+    });
   }
 };
 
-// 增加一个全局中间件：确保任何请求进来之前，数据库都是连接状态
-app.use(async (req, res, next) => {
-  await connectDB();
-  next();
-});
+const authDatabaseRequired = (req, res, next) => {
+  if (req.path === '/logout') return next();
+  if (req.path === '/me') {
+    return requireAuth(req, res, () => databaseRequired(req, res, next));
+  }
+  return databaseRequired(req, res, next);
+};
 // =================================================
 
 // === 路由 ===
-// 凡是访问 /api/auth/... 的请求，都交给 routes/auth.js 处理
-app.use('/api/auth', require('./routes/auth')); 
-app.use('/api/history', require('./routes/history'));
-app.use('/api/shows', require('./routes/shows'));
-app.use('/api/tmdb', tmdbRoutes);
-app.use('/api/tvlog', require('./routes/tvlog'));
+app.use('/api/tmdb', requireAuth, tmdbRoutes);
+app.use('/api/auth', authDatabaseRequired, require('./routes/auth'));
+app.use('/api/history', requireAuth, databaseRequired, require('./routes/history'));
+app.use('/api/shows', requireAuth, databaseRequired, require('./routes/shows'));
+app.use('/api/tvlog', requireAuth, databaseRequired, require('./routes/tvlog'));
 
 // 只有在本地开发时才启动监听
 if (process.env.NODE_ENV !== 'production') {
