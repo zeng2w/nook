@@ -3,7 +3,7 @@ const router = express.Router();
 const { getAiredEpisodeCount } = require('../utils/tmdb');
 const { getCacheTtl, sendTmdbError, tmdbGet } = require('../utils/tmdbClient');
 
-const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500'; // w500 代表海报宽度
+const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w342';
 
 // 辅助函数：拼接完整的海报 URL
 const getPosterUrl = (path) => path ? `${IMAGE_BASE_URL}${path}` : '';

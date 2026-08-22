@@ -55,6 +55,7 @@
 import { ref, reactive } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
+import { getApiErrorMessage } from '@/api/errors';
 
 defineOptions({ name: 'LoginPage' });
 
@@ -110,11 +111,7 @@ const handleLogin = async () => {
 
   } catch (err) {
     console.error(err);
-    if (err.response && err.response.data && err.response.data.msg) {
-      showToast(err.response.data.msg, "error"); // 显示后端返回的具体错误
-    } else {
-      showToast("Login failed. Check your network.", "error");
-    }
+    showToast(getApiErrorMessage(err, 'Login failed. Please try again.'), "error");
   } finally {
     isLoading.value = false;
   }

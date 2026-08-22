@@ -2,9 +2,11 @@
 import axios from 'axios';
 
 // 1. 获取剧集列表
-export const fetchShowsApi = () => {
-  return axios.get('/api/shows', { params: { t: Date.now() } });
+export const fetchShowsApi = ({ page = 1, limit = 24 } = {}) => {
+  return axios.get('/api/shows', { params: { page, limit } });
 };
+
+export const fetchShowStatsApi = () => axios.get('/api/shows/stats');
 
 // 2. 添加新剧集
 export const addShowApi = (data) => {
@@ -37,6 +39,8 @@ export const addTvLogApi = (data) => {
 };
 
 // 8. 获取观看历史 (用于 Dashboard 热力图)
-export const fetchTvLogApi = () => {
-  return axios.get('/api/tvlog');
+export const fetchTvLogApi = ({ page = 1, limit = 100 } = {}) => {
+  return axios.get('/api/tvlog', { params: { page, limit } });
 };
+
+export const fetchTvActivityApi = () => axios.get('/api/tvlog/activity');

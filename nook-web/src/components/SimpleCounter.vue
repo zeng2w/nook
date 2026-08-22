@@ -140,7 +140,11 @@
             </div>
 
             <div class="history-list">
-              <div v-if="history.length === 0" class="empty-history">No records yet.</div>
+              <div v-if="historyError" class="empty-history history-error">
+                {{ historyError }}
+                <button class="history-retry-btn" @click="fetchHistory(true)">Retry</button>
+              </div>
+              <div v-else-if="history.length === 0" class="empty-history">No records yet.</div>
               <div v-for="item in history" :key="item._id" class="history-item">
                 <div class="checkbox-wrapper" @click="toggleSelection(item._id)">
                   <div class="custom-checkbox" :class="{ checked: selectedIds.has(item._id) }">
@@ -170,6 +174,14 @@
                   </div>
                 </div>
               </div>
+              <button
+                v-if="historyPagination.hasMore"
+                class="history-load-more"
+                :disabled="isHistoryLoading"
+                @click="fetchHistory(false)"
+              >
+                {{ isHistoryLoading ? 'Loading...' : `Load more (${history.length}/${historyPagination.total})` }}
+              </button>
             </div>
 
             <Transition name="slide-up">
@@ -245,6 +257,7 @@
 import { ref, reactive, computed, onMounted, watch, onBeforeUnmount } from 'vue';
 import axios from 'axios';
 import { updateTheme } from '../store'; 
+import { getApiErrorMessage } from '@/api/errors';
 
 const showModal = ref(false);
 const showResetModal = ref(false);
@@ -272,6 +285,9 @@ const defaultSettings = {
 
 const settings = reactive({ ...defaultSettings });
 const history = ref([]);
+const historyError = ref('');
+const isHistoryLoading = ref(false);
+const historyPagination = reactive({ page: 0, limit: 50, total: 0, hasMore: false });
 const currentUser = ref(null);
 
 // 保留常用的预设颜色（去除了几个相近的颜色，腾出一个格子给取色器）
@@ -372,11 +388,14 @@ const getCurrentUser = () => {
   return null;
 };
 
-const fetchHistory = async () => {
+const fetchHistory = async (reset = true) => {
   if (!currentUser.value) return;
+  historyError.value = '';
+  isHistoryLoading.value = true;
   try {
-    const res = await axios.get('/api/history');
-    history.value = res.data.map(item => ({
+    const page = reset ? 1 : historyPagination.page + 1;
+    const res = await axios.get('/api/history', { params: { page, limit: historyPagination.limit } });
+    const mapped = res.data.items.map(item => ({
       _id: item._id,
       createdAt: item.date, 
       data: {
@@ -384,8 +403,19 @@ const fetchHistory = async () => {
         duration: item.duration
       }
     }));
+    if (reset) {
+      history.value = mapped;
+    } else {
+      const merged = new Map(history.value.map(item => [item._id, item]));
+      mapped.forEach(item => merged.set(item._id, item));
+      history.value = Array.from(merged.values());
+    }
+    Object.assign(historyPagination, res.data.pagination);
   } catch (err) {
     console.error("Failed to fetch history:", err);
+    historyError.value = getApiErrorMessage(err, 'Failed to load history');
+  } finally {
+    isHistoryLoading.value = false;
   }
 };
 
@@ -422,6 +452,7 @@ const confirmSaveAndReset = async () => {
       }
     };
     history.value.unshift(newRecord);
+    historyPagination.total += 1;
 
     settings.count = 0;
     resetInputs.hr = ''; resetInputs.min = ''; resetInputs.sec = '';
@@ -445,7 +476,7 @@ const openHistory = () => {
   selectedIds.value.clear(); 
   showUndoToast.value = false; 
   undoItem.value = null;
-  fetchHistory(); 
+  fetchHistory(true);
 };
 
 const closeHistory = () => {
@@ -464,6 +495,7 @@ const handleClear = async () => {
   }
 
   let idsToDelete = [];
+  let deleteAll = false;
   if (selectedIds.value.size > 0) {
     if (confirm(`Delete ${selectedIds.value.size} selected records?`)) {
       idsToDelete = Array.from(selectedIds.value);
@@ -471,16 +503,22 @@ const handleClear = async () => {
   } else {
     if (history.value.length === 0) return;
     if (confirm("Delete ALL history records? This cannot be undone.")) {
-      idsToDelete = history.value.map(item => item._id);
+      deleteAll = true;
     }
   }
 
-  if (idsToDelete.length === 0) return;
+  if (!deleteAll && idsToDelete.length === 0) return;
 
   try {
-    await axios.post('/api/history/batch-delete', { ids: idsToDelete });
+    await axios.post('/api/history/batch-delete', deleteAll ? { all: true } : { ids: idsToDelete });
+    if (deleteAll) {
+      history.value = [];
+      Object.assign(historyPagination, { page: 0, total: 0, hasMore: false });
+      return;
+    }
     const idsSet = new Set(idsToDelete);
     history.value = history.value.filter(item => !idsSet.has(item._id));
+    historyPagination.total = Math.max(0, historyPagination.total - idsToDelete.length);
     selectedIds.value.clear();
   } catch (e) {
     console.error("Batch delete failed:", e);
@@ -522,6 +560,7 @@ const saveHistoryForm = async () => {
         data: { count: res.data.count, duration: res.data.duration }
       };
       history.value.unshift(newRecord);
+      historyPagination.total += 1;
       history.value.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     } else {
       const res = await axios.put(`/api/history/${editingId.value}`, {
@@ -586,6 +625,7 @@ const deleteHistory = (id) => {
     selectedIds.value.delete(id);
   }
   history.value.splice(index, 1);
+  historyPagination.total = Math.max(0, historyPagination.total - 1);
   showUndoToast.value = true;
   
   resumeUndoTimer();
@@ -595,6 +635,7 @@ const handleUndo = () => {
   if (!undoItem.value) return;
 
   history.value.unshift(undoItem.value);
+  historyPagination.total += 1;
   history.value.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   if (undoItem.value._wasSelected) {
@@ -684,7 +725,7 @@ onMounted(() => {
   }
 
   updateTheme(settings.bgColor);
-  fetchHistory();
+  fetchHistory(true);
 });
 
 // v-model 会实时更新 settings.bgColor，watch 监听到后全局同步
@@ -929,6 +970,10 @@ input:checked + .slider:before { transform: translateX(24px); }
 
 .history-list { overflow-y: auto; flex: 1; padding-right: 2px; max-height: 400px; padding-bottom: 80px; min-height: 0; }
 .empty-history { text-align: center; opacity: 0.5; padding: 20px; }
+.history-error { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.history-retry-btn, .history-load-more { border: 1px solid currentColor; border-radius: 8px; padding: 7px 14px; background: transparent; color: inherit; cursor: pointer; }
+.history-load-more { display: block; margin: 16px auto 0; }
+.history-load-more:disabled { opacity: 0.5; cursor: wait; }
 .history-item { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
 .checkbox-wrapper { cursor: pointer; padding: 5px; }
 .custom-checkbox { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.5); border-radius: 4px; display: flex; align-items: center; justify-content: center; }

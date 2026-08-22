@@ -70,7 +70,7 @@
               <div class="noti-list" v-if="notifications.length > 0">
                 <div v-for="(item, index) in notifications" :key="item.uniqueId" class="noti-item">
                   <div class="noti-poster-box">
-                    <img v-if="item.posterUrl" :src="item.posterUrl" class="noti-img" loading="lazy" />
+                    <img v-if="item.posterUrl" :src="item.posterUrl" :alt="item.title" class="noti-img" loading="lazy" decoding="async" />
                     <div v-else class="noti-img-placeholder">{{ item.title.charAt(0) }}</div>
                   </div>
                   <div class="noti-info">

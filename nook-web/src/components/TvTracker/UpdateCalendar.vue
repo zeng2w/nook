@@ -26,7 +26,7 @@
       <div v-if="showsList.length === 0" class="empty-state">今天暂无剧集更新</div>
       
       <div v-else v-for="show in showsList" :key="show._id" class="show-item">
-        <img :src="show.posterUrl || show.poster_path" :alt="show.title || show.name" class="show-cover" />
+        <img :src="show.posterUrl || show.poster_path" :alt="show.title || show.name" class="show-cover" loading="lazy" decoding="async" />
         
         <div class="show-info">
           <h4 class="show-title">{{ show.title || show.name }}</h4>
@@ -34,7 +34,7 @@
         </div>
         
         <div class="platform-info" v-if="show.network">
-          <img v-if="show.networkLogo" :src="show.networkLogo" class="platform-logo-img" />
+          <img v-if="show.networkLogo" :src="show.networkLogo" class="platform-logo-img" alt="Network" loading="lazy" decoding="async" />
           
           <span v-else class="platform-icon-fallback" :class="getNetworkClass(show.network)">
             {{ show.network.charAt(0).toUpperCase() }}

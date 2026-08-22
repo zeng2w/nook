@@ -13,7 +13,7 @@
         :is-visible="isHeaderVisible"
         :notifications="notifications"
         :has-new="hasNewNotis"
-        :total-count="shows.length"
+        :total-count="showPagination.total"
         :is-syncing="isSyncing"
         v-model:searchQuery="searchQuery"  @add="openAddModal"
         @sync="syncData"
@@ -48,6 +48,13 @@
           <div v-if="isLoading" class="loading-state">
             <div class="spinner"></div>
             <p>数据加载中...</p>
+          </div>
+
+          <div v-else-if="loadError && shows.length === 0" class="empty-state error-state">
+            <div class="empty-icon">⚠️</div>
+            <h3>剧集加载失败</h3>
+            <p>{{ loadError }}</p>
+            <button class="add-action-btn" @click="fetchShows(true)">重新加载</button>
           </div>
 
           <div v-else-if="displayShows.length === 0" class="empty-state">
@@ -93,6 +100,12 @@
                 @toggle-favorite="toggleFavorite"
               />
             </div>
+
+            <div v-if="showPagination.hasMore" class="load-more-row">
+              <button class="load-more-btn" :disabled="isLoadingMore" @click="fetchShows(false)">
+                {{ isLoadingMore ? '加载中...' : `加载更多（已加载 ${shows.length}/${showPagination.total}）` }}
+              </button>
+            </div>
           </template>
         </div>
       </div>
@@ -119,6 +132,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { updateTheme } from '../store';
 import { fetchShowsApi, addShowApi, updateShowApi, deleteShowApi, syncShowsApi, importShowsApi, addTvLogApi } from '@/api/shows';
+import { getApiErrorMessage } from '@/api/errors';
 
 import TvHeader from '@/components/TvTracker/TvHeader.vue';
 import FilterBar from '@/components/TvTracker/FilterBar.vue';
@@ -160,8 +174,11 @@ const showModal = ref(false);
 const showCalendar = ref(false);
 const isSyncing = ref(false);
 const isLoading = ref(false); 
+const isLoadingMore = ref(false);
+const loadError = ref('');
 
 const shows = ref([]);
+const showPagination = reactive({ page: 0, limit: 24, total: 0, totalPages: 0, hasMore: false });
 const editingShow = ref(null);
 const pendingDeletes = reactive({});
 const updateTimers = {};
@@ -252,15 +269,33 @@ watch(notifications, (newVal) => {
 }, { deep: true });
 const showToast = (msg, type = 'success') => { toast.message = msg; toast.type = type; toast.visible = true; setTimeout(() => { toast.visible = false; }, 3000); };
 
-const fetchShows = async () => {
+const fetchShows = async (reset = true) => {
   const userId = getCurrentUserId();
   if (!userId) return;
-  isLoading.value = true;
+  if (reset) isLoading.value = true;
+  else isLoadingMore.value = true;
+  loadError.value = '';
   try {
-    const res = await fetchShowsApi();
-    shows.value = res.data;
-  } catch (err) { console.error(err); } 
-  finally { setTimeout(() => { isLoading.value = false; }, 300); }
+    const page = reset ? 1 : showPagination.page + 1;
+    const res = await fetchShowsApi({ page, limit: showPagination.limit });
+    const incoming = res.data.items || [];
+    if (reset) {
+      shows.value = incoming;
+    } else {
+      const merged = new Map(shows.value.map(show => [show._id, show]));
+      incoming.forEach(show => merged.set(show._id, show));
+      shows.value = Array.from(merged.values());
+    }
+    Object.assign(showPagination, res.data.pagination);
+  } catch (err) {
+    console.error(err);
+    const message = getApiErrorMessage(err, '剧集列表加载失败');
+    loadError.value = message;
+    if (!reset) showToast(message, 'error');
+  } finally {
+    isLoading.value = false;
+    isLoadingMore.value = false;
+  }
 };
 
 const calcStatus = (watched, aired, total) => { 
@@ -284,19 +319,21 @@ const saveShow = async (formData) => {
       const initialStatus = calcStatus(formData.watchedEpisodes, formData.airedEpisodes, formData.totalEpisodes);
       res = await addShowApi({ ...formData, status: initialStatus });
       shows.value.unshift(res.data);
+      showPagination.total += 1;
       showToast("添加成功", "success");
     }
     showModal.value = false;
   } catch (err) {
     console.error(err);
-    showToast("保存失败", "error");
+    showToast(getApiErrorMessage(err, '保存失败'), "error");
   }
 };
 
 const updateProgress = (show, delta) => {
   if (show.status === 'dropped') return;
-  const newVal = Math.max(0, show.watchedEpisodes + delta);
-  if (newVal === show.watchedEpisodes && delta < 0) return; 
+  const maximum = show.totalEpisodes > 0 ? show.totalEpisodes : Number.POSITIVE_INFINITY;
+  const newVal = Math.min(maximum, Math.max(0, show.watchedEpisodes + delta));
+  if (newVal === show.watchedEpisodes) return;
   show.watchedEpisodes = newVal;
   const newStatus = calcStatus(newVal, show.airedEpisodes, show.totalEpisodes);
   if (newStatus !== show.status) show.status = newStatus;
@@ -314,7 +351,7 @@ const updateProgress = (show, delta) => {
       console.error(e);
       show.watchedEpisodes = Math.max(0, show.watchedEpisodes - finalDelta);
       show.status = calcStatus(show.watchedEpisodes, show.airedEpisodes, show.totalEpisodes);
-      showToast("更新进度失败，已回滚", "error");
+      showToast(`${getApiErrorMessage(e, '更新进度失败')}，已回滚`, "error");
     }
   }, 500); 
 };
@@ -329,7 +366,7 @@ const toggleFavorite = async (show) => {
   } catch (err) {
     console.error("更新喜爱状态失败:", err);
     show.isFavorite = originalState; 
-    showToast("状态更新失败，请重试", "error");
+    showToast(getApiErrorMessage(err, '状态更新失败，请重试'), "error");
   }
 };
 
@@ -343,7 +380,7 @@ const dropShow = async (show) => {
   } catch (err) {
     console.error(err);
     show.status = originalStatus;
-    showToast('状态更新失败，已回滚', 'error');
+    showToast(`${getApiErrorMessage(err, '状态更新失败')}，已回滚`, 'error');
   }
 };
 const restoreShow = async (show) => {
@@ -355,7 +392,7 @@ const restoreShow = async (show) => {
   } catch (err) {
     console.error(err);
     show.status = originalStatus;
-    showToast('状态更新失败，已回滚', 'error');
+    showToast(`${getApiErrorMessage(err, '状态更新失败')}，已回滚`, 'error');
   }
 };
 const requestHardDelete = (id) => { pendingDeletes[id] = setTimeout(() => confirmDelete(id), 3000); };
@@ -366,7 +403,15 @@ const confirmDelete = async (id) => {
   if (pendingDeletes[id]) { clearTimeout(pendingDeletes[id]); delete pendingDeletes[id]; }
   const backup = shows.value.find(s => s._id === id);
   shows.value = shows.value.filter(s => s._id !== id);
-  try { await deleteShowApi(id); showToast("删除成功", "success"); } catch (err) { console.error(err); if(backup) shows.value.push(backup); showToast("删除失败", "error"); }
+  try {
+    await deleteShowApi(id);
+    showPagination.total = Math.max(0, showPagination.total - 1);
+    showToast("删除成功", "success");
+  } catch (err) {
+    console.error(err);
+    if (backup) shows.value.push(backup);
+    showToast(getApiErrorMessage(err, '删除失败'), "error");
+  }
 };
 
 const clearNotifications = () => { notifications.value = []; };
@@ -379,7 +424,7 @@ const syncData = async () => {
   showToast("正在同步...", "success");
   try {
     const res = await syncShowsApi();
-    await fetchShows();
+    await fetchShows(true);
     if (res.data.updatedCount > 0) {
       if (res.data.logs?.length) {
         const existingSignatures = new Set(notifications.value.map(n => `${n.title}|${n.newEp}|${n.updateDate}`));
@@ -388,9 +433,12 @@ const syncData = async () => {
           .map(log => ({ ...log, updateDate: log.date, uniqueId: Date.now() + Math.random() }));
         if (uniqueNewItems.length) { notifications.value = [...uniqueNewItems, ...notifications.value]; hasNewNotis.value = true; }
       }
-      showToast(`同步完成！更新 ${res.data.updatedCount} 部`, "success");
+      const failedSuffix = res.data.failedCount > 0 ? `，${res.data.failedCount} 部获取失败` : '';
+      showToast(`同步完成！更新 ${res.data.updatedCount} 部${failedSuffix}`, res.data.failedCount > 0 ? "error" : "success");
+    } else if (res.data.failedCount > 0) {
+      showToast(`同步完成，但有 ${res.data.failedCount} 部获取失败`, "error");
     } else { showToast('暂无新内容', "success"); }
-  } catch (err) { console.error(err); showToast('同步失败', "error"); } finally { isSyncing.value = false; }
+  } catch (err) { console.error(err); showToast(getApiErrorMessage(err, '同步失败'), "error"); } finally { isSyncing.value = false; }
 };
 
 const triggerImport = () => { fileInput.value.click(); };
@@ -403,10 +451,10 @@ const handleFileUpload = (event) => {
       const parsedData = JSON.parse(e.target.result);
       if (!Array.isArray(parsedData)) return showToast("文件格式错误", "error");
       showToast("正在导入...", "success");
-      await importShowsApi(parsedData);
-      showToast("导入成功", "success");
-      await fetchShows();
-    } catch { showToast("导入失败", "error"); } finally { event.target.value = ''; }
+      const response = await importShowsApi(parsedData);
+      showToast(response.data.message || "导入成功", "success");
+      await fetchShows(true);
+    } catch (error) { showToast(getApiErrorMessage(error, '导入失败'), "error"); } finally { event.target.value = ''; }
   };
   reader.readAsText(file);
 };
@@ -504,6 +552,11 @@ const handleFileUpload = (event) => {
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 20px; color: #64748b; }
 .empty-icon { font-size: 4rem; margin-bottom: 16px; opacity: 0.8; }
 .empty-state h3 { font-size: 1.25rem; color: #1e293b; margin: 0 0 8px 0; font-weight: 700; }
+.error-state p { max-width: 520px; text-align: center; }
+.load-more-row { display: flex; justify-content: center; padding: 8px 0 40px; }
+.load-more-btn { border: 1px solid #c7d2fe; background: #fff; color: #4f46e5; padding: 10px 20px; border-radius: 10px; font-weight: 600; cursor: pointer; }
+.load-more-btn:hover:not(:disabled) { background: #eef2ff; }
+.load-more-btn:disabled { opacity: 0.6; cursor: wait; }
 
 /* Toast */
 .toast-notification { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; align-items: center; gap: 12px; background: white; padding: 14px 24px; border-radius: 50px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); min-width: 300px; max-width: 90%; font-weight: 500; }

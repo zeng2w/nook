@@ -59,6 +59,7 @@
 import { reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
+import { getApiErrorMessage } from '@/api/errors';
 
 defineOptions({ name: 'RegisterPage' });
 
@@ -130,12 +131,7 @@ const handleRegister = async () => {
 
   } catch (err) {
     console.error(err);
-    // 显示后端返回的具体错误信息 (例如 "User already exists")
-    if (err.response && err.response.data && err.response.data.msg) {
-      showToast(err.response.data.msg, "error");
-    } else {
-      showToast("Registration failed. Please try again.", "error");
-    }
+    showToast(getApiErrorMessage(err, 'Registration failed. Please try again.'), "error");
   } finally {
     isLoading.value = false;
   }

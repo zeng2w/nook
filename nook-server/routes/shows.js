@@ -4,6 +4,10 @@ const Show = require('../models/Show');
 const { getAiredEpisodeCount } = require('../utils/tmdb');
 const { classifyTmdbError, sendTmdbError, tmdbGet } = require('../utils/tmdbClient');
 const { getSyncConcurrency, mapWithConcurrency } = require('../utils/concurrency');
+const { findPage, wantsPagination } = require('../utils/pagination');
+const logger = require('../utils/logger');
+
+const SHOW_LIST_FIELDS = '-userId -__v';
 
 const ALLOWED_SHOW_FIELDS = [
   'title',
@@ -34,16 +38,122 @@ const pickShowFields = (source) => {
   );
 };
 
+const sendWriteError = (res, err, fallback = 'Server Error') => {
+  if (err?.name === 'ValidationError') {
+    return res.status(400).json({
+      code: 'VALIDATION_ERROR',
+      error: Object.values(err.errors)[0]?.message || '剧集数据不符合要求'
+    });
+  }
+
+  logger.error('show_write_failed', { error: err });
+  return res.status(500).json({ error: fallback });
+};
+
 // ==========================================
 // 1. 获取剧集列表
 // ==========================================
 router.get('/', async (req, res) => {
   try {
-    const shows = await Show.find({ userId: req.user.id }).sort({ updatedAt: -1 });
+    const filter = { userId: req.user.id };
+    if (wantsPagination(req.query)) {
+      const page = await findPage(Show, filter, {
+        query: req.query,
+        select: SHOW_LIST_FIELDS,
+        sort: { updatedAt: -1 }
+      });
+      return res.json(page);
+    }
+
+    const shows = await Show.find(filter)
+      .select(SHOW_LIST_FIELDS)
+      .sort({ updatedAt: -1 })
+      .lean();
     res.json(shows);
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Server Error');
+    logger.error('show_list_failed', { error: err });
+    res.status(500).json({ error: 'Server Error' });
+  }
+});
+
+// Dashboard 使用聚合结果，避免为了四个统计数字下载全部剧集。
+router.get('/stats', async (req, res) => {
+  try {
+    const userId = new Show.base.Types.ObjectId(req.user.id);
+    const [stats] = await Show.aggregate([
+      { $match: { userId } },
+      {
+        $project: {
+          status: 1,
+          watched: { $ifNull: ['$watchedEpisodes', 0] },
+          aired: { $ifNull: ['$airedEpisodes', 0] },
+          total: { $ifNull: ['$totalEpisodes', 0] }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          showCount: { $sum: 1 },
+          watching: { $sum: { $cond: [{ $eq: ['$status', 'watching'] }, 1, 0] } },
+          watchedCount: { $sum: { $cond: [{ $eq: ['$status', 'watched'] }, 1, 0] } },
+          wish: { $sum: { $cond: [{ $eq: ['$status', 'wish'] }, 1, 0] } },
+          dropped: { $sum: { $cond: [{ $eq: ['$status', 'dropped'] }, 1, 0] } },
+          watchedEpisodes: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['watching', 'watched']] },
+                '$watched',
+                0
+              ]
+            }
+          },
+          targetEpisodes: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['watching', 'watched']] },
+                {
+                  $let: {
+                    vars: { target: { $cond: [{ $gt: ['$total', 0] }, '$total', '$aired'] } },
+                    in: { $cond: [{ $gt: ['$watched', '$$target'] }, '$watched', '$$target'] }
+                  }
+                },
+                0
+              ]
+            }
+          },
+          lagEpisodes: {
+            $sum: {
+              $cond: [
+                { $eq: ['$status', 'watching'] },
+                { $cond: [{ $gt: ['$aired', '$watched'] }, { $subtract: ['$aired', '$watched'] }, 0] },
+                0
+              ]
+            }
+          }
+        }
+      }
+    ]);
+
+    const watchedEpisodes = stats?.watchedEpisodes || 0;
+    const targetEpisodes = stats?.targetEpisodes || 0;
+    res.json({
+      showCount: stats?.showCount || 0,
+      statusCounts: {
+        watching: stats?.watching || 0,
+        watched: stats?.watchedCount || 0,
+        wish: stats?.wish || 0,
+        dropped: stats?.dropped || 0
+      },
+      progressStats: {
+        watched: watchedEpisodes,
+        total: targetEpisodes,
+        lag: stats?.lagEpisodes || 0,
+        percent: targetEpisodes > 0 ? Math.round((watchedEpisodes / targetEpisodes) * 100) : 0
+      }
+    });
+  } catch (err) {
+    logger.error('show_stats_failed', { error: err });
+    res.status(500).json({ error: 'Server Error' });
   }
 });
 
@@ -67,8 +177,7 @@ router.post('/', async (req, res) => {
     const show = await newShow.save();
     res.json(show);
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Server Error');
+    return sendWriteError(res, err);
   }
 });
 
@@ -77,17 +186,14 @@ router.post('/', async (req, res) => {
 // ==========================================
 router.put('/:id', async (req, res) => {
   try {
-    const updateData = { ...pickShowFields(req.body), updatedAt: Date.now() };
-    const show = await Show.findOneAndUpdate(
-      { _id: req.params.id, userId: req.user.id },
-      { $set: updateData },
-      { returnDocument: 'after', runValidators: true }
-    );
+    const show = await Show.findOne({ _id: req.params.id, userId: req.user.id });
     if (!show) return res.status(404).json({ msg: 'Show not found' });
+
+    Object.assign(show, pickShowFields(req.body), { updatedAt: Date.now() });
+    await show.save();
     res.json(show);
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Server Error');
+    return sendWriteError(res, err);
   }
 });
 
@@ -100,8 +206,8 @@ router.delete('/:id', async (req, res) => {
     if (!show) return res.status(404).json({ msg: 'Show not found' });
     res.json({ msg: 'Show removed' });
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Server Error');
+    logger.error('show_delete_failed', { error: err });
+    res.status(500).json({ error: 'Server Error' });
   }
 });
 
@@ -174,7 +280,7 @@ router.post('/sync', async (req, res) => {
           return { updateLog };
         } catch (err) {
           const failure = classifyTmdbError(err);
-          console.error(`[Sync] ${failure.code} for show ${show._id}`);
+          logger.warn('show_sync_item_failed', { code: failure.code, showId: String(show._id) });
           return { error: err };
         }
       }
@@ -197,7 +303,7 @@ router.post('/sync', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Sync Error:', err);
+    logger.error('show_sync_failed', { error: err });
     res.status(500).json({ error: '同步服务出错' });
   }
 });
@@ -205,12 +311,15 @@ router.post('/sync', async (req, res) => {
 // GET /api/shows/export
 router.get('/export', async (req, res) => {
   try {
-    const shows = await Show.find({ userId: req.user.id });
+    const shows = await Show.find({ userId: req.user.id })
+      .select(SHOW_LIST_FIELDS)
+      .lean();
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', `attachment; filename=tv_shows_backup_${Date.now()}.json`);
     res.send(JSON.stringify(shows, null, 2));
   } catch (err) {
-    res.status(500).send('Export Failed');
+    logger.error('show_export_failed', { error: err });
+    res.status(500).json({ error: 'Export Failed' });
   }
 });
 
@@ -282,8 +391,7 @@ router.post('/import', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Import Error:', err);
-    res.status(500).json({ error: '导入过程中发生错误' });
+    return sendWriteError(res, err, '导入过程中发生错误');
   }
 });
 

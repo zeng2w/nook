@@ -70,7 +70,7 @@
                   :class="{ active: network === net.name }" 
                   @click="selectNetwork(net.name)" 
                 >
-                  <img v-if="net.logo" :src="net.logo" class="net-logo" alt="logo" />
+                  <img v-if="net.logo" :src="net.logo" class="net-logo" alt="logo" loading="lazy" decoding="async" />
                   <span>{{ net.name }}</span>
                   <span class="pill-count">{{ getNetworkCount(net.name) }}</span>
                 </button>

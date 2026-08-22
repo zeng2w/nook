@@ -1,16 +1,32 @@
 const express = require('express');
 const router = express.Router();
 const History = require('../models/History');
+const { findPage, wantsPagination } = require('../utils/pagination');
+const logger = require('../utils/logger');
 
 // @route   GET /api/history
 // @desc    获取用户记录
 router.get('/', async (req, res) => {
   try {
-    const history = await History.find({ userId: req.user.id }).sort({ date: -1 });
+    const filter = { userId: req.user.id };
+    if (wantsPagination(req.query)) {
+      const page = await findPage(History, filter, {
+        query: req.query,
+        defaultLimit: 50,
+        select: '-userId -__v',
+        sort: { date: -1 }
+      });
+      return res.json(page);
+    }
+
+    const history = await History.find(filter)
+      .select('-userId -__v')
+      .sort({ date: -1 })
+      .lean();
     res.json(history);
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
+    logger.error('history_list_failed', { error: err });
+    res.status(500).json({ error: 'Server Error' });
   }
 });
 
@@ -74,13 +90,16 @@ router.delete('/:id', async (req, res) => {
 // nook-server/routes/history.js 新增路由
 router.post('/batch-delete', async (req, res) => {
   try {
-    const { ids } = req.body || {};
-    if (!ids || !Array.isArray(ids)) {
-      return res.status(400).json({ error: 'ids array is required' });
+    const { ids, all } = req.body || {};
+    if (all === true) {
+      const result = await History.deleteMany({ userId: req.user.id });
+      return res.status(200).json({ message: 'All history deleted', deletedCount: result.deletedCount });
     }
-    // 假设你使用的是 Mongoose
-    await History.deleteMany({ _id: { $in: ids }, userId: req.user.id });
-    res.status(200).json({ message: 'Batch deletion successful' });
+    if (!Array.isArray(ids) || ids.length === 0 || ids.length > 500) {
+      return res.status(400).json({ error: 'ids must be an array containing 1 to 500 records' });
+    }
+    const result = await History.deleteMany({ _id: { $in: ids }, userId: req.user.id });
+    res.status(200).json({ message: 'Batch deletion successful', deletedCount: result.deletedCount });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete records' });
   }

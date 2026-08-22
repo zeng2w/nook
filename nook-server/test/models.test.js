@@ -30,6 +30,41 @@ test('show update days must be valid weekdays', async () => {
   await assert.rejects(show.validate(), error => Boolean(error.errors.updateDays));
 });
 
+test('show episode counts are integers and cannot exceed a known total', async () => {
+  const fractional = new Show({
+    userId: USER_ID,
+    title: 'Fractional',
+    category: 'tv',
+    watchedEpisodes: 1.5
+  });
+  const aboveTotal = new Show({
+    userId: USER_ID,
+    title: 'Above total',
+    category: 'tv',
+    totalEpisodes: 10,
+    airedEpisodes: 11,
+    watchedEpisodes: 12
+  });
+
+  await assert.rejects(fractional.validate(), error => Boolean(error.errors.watchedEpisodes));
+  await assert.rejects(aboveTotal.validate(), error => (
+    Boolean(error.errors.airedEpisodes) && Boolean(error.errors.watchedEpisodes)
+  ));
+});
+
+test('show title and media URLs are validated', async () => {
+  const show = new Show({
+    userId: USER_ID,
+    title: '   ',
+    category: 'tv',
+    posterUrl: 'javascript:alert(1)'
+  });
+
+  await assert.rejects(show.validate(), error => (
+    Boolean(error.errors.title) && Boolean(error.errors.posterUrl)
+  ));
+});
+
 test('history count and duration cannot be negative', async () => {
   const history = new History({ userId: USER_ID, count: -1, duration: -5 });
   await assert.rejects(history.validate(), error => (

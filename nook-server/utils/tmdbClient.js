@@ -1,4 +1,5 @@
 const axios = require('axios');
+const logger = require('./logger');
 
 const DEFAULT_TIMEOUT_MS = 12000;
 const MAX_TIMEOUT_MS = 60000;
@@ -129,7 +130,12 @@ const classifyTmdbError = (error) => {
 
 const sendTmdbError = (res, error, operation) => {
   const details = classifyTmdbError(error);
-  console.error(`[TMDB:${operation}] ${details.code}: ${error.message}`);
+  logger.warn('tmdb_request_failed', {
+    operation,
+    code: details.code,
+    upstreamStatus: error.response?.status,
+    error
+  });
 
   if (details.retryAfter) res.setHeader('Retry-After', details.retryAfter);
   return res.status(details.status).json({

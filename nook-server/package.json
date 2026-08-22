@@ -4,6 +4,7 @@
   "description": "Nook API server",
   "main": "server.js",
   "scripts": {
+    "audit:data": "node scripts/audit-data.js",
     "start": "node server.js",
     "test": "node --test",
     "dev": "nodemon server.js"

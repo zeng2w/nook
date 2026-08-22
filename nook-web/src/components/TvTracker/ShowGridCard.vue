@@ -30,7 +30,7 @@
           
           <div class="card-header-grid">
             <div class="poster-mini trigger-flip" :style="{ backgroundColor: getCategoryColor(show.category) }" @mouseenter="flipped = true">
-              <img v-if="show.posterUrl" :src="show.posterUrl" class="mini-img" loading="lazy" /><span v-else>{{ show.title.charAt(0) }}</span>
+              <img v-if="show.posterUrl" :src="show.posterUrl" class="mini-img" loading="lazy" decoding="async" /><span v-else>{{ show.title.charAt(0) }}</span>
               <div class="flip-hint">↻</div>
             </div>
             <div class="header-info">
@@ -38,7 +38,7 @@
               <div class="tags-line">
                 <span class="tag-badge" :class="show.category">{{ getCategoryLabel(show.category) }}</span>
                 <span class="status-tag" :class="show.status">{{ getStatusLabel(show.status) }}</span>
-                <div v-if="show.networkLogo" class="network-tag-logo" :title="show.network"><img :src="show.networkLogo" alt="Network" /></div>
+                <div v-if="show.networkLogo" class="network-tag-logo" :title="show.network"><img :src="show.networkLogo" alt="Network" loading="lazy" decoding="async" /></div>
               </div>
             </div>
           </div>
@@ -88,7 +88,7 @@
         </div>
         
         <div class="card-face back">
-          <img v-if="show.posterUrl" :src="show.posterUrl" class="full-poster" loading="lazy" />
+          <img v-if="show.posterUrl" :src="show.posterUrl" class="full-poster" loading="lazy" decoding="async" />
           <div v-else class="back-placeholder" :style="{ backgroundColor: getCategoryColor(show.category) }">
             <span>{{ show.title }}</span>
           </div>

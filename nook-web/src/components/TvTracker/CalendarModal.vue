@@ -34,7 +34,7 @@
             <div class="day-body">
               <div v-for="(item, k) in getShowsForDate(getCalendarDate(idx))" :key="`${item.show._id}-${k}`" class="mini-item-card">
                 <div class="mini-poster">
-                  <img v-if="item.show.posterUrl" :src="item.show.posterUrl" loading="lazy"/>
+                  <img v-if="item.show.posterUrl" :src="item.show.posterUrl" :alt="item.show.title" loading="lazy" decoding="async"/>
                   <span v-else>{{ item.show.title.charAt(0) }}</span>
                 </div>
                 

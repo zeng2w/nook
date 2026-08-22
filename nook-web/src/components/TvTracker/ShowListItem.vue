@@ -3,7 +3,7 @@
     <div class="list-card full-height-poster" :class="{ 'blur-bg': isPendingDelete, 'dropped-card': show.status === 'dropped' }">
       
       <div class="list-poster-side" :style="{ backgroundColor: show.posterUrl ? 'transparent' : getCategoryColor(show.category) }">
-        <img v-if="show.posterUrl" :src="show.posterUrl" alt="Poster" loading="lazy" />
+        <img v-if="show.posterUrl" :src="show.posterUrl" alt="Poster" loading="lazy" decoding="async" />
         <span v-else>{{ show.title.charAt(0) }}</span>
       </div>
       
@@ -31,7 +31,7 @@
             <span class="tag-badge" :class="show.category">{{ getCategoryLabel(show.category) }}</span>
             <span class="status-tag" :class="show.status">{{ getStatusLabel(show.status) }}</span>
             <div v-if="show.networkLogo" class="network-tag-logo" :title="show.network">
-              <img :src="show.networkLogo" alt="Network" />
+              <img :src="show.networkLogo" alt="Network" loading="lazy" decoding="async" />
             </div>
           </div>
 

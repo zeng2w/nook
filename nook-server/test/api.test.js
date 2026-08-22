@@ -78,10 +78,12 @@ test('show queries are scoped to the authenticated user', async () => {
   const seenUserIds = [];
 
   Show.find = (filter) => ({
-    sort: async () => {
+    select() { return this; },
+    sort() {
       seenUserIds.push(String(filter.userId));
-      return [];
-    }
+      return this;
+    },
+    async lean() { return []; }
   });
 
   try {

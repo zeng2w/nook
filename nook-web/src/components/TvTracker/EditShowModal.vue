@@ -12,12 +12,13 @@
               <input v-model="tmdbQuery" @keyup.enter="searchTMDB" placeholder="搜索剧名 (例如: 仙逆)" class="modern-input search-input" />
               <button class="btn-icon" @click="searchTMDB" :disabled="isSearching">{{ isSearching ? '...' : '→' }}</button>
             </div>
+            <p v-if="searchError" class="search-error">{{ searchError }}</p>
             
             <transition name="fade">
               <div v-if="tmdbResults.length > 0" class="tmdb-results-floating">
                 <div v-for="res in tmdbResults" :key="res.tmdbId" class="tmdb-item" @click="selectTMDBResult(res)">
                   <div class="tmdb-thumb-wrapper">
-                    <img v-if="res.posterUrl" :src="res.posterUrl" class="tmdb-thumb" />
+                    <img v-if="res.posterUrl" :src="res.posterUrl" :alt="res.title" class="tmdb-thumb" loading="lazy" decoding="async" />
                     <div v-else class="tmdb-thumb-placeholder">{{ res.title.charAt(0) }}</div>
                   </div>
                   <div class="tmdb-info">
@@ -58,7 +59,7 @@
               <div class="network-input-compact">
                 <input v-model="form.network" type="text" class="modern-input" placeholder="如: Netflix" />
                 <div v-if="form.networkLogo" class="network-logo-mini">
-                  <img :src="form.networkLogo" alt="Logo" />
+                  <img :src="form.networkLogo" alt="Logo" loading="lazy" decoding="async" />
                 </div>
               </div>
             </div>
@@ -105,9 +106,9 @@
           <div class="form-section-compact">
             <label>当前进度</label>
             <div class="stats-row-compact">
-              <div class="stat-input-wrap"><span>已看</span><input v-model.number="form.watchedEpisodes" type="number" class="modern-input" /></div>
-              <div class="stat-input-wrap"><span>已更</span><input v-model.number="form.airedEpisodes" type="number" class="modern-input" /></div>
-              <div class="stat-input-wrap"><span>总集</span><input v-model.number="form.totalEpisodes" type="number" class="modern-input" /></div>
+              <div class="stat-input-wrap"><span>已看</span><input v-model.number="form.watchedEpisodes" type="number" min="0" :max="form.totalEpisodes || undefined" class="modern-input" /></div>
+              <div class="stat-input-wrap"><span>已更</span><input v-model.number="form.airedEpisodes" type="number" min="0" :max="form.totalEpisodes || undefined" class="modern-input" /></div>
+              <div class="stat-input-wrap"><span>总集</span><input v-model.number="form.totalEpisodes" type="number" min="0" class="modern-input" /></div>
             </div>
           </div>
 
@@ -125,6 +126,7 @@
 <script setup>
 import { ref, reactive, watch, computed } from 'vue';
 import axios from 'axios';
+import { getApiErrorMessage } from '@/api/errors';
 
 const props = defineProps({
   visible: Boolean,
@@ -138,6 +140,7 @@ const tmdbQuery = ref('');
 const tmdbResults = ref([]);
 const isSearching = ref(false);
 const availableSeasons = ref([]);
+const searchError = ref('');
 
 const initialForm = { title: '', category: 'tv', status: 'watching', updateFrequency: 'weekly', updateDays: [], updateCount: 1, watchedEpisodes: 0, airedEpisodes: 0, totalEpisodes: 0, lastAirDate: new Date().toISOString().split('T')[0], posterUrl: '', network: '', networkLogo: '', tmdbId: null };
 const form = reactive({ ...initialForm });
@@ -178,6 +181,7 @@ watch(
         tmdbQuery.value = '';
         tmdbResults.value = [];
         availableSeasons.value = [];
+        searchError.value = '';
       }
     }
   }
@@ -201,12 +205,10 @@ const searchTMDB = async () => {
   
   isSearching.value = true;
   tmdbResults.value = [];
-  
-  console.log("🔍 开始搜索:", tmdbQuery.value);
+  searchError.value = '';
 
   try {
-    const res = await axios.get(`/api/tmdb/search?query=${tmdbQuery.value}`);
-    console.log("📦 搜索结果:", res.data);
+    const res = await axios.get('/api/tmdb/search', { params: { query: tmdbQuery.value } });
 
     // ★ 关键修复：兼容直接返回数组或 { results: [] } 的情况
     if (Array.isArray(res.data)) {
@@ -218,13 +220,14 @@ const searchTMDB = async () => {
     }
   } catch (err) {
     console.error("❌ 搜索失败:", err);
+    searchError.value = getApiErrorMessage(err, 'TMDB 搜索失败');
   } finally {
     isSearching.value = false;
   }
 };
 
 const selectTMDBResult = async (item) => {
-  console.log("👉 选中剧集:", item);
+  searchError.value = '';
   form.tmdbId = item.tmdbId;
   form.title = item.title;
   form.category = item.category;
@@ -264,6 +267,7 @@ const selectTMDBResult = async (item) => {
     
   } catch (err) {
     console.error("❌ 获取详情失败:", err);
+    searchError.value = getApiErrorMessage(err, 'TMDB 详情获取失败，可以手动填写');
   }
 };
 
@@ -292,6 +296,7 @@ const onSeasonSelect = (event) => {
 
 /* ★ 关键样式：固定搜索区域，确保 z-index 高于内容区 */
 .search-fixed-area { padding: 0 24px 10px 24px; background: #fff; position: relative; z-index: 50; }
+.search-error { color: #dc2626; font-size: 0.78rem; margin: 6px 2px 0; }
 
 /* 主体滚动区 */
 .modal-body-scroll.compact-mode { padding: 5px 24px 15px; gap: 12px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; }
