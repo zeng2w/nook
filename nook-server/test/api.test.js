@@ -145,6 +145,42 @@ test('show queries are scoped to the authenticated user', async () => {
   }
 });
 
+test('calendar shows include the episode counts required for calendar labels', async () => {
+  const originalFind = Show.find;
+  let selectedFields = '';
+
+  Show.find = filter => ({
+    select(fields) {
+      selectedFields = fields;
+      return this;
+    },
+    sort() { return this; },
+    async lean() {
+      assert.equal(String(filter.userId), USER_A);
+      return [{
+        _id: '507f1f77bcf86cd799439021',
+        title: 'Long-running Anime',
+        airedEpisodes: 237,
+        totalEpisodes: 300
+      }];
+    }
+  });
+
+  try {
+    const response = await request(createTestApp())
+      .get('/api/shows/calendar')
+      .set('Cookie', `nook_session=${createSessionToken(USER_A)}`);
+
+    assert.equal(response.status, 200);
+    assert.match(selectedFields, /\bairedEpisodes\b/);
+    assert.match(selectedFields, /\btotalEpisodes\b/);
+    assert.equal(response.body[0].airedEpisodes, 237);
+    assert.equal(response.body[0].totalEpisodes, 300);
+  } finally {
+    Show.find = originalFind;
+  }
+});
+
 test('show list rejects unsupported filters through the shared error format', async () => {
   const response = await request(createTestApp())
     .get('/api/shows?status=unknown')

@@ -114,7 +114,7 @@
 
       <div class="discovery-sidebar-column">
         <TrendingSidebar />
-        <UpdateCalendar :shows="calendarShows" />
+        <UpdateCalendar :shows="calendarShows" @open-calendar="showCalendar = true" />
 
       </div>
 

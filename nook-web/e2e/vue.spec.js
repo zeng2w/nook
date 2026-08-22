@@ -139,6 +139,13 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
     url.searchParams.get('order') === 'desc'
   ))).toBe(true)
 
+  await page.getByRole('button', { name: '打开完整追剧日历' }).click()
+  const calendarDialog = page.getByRole('dialog', { name: '追剧日历' })
+  await expect(calendarDialog).toBeVisible()
+  await expect(calendarDialog.locator('.timezone-label')).not.toBeEmpty()
+  await calendarDialog.getByRole('button', { name: '关闭追剧日历' }).click()
+  await expect(calendarDialog).toHaveCount(0)
+
   await page.getByRole('button', { name: /加载更多/ }).click()
   await expect(page.getByRole('heading', { name: 'Second Show' })).toBeVisible()
 

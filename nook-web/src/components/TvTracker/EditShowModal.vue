@@ -127,6 +127,7 @@
 import { ref, reactive, watch, computed } from 'vue';
 import axios from 'axios';
 import { getApiErrorMessage } from '@/api/errors';
+import { toCalendarDateInput } from '@/utils/dateUtils';
 
 const props = defineProps({
   visible: Boolean,
@@ -142,24 +143,12 @@ const isSearching = ref(false);
 const availableSeasons = ref([]);
 const searchError = ref('');
 
-const initialForm = { title: '', category: 'tv', status: 'watching', updateFrequency: 'weekly', updateDays: [], updateCount: 1, watchedEpisodes: 0, airedEpisodes: 0, totalEpisodes: 0, lastAirDate: new Date().toISOString().split('T')[0], posterUrl: '', network: '', networkLogo: '', tmdbId: null };
+const initialForm = { title: '', category: 'tv', status: 'watching', updateFrequency: 'weekly', updateDays: [], updateCount: 1, watchedEpisodes: 0, airedEpisodes: 0, totalEpisodes: 0, lastAirDate: toCalendarDateInput(new Date()), posterUrl: '', network: '', networkLogo: '', tmdbId: null };
 const form = reactive({ ...initialForm });
 
 const freqOptions = [ { label: '周更', val: 'weekly' }, { label: '日更', val: 'daily' }, { label: '月更', val: 'monthly' }, { label: '完结', val: 'ended' } ];
 const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
-// 初始化表单数据
-// watch(() => props.editData, (newVal) => {
-//   if (newVal) {
-//     Object.assign(form, newVal);
-//     if (newVal.lastAirDate) {
-//       form.lastAirDate = new Date(newVal.lastAirDate).toISOString().split('T')[0];
-//     }
-//   } else {
-//     Object.assign(form, initialForm);
-//     form.updateDays = [];
-//   }
-// });
 watch(
   [() => props.visible, () => props.editData], 
   ([isOpen, newData]) => {
@@ -169,12 +158,12 @@ watch(
         Object.assign(form, newData);
         // 特殊处理日期格式
         if (newData.lastAirDate) {
-          form.lastAirDate = new Date(newData.lastAirDate).toISOString().split('T')[0];
+          form.lastAirDate = toCalendarDateInput(newData.lastAirDate);
         }
       } else {
         // --- 添加模式：彻底重置表单 ---
         // 1. 重置基础字段
-        Object.assign(form, { ...initialForm });
+        Object.assign(form, { ...initialForm, lastAirDate: toCalendarDateInput(new Date()) });
         // 2. 重置引用类型字段 (确保数组清空)
         form.updateDays = [];
         // 3. 重置搜索状态
@@ -254,7 +243,7 @@ const selectTMDBResult = async (item) => {
     
     if (details.updateFrequency === 'ended') form.updateFrequency = 'ended';
     if (details.lastAirDate) {
-      form.lastAirDate = new Date(details.lastAirDate).toISOString().split('T')[0];
+      form.lastAirDate = toCalendarDateInput(details.lastAirDate);
       const [y, m, d] = form.lastAirDate.split('-').map(Number);
       form.updateDays = [new Date(y, m - 1, d).getDay()];
     }

@@ -162,7 +162,7 @@ router.get('/stats', async (req, res, next) => {
 router.get('/calendar', async (req, res, next) => {
   try {
     const shows = await Show.find({ userId: req.user.id })
-      .select('title posterUrl network networkLogo status updateFrequency updateDays updateCount lastAirDate estimatedFinishDate')
+      .select('title posterUrl network networkLogo status totalEpisodes airedEpisodes updateFrequency updateDays updateCount lastAirDate estimatedFinishDate')
       .sort({ lastAirDate: -1, title: 1 })
       .lean();
     res.json(shows);
