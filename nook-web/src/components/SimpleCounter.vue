@@ -7,21 +7,21 @@
   >
     
     <div class="top-bar">
-      <button class="icon-btn" @click.stop="showModal = true">
+      <button class="icon-btn" aria-label="打开计数器设置" @click.stop="showModal = true">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M12 15.5C13.933 15.5 15.5 13.933 15.5 12C15.5 10.067 13.933 8.5 12 8.5C10.067 8.5 8.5 10.067 8.5 12C8.5 13.933 10.067 15.5 12 15.5Z"/><path d="M19.4386 15.0232C19.5593 14.8698 20.3957 15.5034 20.7388 15.2287C21.4326 14.6734 22.0289 13.9961 22.4921 13.2263C22.716 12.8541 22.6599 12.3853 22.3533 12.0725C21.7248 11.4313 21.7248 10.4072 22.3533 9.76601C22.6599 9.45325 22.716 8.98444 22.4921 8.6122C22.0289 7.84239 21.4326 7.16515 20.7388 6.60982C20.3957 6.33512 19.5593 6.96875 19.4386 6.81529C18.6013 5.75169 18.2917 4.31464 18.6189 2.99262C18.7302 2.54287 18.4905 2.08051 18.0645 1.88476C17.2025 1.48865 16.2797 1.22904 15.3195 1.11956C14.845 1.06545 14.4078 1.3323 14.2376 1.77665C13.8927 2.67727 13.0185 3.27273 12 3.27273C10.9815 3.27273 10.1073 2.67727 9.76239 1.77665C9.59218 1.3323 9.15504 1.06545 8.6805 1.11956C7.72027 1.22904 6.79753 1.48865 5.93554 1.88476C5.50948 2.08051 5.26978 2.54287 5.38114 2.99262C5.70831 4.31464 5.39867 5.75169 4.56138 6.81529C4.44066 6.96875 3.60427 6.33512 3.26117 6.60982C2.56736 7.16515 1.97108 7.84239 1.50791 8.6122C1.28399 8.98444 1.34005 9.45325 1.6467 9.76601C2.27517 10.4072 2.27517 11.4313 1.6467 12.0725C1.34005 12.3853 1.28399 12.8541 1.50791 13.2263C1.97108 13.9961 2.56736 14.6734 3.26117 15.2287C3.60427 15.5034 4.44066 14.8698 4.56138 15.0232C5.39867 16.0868 5.70831 17.5239 5.38114 18.8459C5.26978 19.2957 5.50948 19.758 5.93554 19.9538C6.79753 20.3499 7.72027 20.6095 8.6805 20.719C9.15504 20.7731 9.59218 20.5062 9.76239 20.0619C10.1073 19.1613 10.9815 18.5658 12 18.5658C13.0185 18.5658 13.8927 19.1613 14.2376 20.0619C14.4078 20.5062 14.845 20.7731 15.3195 20.719C16.2797 20.6095 17.2025 20.3499 18.0645 19.9538C18.4905 19.758 18.7302 19.2957 18.6189 18.8459C18.2917 17.5239 18.6013 16.0868 19.4386 15.0232Z" stroke="none" /></svg>
       </button>
-      <button class="icon-btn" @click.stop="openHistory">
+      <button class="icon-btn" aria-label="查看历史记录" @click.stop="openHistory">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
       </button>
-      <button class="icon-btn" @click.stop="triggerReset">
+      <button class="icon-btn" aria-label="保存并重置" @click.stop="triggerReset">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38"/></svg>
       </button>
     </div>
 
-    <button class="side-btn left-btn" @click.stop="decrement">
+    <button class="side-btn left-btn" aria-label="计数减一" @click.stop="decrement">
       <svg width="30" height="4" viewBox="0 0 30 4" fill="currentColor"><rect width="30" height="4" rx="2"/></svg>
     </button>
-    <button class="side-btn right-btn" @click.stop="increment">
+    <button class="side-btn right-btn" aria-label="计数加一" @click.stop="increment">
       <svg width="30" height="30" viewBox="0 0 30 30" fill="currentColor"><path d="M13 17V29H17V17H29V13H17V1H13V13H1V17H13Z"/></svg>
     </button>
 
@@ -81,7 +81,7 @@
 
     <Transition name="fade">
       <div v-if="showResetModal" class="reset-overlay" :class="{ 'light-theme-text': isLightMode }" :style="{ backgroundColor: settings.bgColor }" @click.self="showResetModal = false">
-        <button class="close-icon-btn" @click="showResetModal = false">
+        <button class="close-icon-btn" aria-label="关闭重置窗口" @click="showResetModal = false">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
         <div class="reset-content">
@@ -146,11 +146,11 @@
               </div>
               <div v-else-if="history.length === 0" class="empty-history">No records yet.</div>
               <div v-for="item in history" :key="item._id" class="history-item">
-                <div class="checkbox-wrapper" @click="toggleSelection(item._id)">
+                <button type="button" class="checkbox-wrapper" :aria-label="`选择 ${formatDate(item.createdAt)} 的记录`" :aria-pressed="selectedIds.has(item._id)" @click="toggleSelection(item._id)">
                   <div class="custom-checkbox" :class="{ checked: selectedIds.has(item._id) }">
                     <svg v-if="selectedIds.has(item._id)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
                   </div>
-                </div>
+                </button>
                 <div class="history-content">
                   <div class="history-row-top">
                     <span class="history-date">{{ formatDate(item.createdAt) }}</span>
@@ -250,6 +250,25 @@
       </div>
     </Transition>
 
+    <Transition name="fade">
+      <div v-if="feedback.visible" class="counter-feedback" :class="feedback.type" role="status" aria-live="polite">
+        {{ feedback.message }}
+      </div>
+    </Transition>
+
+    <Transition name="fade">
+      <div v-if="confirmDialog.visible" class="modal-overlay confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="counter-confirm-title">
+        <div class="confirm-card" :class="{ 'light-theme-modal': isLightMode }" :style="{ backgroundColor: settings.bgColor }">
+          <h3 id="counter-confirm-title">请确认</h3>
+          <p>{{ confirmDialog.message }}</p>
+          <div class="confirm-actions">
+            <button class="reset-option-btn" @click="resolveConfirmation(false)">取消</button>
+            <button class="reset-option-btn danger-action" @click="resolveConfirmation(true)">确认</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
   </div>
 </template>
 
@@ -258,6 +277,7 @@ import { ref, reactive, computed, onMounted, watch, onBeforeUnmount } from 'vue'
 import axios from 'axios';
 import { updateTheme } from '../store'; 
 import { getApiErrorMessage } from '@/api/errors';
+import { authUser } from '@/auth';
 
 const showModal = ref(false);
 const showResetModal = ref(false);
@@ -270,6 +290,10 @@ const formMode = ref('add');
 const editingId = ref(null); 
 const formData = reactive({ date: '', count: 0, hr: '', min: '', sec: '' });
 const selectedIds = ref(new Set()); 
+const feedback = reactive({ visible: false, message: '', type: 'info' });
+const confirmDialog = reactive({ visible: false, message: '' });
+let feedbackTimer = null;
+let confirmResolver = null;
 
 const showUndoToast = ref(false);
 const undoItem = ref(null); 
@@ -288,7 +312,25 @@ const history = ref([]);
 const historyError = ref('');
 const isHistoryLoading = ref(false);
 const historyPagination = reactive({ page: 0, limit: 50, total: 0, hasMore: false });
-const currentUser = ref(null);
+const currentUser = authUser;
+
+const notify = (message, type = 'error') => {
+  clearTimeout(feedbackTimer);
+  Object.assign(feedback, { visible: true, message, type });
+  feedbackTimer = setTimeout(() => { feedback.visible = false; }, 3500);
+};
+
+const askForConfirmation = (message) => new Promise(resolve => {
+  confirmResolver?.(false);
+  confirmResolver = resolve;
+  Object.assign(confirmDialog, { visible: true, message });
+});
+
+const resolveConfirmation = (accepted) => {
+  confirmDialog.visible = false;
+  confirmResolver?.(accepted);
+  confirmResolver = null;
+};
 
 // 保留常用的预设颜色（去除了几个相近的颜色，腾出一个格子给取色器）
 const colorPalette = [
@@ -382,12 +424,6 @@ const triggerReset = () => {
   showResetModal.value = true; 
 };
 
-const getCurrentUser = () => {
-  const userStr = sessionStorage.getItem('current_user');
-  if (userStr) return JSON.parse(userStr);
-  return null;
-};
-
 const fetchHistory = async (reset = true) => {
   if (!currentUser.value) return;
   historyError.value = '';
@@ -432,7 +468,7 @@ const confirmSaveAndReset = async () => {
   const totalMinutes = h * 60 + m + (s / 60);
 
   if (!currentUser.value) {
-    alert("Please login to save history.");
+    notify('请先登录后再保存历史记录');
     return; 
   }
 
@@ -459,12 +495,12 @@ const confirmSaveAndReset = async () => {
     showResetModal.value = false;
   } catch (err) {
     console.error("Save failed:", err);
-    alert("Failed to save to cloud");
+    notify(getApiErrorMessage(err, '保存失败，请稍后重试'));
   }
 };
 
-const justReset = () => {
-  if (confirm("Discard this session?")) {
+const justReset = async () => {
+  if (await askForConfirmation('确定放弃当前计数并重置吗？')) {
     settings.count = 0;
     showResetModal.value = false;
   }
@@ -497,12 +533,12 @@ const handleClear = async () => {
   let idsToDelete = [];
   let deleteAll = false;
   if (selectedIds.value.size > 0) {
-    if (confirm(`Delete ${selectedIds.value.size} selected records?`)) {
+    if (await askForConfirmation(`确定删除选中的 ${selectedIds.value.size} 条记录吗？`)) {
       idsToDelete = Array.from(selectedIds.value);
     }
   } else {
     if (history.value.length === 0) return;
-    if (confirm("Delete ALL history records? This cannot be undone.")) {
+    if (await askForConfirmation('确定删除全部历史记录吗？此操作无法撤销。')) {
       deleteAll = true;
     }
   }
@@ -522,19 +558,19 @@ const handleClear = async () => {
     selectedIds.value.clear();
   } catch (e) {
     console.error("Batch delete failed:", e);
-    alert("Delete failed, check console.");
+    notify(getApiErrorMessage(e, '删除失败，请稍后重试'));
   }
 };
 
 const saveHistoryForm = async () => {
   if (!formData.date) {
-    alert("Please enter a valid date.");
+    notify('请选择有效日期');
     return;
   }
   
   const dateObj = new Date(formData.date);
   if (isNaN(dateObj.getTime())) {
-    alert("Invalid date format.");
+    notify('日期格式无效');
     return;
   }
   
@@ -579,7 +615,7 @@ const saveHistoryForm = async () => {
     isHistoryEditing.value = false;
   } catch (err) {
     console.error("Save failed:", err);
-    alert("Operation failed. Check console.");
+    notify(getApiErrorMessage(err, '操作失败，请稍后重试'));
   }
 };
 
@@ -588,6 +624,7 @@ const executeRealDelete = async (id) => {
     await axios.delete(`/api/history/${id}`);
   } catch (err) {
     console.error("Delayed delete failed on backend", err);
+    notify(getApiErrorMessage(err, '删除记录失败'));
   }
 };
 
@@ -704,6 +741,8 @@ const handleScreenClick = (e) => {
 };
 
 onBeforeUnmount(() => {
+  clearTimeout(feedbackTimer);
+  resolveConfirmation(false);
   if (pendingDeleteId) {
     executeRealDelete(pendingDeleteId);
     clearTimeout(undoTimer);
@@ -711,8 +750,6 @@ onBeforeUnmount(() => {
 });
 
 onMounted(() => {
-  currentUser.value = getCurrentUser();
-
   if (currentUser.value) {
     const userKey = `nook-settings-${currentUser.value.id}`;
     const savedSettings = localStorage.getItem(userKey);
@@ -975,7 +1012,7 @@ input:checked + .slider:before { transform: translateX(24px); }
 .history-load-more { display: block; margin: 16px auto 0; }
 .history-load-more:disabled { opacity: 0.5; cursor: wait; }
 .history-item { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
-.checkbox-wrapper { cursor: pointer; padding: 5px; }
+.checkbox-wrapper { cursor: pointer; padding: 5px; border: 0; background: transparent; }
 .custom-checkbox { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.5); border-radius: 4px; display: flex; align-items: center; justify-content: center; }
 .custom-checkbox.checked { background: #2196f3; border-color: #2196f3; }
 .custom-checkbox svg { width: 14px; height: 14px; color: white; }
@@ -998,4 +1035,13 @@ input:checked + .slider:before { transform: translateX(24px); }
 
 .slide-up-enter-active, .slide-up-leave-active { transition: all 0.3s ease; }
 .slide-up-enter-from, .slide-up-leave-to { transform: translateY(100%); opacity: 0; }
+
+.counter-feedback { position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%); z-index: 2200; max-width: min(420px, 90vw); padding: 12px 18px; border-radius: 12px; color: #fff; background: rgba(15, 23, 42, 0.92); box-shadow: 0 10px 30px rgba(0,0,0,0.2); text-align: center; }
+.counter-feedback.success { background: rgba(5, 150, 105, 0.94); }
+.confirm-overlay { z-index: 2100; }
+.confirm-card { width: min(360px, 86vw); padding: 28px; border-radius: 18px; color: inherit; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.3); }
+.confirm-card h3 { margin: 0 0 12px; }
+.confirm-card p { margin: 0 0 24px; line-height: 1.6; }
+.confirm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.danger-action { color: #ff5252; border-color: rgba(255,82,82,0.5); }
 </style>

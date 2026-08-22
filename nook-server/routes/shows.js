@@ -4,8 +4,9 @@ const Show = require('../models/Show');
 const { getAiredEpisodeCount } = require('../utils/tmdb');
 const { classifyTmdbError, sendTmdbError, tmdbGet } = require('../utils/tmdbClient');
 const { getSyncConcurrency, mapWithConcurrency } = require('../utils/concurrency');
-const { findPage, wantsPagination } = require('../utils/pagination');
+const { buildShowListPipeline, parseShowQuery, SHOW_CATEGORIES, SHOW_STATUSES } = require('../utils/showQuery');
 const logger = require('../utils/logger');
+const { validateObjectIdParam } = require('../middleware/validate');
 
 const SHOW_LIST_FIELDS = '-userId -__v';
 
@@ -38,46 +39,48 @@ const pickShowFields = (source) => {
   );
 };
 
-const sendWriteError = (res, err, fallback = 'Server Error') => {
-  if (err?.name === 'ValidationError') {
-    return res.status(400).json({
-      code: 'VALIDATION_ERROR',
-      error: Object.values(err.errors)[0]?.message || '剧集数据不符合要求'
-    });
-  }
-
-  logger.error('show_write_failed', { error: err });
-  return res.status(500).json({ error: fallback });
-};
-
 // ==========================================
 // 1. 获取剧集列表
 // ==========================================
-router.get('/', async (req, res) => {
+router.get('/', async (req, res, next) => {
   try {
-    const filter = { userId: req.user.id };
-    if (wantsPagination(req.query)) {
-      const page = await findPage(Show, filter, {
-        query: req.query,
-        select: SHOW_LIST_FIELDS,
-        sort: { updatedAt: -1 }
-      });
-      return res.json(page);
-    }
+    const options = parseShowQuery(req.query);
+    const userId = new Show.base.Types.ObjectId(req.user.id);
+    const [aggregateResult] = await Show.aggregate(buildShowListPipeline(userId, options));
+    const result = aggregateResult || {
+      items: [], total: [], allCount: [], statusCounts: [],
+      categoryCounts: [], networkTotal: [], networks: []
+    };
+    const total = result.total[0]?.count || 0;
+    const totalPages = total === 0 ? 0 : Math.ceil(total / options.limit);
+    const toCountMap = (rows, keys) => Object.fromEntries(
+      keys.map(key => [key, rows.find(row => row._id === key)?.count || 0])
+    );
 
-    const shows = await Show.find(filter)
-      .select(SHOW_LIST_FIELDS)
-      .sort({ updatedAt: -1 })
-      .lean();
-    res.json(shows);
+    res.json({
+      items: result.items,
+      pagination: {
+        page: options.page,
+        limit: options.limit,
+        total,
+        totalPages,
+        hasMore: options.page < totalPages
+      },
+      facets: {
+        allCount: result.allCount[0]?.count || 0,
+        statusCounts: toCountMap(result.statusCounts, SHOW_STATUSES),
+        categoryCounts: toCountMap(result.categoryCounts, SHOW_CATEGORIES),
+        networkTotal: result.networkTotal[0]?.count || 0,
+        networks: result.networks
+      }
+    });
   } catch (err) {
-    logger.error('show_list_failed', { error: err });
-    res.status(500).json({ error: 'Server Error' });
+    next(err);
   }
 });
 
 // Dashboard 使用聚合结果，避免为了四个统计数字下载全部剧集。
-router.get('/stats', async (req, res) => {
+router.get('/stats', async (req, res, next) => {
   try {
     const userId = new Show.base.Types.ObjectId(req.user.id);
     const [stats] = await Show.aggregate([
@@ -152,15 +155,26 @@ router.get('/stats', async (req, res) => {
       }
     });
   } catch (err) {
-    logger.error('show_stats_failed', { error: err });
-    res.status(500).json({ error: 'Server Error' });
+    next(err);
+  }
+});
+
+router.get('/calendar', async (req, res, next) => {
+  try {
+    const shows = await Show.find({ userId: req.user.id })
+      .select('title posterUrl network networkLogo status updateFrequency updateDays updateCount lastAirDate estimatedFinishDate')
+      .sort({ lastAirDate: -1, title: 1 })
+      .lean();
+    res.json(shows);
+  } catch (err) {
+    next(err);
   }
 });
 
 // ==========================================
 // 2. 添加新剧集 (含查重逻辑)
 // ==========================================
-router.post('/', async (req, res) => {
+router.post('/', async (req, res, next) => {
   try {
     const showData = pickShowFields(req.body);
     const { tmdbId } = showData;
@@ -168,7 +182,7 @@ router.post('/', async (req, res) => {
     if (tmdbId) {
       const existingShow = await Show.findOne({ userId: req.user.id, tmdbId });
       if (existingShow) {
-        return res.status(400).json({ error: `剧集《${existingShow.title}》已存在，请勿重复添加。` });
+        return res.status(409).json({ code: 'DUPLICATE_SHOW', error: `剧集《${existingShow.title}》已存在，请勿重复添加。` });
       }
     }
 
@@ -177,44 +191,43 @@ router.post('/', async (req, res) => {
     const show = await newShow.save();
     res.json(show);
   } catch (err) {
-    return sendWriteError(res, err);
+    next(err);
   }
 });
 
 // ==========================================
 // 3. 更新剧集 (进度/状态)
 // ==========================================
-router.put('/:id', async (req, res) => {
+router.put('/:id', validateObjectIdParam(), async (req, res, next) => {
   try {
     const show = await Show.findOne({ _id: req.params.id, userId: req.user.id });
-    if (!show) return res.status(404).json({ msg: 'Show not found' });
+    if (!show) return res.status(404).json({ code: 'SHOW_NOT_FOUND', error: 'Show not found' });
 
     Object.assign(show, pickShowFields(req.body), { updatedAt: Date.now() });
     await show.save();
     res.json(show);
   } catch (err) {
-    return sendWriteError(res, err);
+    next(err);
   }
 });
 
 // ==========================================
 // 4. 删除剧集
 // ==========================================
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', validateObjectIdParam(), async (req, res, next) => {
   try {
     const show = await Show.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
-    if (!show) return res.status(404).json({ msg: 'Show not found' });
-    res.json({ msg: 'Show removed' });
+    if (!show) return res.status(404).json({ code: 'SHOW_NOT_FOUND', error: 'Show not found' });
+    res.json({ message: 'Show removed' });
   } catch (err) {
-    logger.error('show_delete_failed', { error: err });
-    res.status(500).json({ error: 'Server Error' });
+    next(err);
   }
 });
 
 // ==========================================
 // 5. 🔄 手动同步接口（受控并发 + 短期缓存）
 // ==========================================
-router.post('/sync', async (req, res) => {
+router.post('/sync', async (req, res, next) => {
   try {
     const activeShows = await Show.find({
       userId: req.user.id,
@@ -303,13 +316,12 @@ router.post('/sync', async (req, res) => {
     });
 
   } catch (err) {
-    logger.error('show_sync_failed', { error: err });
-    res.status(500).json({ error: '同步服务出错' });
+    next(err);
   }
 });
 
 // GET /api/shows/export
-router.get('/export', async (req, res) => {
+router.get('/export', async (req, res, next) => {
   try {
     const shows = await Show.find({ userId: req.user.id })
       .select(SHOW_LIST_FIELDS)
@@ -318,18 +330,24 @@ router.get('/export', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename=tv_shows_backup_${Date.now()}.json`);
     res.send(JSON.stringify(shows, null, 2));
   } catch (err) {
-    logger.error('show_export_failed', { error: err });
-    res.status(500).json({ error: 'Export Failed' });
+    next(err);
   }
 });
 
 // ==========================================
 // 6. 📥 数据导入接口 (批量化 & 事务优化)
 // ==========================================
-router.post('/import', async (req, res) => {
+router.post('/import', async (req, res, next) => {
   const { shows } = req.body || {};
-  if (!Array.isArray(shows)) return res.status(400).json({ error: 'Invalid data format' });
-  if (shows.length > 1000) return res.status(400).json({ error: 'A maximum of 1000 shows can be imported at once' });
+  if (!Array.isArray(shows)) {
+    return res.status(400).json({ code: 'INVALID_IMPORT', error: 'Invalid data format' });
+  }
+  if (shows.length > 1000) {
+    return res.status(400).json({
+      code: 'IMPORT_LIMIT_EXCEEDED',
+      error: 'A maximum of 1000 shows can be imported at once'
+    });
+  }
 
   let skipCount = 0;
   let invalidCount = 0;
@@ -391,7 +409,7 @@ router.post('/import', async (req, res) => {
     });
 
   } catch (err) {
-    return sendWriteError(res, err, '导入过程中发生错误');
+    next(err);
   }
 });
 

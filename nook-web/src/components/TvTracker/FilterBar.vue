@@ -8,6 +8,7 @@
           :key="st.value" 
           class="status-pill" 
           :class="{ active: status === st.value }" 
+          :aria-pressed="status === st.value"
           @click="$emit('update:status', st.value)"
         >
           {{ st.label }}
@@ -22,6 +23,7 @@
             <button 
               class="dropdown-btn" 
               :class="{ 'has-selection': category !== 'all', 'is-open': activeDropdown === 'category' }" 
+              :aria-expanded="activeDropdown === 'category'"
               @click="toggleDropdown('category')"
             >
               <span>{{ currentCategoryLabel }}</span>
@@ -48,6 +50,7 @@
             <button 
               class="dropdown-btn" 
               :class="{ 'has-selection': network !== 'all', 'is-open': activeDropdown === 'network' }" 
+              :aria-expanded="activeDropdown === 'network'"
               @click="toggleDropdown('network')"
             >
               <span>{{ currentNetworkLabel }}</span>
@@ -82,6 +85,7 @@
             <button 
               class="dropdown-btn" 
               :class="{ 'is-open': activeDropdown === 'sort' }" 
+              :aria-expanded="activeDropdown === 'sort'"
               @click="toggleDropdown('sort')"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
@@ -111,10 +115,10 @@
         <div class="divider"></div>
 
         <div class="view-toggle">
-          <button class="toggle-btn" :class="{ active: viewMode === 'grid' }" @click="$emit('update:viewMode', 'grid')" title="网格视图">
+          <button class="toggle-btn" :class="{ active: viewMode === 'grid' }" :aria-pressed="viewMode === 'grid'" aria-label="网格视图" @click="$emit('update:viewMode', 'grid')" title="网格视图">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
           </button>
-          <button class="toggle-btn" :class="{ active: viewMode === 'list' }" @click="$emit('update:viewMode', 'list')" title="列表视图">
+          <button class="toggle-btn" :class="{ active: viewMode === 'list' }" :aria-pressed="viewMode === 'list'" aria-label="列表视图" @click="$emit('update:viewMode', 'list')" title="列表视图">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line></svg>
           </button>
         </div>
@@ -133,7 +137,9 @@ const props = defineProps({
   status: String,
   network: String,
   networks: Array,
-  shows: { type: Array, default: () => [] },
+  statusCounts: { type: Object, default: () => ({}) },
+  categoryCounts: { type: Object, default: () => ({}) },
+  networkTotal: { type: Number, default: 0 },
   viewMode: { type: String, default: 'grid' },
   sortBy: { type: String, default: 'date' }, 
   sortDesc: { type: Boolean, default: true }
@@ -201,33 +207,18 @@ const selectSort = (val) => {
 };
 
 const getStatusCount = (val) => {
-  if (!props.shows) return 0;
-  return props.shows.filter(s => {
-    const catMatch = props.category === 'all' || s.category === props.category;
-    const netMatch = props.network === 'all' || s.network === props.network;
-    const statusMatch = val === 'all' || s.status === val;
-    return catMatch && netMatch && statusMatch;
-  }).length;
+  if (val === 'all') return Object.values(props.statusCounts).reduce((sum, count) => sum + count, 0);
+  return props.statusCounts[val] || 0;
 };
 
 const getCategoryCount = (val) => {
-  if (!props.shows) return 0;
-  return props.shows.filter(s => {
-    const statusMatch = props.status === 'all' || s.status === props.status;
-    const netMatch = props.network === 'all' || s.network === props.network;
-    const catMatch = val === 'all' || s.category === val;
-    return statusMatch && netMatch && catMatch;
-  }).length;
+  if (val === 'all') return Object.values(props.categoryCounts).reduce((sum, count) => sum + count, 0);
+  return props.categoryCounts[val] || 0;
 };
 
 const getNetworkCount = (val) => {
-  if (!props.shows) return 0;
-  return props.shows.filter(s => {
-    const catMatch = props.category === 'all' || s.category === props.category;
-    const statusMatch = props.status === 'all' || s.status === props.status;
-    const netMatch = val === 'all' || s.network === val;
-    return catMatch && statusMatch && netMatch;
-  }).length;
+  if (val === 'all') return props.networkTotal;
+  return props.networks.find(network => network.name === val)?.count || 0;
 };
 </script>
 
@@ -362,5 +353,15 @@ const getNetworkCount = (val) => {
   .main-toolbar { flex-direction: column; align-items: flex-start; gap: 12px; }
   .toolbar-actions { width: 100%; justify-content: space-between; }
   .dropdown-menu { right: auto; left: 0; transform-origin: top left; } /* 在小屏幕下左对齐下拉菜单 */
+}
+
+@media (max-width: 560px) {
+  .filter-bar-wrapper { padding: 10px; }
+  .status-group { width: 100%; overflow-x: auto; border-radius: 12px; }
+  .status-pill { flex: 0 0 auto; padding: 6px 11px; }
+  .toolbar-actions { gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+  .trigger-group { flex: 0 0 auto; gap: 5px; }
+  .dropdown-btn { padding: 0 10px; }
+  .category-menu, .network-menu { width: min(280px, calc(100vw - 40px)); }
 }
 </style>

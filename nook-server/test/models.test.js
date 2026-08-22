@@ -72,10 +72,23 @@ test('history count and duration cannot be negative', async () => {
   ));
 });
 
+test('history count and tv activity deltas must be whole numbers', async () => {
+  const history = new History({ userId: USER_ID, count: 1.5, duration: 5 });
+  const zeroDelta = new TvLog({ userId: USER_ID, showTitle: 'Example', count: 0 });
+  const fractionalDelta = new TvLog({ userId: USER_ID, showTitle: 'Example', count: 1.5 });
+
+  await assert.rejects(history.validate(), error => Boolean(error.errors.count));
+  await assert.rejects(zeroDelta.validate(), error => Boolean(error.errors.count));
+  await assert.rejects(fractionalDelta.validate(), error => Boolean(error.errors.count));
+});
+
 test('user-owned collections define compound query indexes', () => {
   assert.ok(History.schema.indexes().some(([keys]) => keys.userId === 1 && keys.date === -1));
   assert.ok(Show.schema.indexes().some(([keys]) => keys.userId === 1 && keys.updatedAt === -1));
   assert.ok(Show.schema.indexes().some(([keys]) => keys.userId === 1 && keys.tmdbId === 1));
+  assert.ok(Show.schema.indexes().some(([keys]) => (
+    keys.userId === 1 && keys.status === 1 && keys.category === 1 && keys.lastAirDate === -1
+  )));
   assert.ok(TvLog.schema.indexes().some(([keys]) => keys.userId === 1 && keys.date === -1));
 });
 

@@ -16,12 +16,18 @@ const TvLogSchema = new mongoose.Schema({
   // 剧集名称 (可选，方便直接查看日志)
   showTitle: {
     type: String,
-    required: false
+    required: false,
+    trim: true,
+    maxlength: 200
   },
   // 变动集数 (例如 +1 或 -1)
   count: {
     type: Number,
-    required: true
+    required: true,
+    validate: {
+      validator: value => Number.isInteger(value) && value !== 0,
+      message: 'Count must be a non-zero integer'
+    }
   },
   // 记录日期
   date: {

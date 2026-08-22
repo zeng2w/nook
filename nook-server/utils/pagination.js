@@ -13,11 +13,6 @@ const getPagination = (query = {}, defaultLimit = DEFAULT_LIMIT) => {
   return { page, limit, skip: (page - 1) * limit };
 };
 
-const wantsPagination = (query = {}) => (
-  Object.prototype.hasOwnProperty.call(query, 'page') ||
-  Object.prototype.hasOwnProperty.call(query, 'limit')
-);
-
 const findPage = async (Model, filter, options = {}) => {
   const { page, limit, skip } = getPagination(options.query, options.defaultLimit);
   const [items, total] = await Promise.all([
@@ -45,6 +40,5 @@ const findPage = async (Model, filter, options = {}) => {
 
 module.exports = {
   findPage,
-  getPagination,
-  wantsPagination
+  getPagination
 };

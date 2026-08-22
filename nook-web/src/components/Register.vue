@@ -5,24 +5,26 @@
       <p class="subtitle">Sign up to access all features</p>
 
       <div class="form-group">
-        <label>Username</label>
-        <input type="text" v-model="form.username" placeholder="Enter username" class="auth-input" />
+        <label for="register-username">Username</label>
+        <input id="register-username" type="text" v-model="form.username" autocomplete="username" placeholder="Enter username" class="auth-input" />
       </div>
 
       <div class="form-group">
-        <label>Email</label>
-        <input type="email" v-model="form.email" placeholder="Enter email" class="auth-input" />
+        <label for="register-email">Email</label>
+        <input id="register-email" type="email" v-model="form.email" autocomplete="email" placeholder="Enter email" class="auth-input" />
       </div>
 
       <div class="form-group">
-        <label>Password</label>
-        <input type="password" v-model="form.password" placeholder="Enter password (min 8 chars)" class="auth-input" />
+        <label for="register-password">Password</label>
+        <input id="register-password" type="password" v-model="form.password" autocomplete="new-password" placeholder="Enter password (min 8 chars)" class="auth-input" />
       </div>
 
       <div class="form-group">
-        <label>Confirm Password</label>
+        <label for="register-confirm-password">Confirm Password</label>
         <input 
+          id="register-confirm-password"
           type="password" 
+          autocomplete="new-password"
           v-model="form.confirmPassword" 
           placeholder="Re-enter password" 
           class="auth-input" 
@@ -30,12 +32,12 @@
         />
       </div>
 
-      <button class="auth-btn primary" @click="handleRegister" :disabled="isLoading">
+      <button class="auth-btn primary" :aria-busy="isLoading" @click="handleRegister" :disabled="isLoading">
         {{ isLoading ? 'Registering...' : 'Sign Up' }}
       </button>
 
       <div class="footer-link">
-        Already have an account? <span class="link-text" @click="goToLogin">Log in</span>
+        Already have an account? <button type="button" class="link-text" @click="goToLogin">Log in</button>
       </div>
     </div>
 
@@ -60,6 +62,7 @@ import { reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import { getApiErrorMessage } from '@/api/errors';
+import { setAuthUser } from '@/auth';
 
 defineOptions({ name: 'RegisterPage' });
 
@@ -120,7 +123,7 @@ const handleRegister = async () => {
     // 3. 注册成功逻辑 (自动登录)
     const userData = res.data.user; // 获取后端返回的用户信息
     // 用户信息只用于界面展示；认证凭证由 HttpOnly Cookie 保存
-    sessionStorage.setItem('current_user', JSON.stringify(userData));
+    setAuthUser(userData);
 
     showToast(`Welcome, ${userData.username}!`, "success");
 
@@ -168,7 +171,7 @@ const handleRegister = async () => {
 .auth-btn:hover { opacity: 0.8; }
 .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .footer-link { text-align: center; font-size: 0.9rem; color: #666; margin-top: 10px; }
-.link-text { color: #0066cc; cursor: pointer; font-weight: 600; }
+.link-text { color: #0066cc; cursor: pointer; font: inherit; font-weight: 600; border: 0; padding: 0; background: transparent; }
 .link-text:hover { text-decoration: underline; }
 
 /* ================= Toast 通知样式 ================= */

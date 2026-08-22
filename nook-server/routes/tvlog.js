@@ -3,37 +3,28 @@ const express = require('express');
 const router = express.Router();
 const TvLog = require('../models/TvLog');
 const Show = require('../models/Show');
-const { findPage, wantsPagination } = require('../utils/pagination');
-const logger = require('../utils/logger');
+const { findPage } = require('../utils/pagination');
+const mongoose = require('mongoose');
 
 // @route   GET /api/tvlog
 // @desc    获取用户的追剧热力图数据
-router.get('/', async (req, res) => {
+router.get('/', async (req, res, next) => {
   try {
     const filter = { userId: req.user.id };
-    if (wantsPagination(req.query)) {
-      const page = await findPage(TvLog, filter, {
-        query: req.query,
-        defaultLimit: 100,
-        select: '-userId -__v',
-        sort: { date: -1 }
-      });
-      return res.json(page);
-    }
-
-    const logs = await TvLog.find(filter)
-      .select('-userId -__v')
-      .sort({ date: -1 })
-      .lean();
-    res.json(logs);
+    const page = await findPage(TvLog, filter, {
+      query: req.query,
+      defaultLimit: 100,
+      select: '-userId -__v',
+      sort: { date: -1 }
+    });
+    res.json(page);
   } catch (err) {
-    logger.error('tvlog_list_failed', { error: err });
-    res.status(500).json({ error: 'Server Error' });
+    next(err);
   }
 });
 
 // Dashboard 只需要每日总数，直接在数据库端聚合以缩小响应体。
-router.get('/activity', async (req, res) => {
+router.get('/activity', async (req, res, next) => {
   try {
     const userId = new TvLog.base.Types.ObjectId(req.user.id);
     const activity = await TvLog.aggregate([
@@ -49,20 +40,22 @@ router.get('/activity', async (req, res) => {
     ]);
     res.json(activity);
   } catch (err) {
-    logger.error('tvlog_activity_failed', { error: err });
-    res.status(500).json({ error: 'Server Error' });
+    next(err);
   }
 });
 
 // @route   POST /api/tvlog
 // @desc    添加一条观看记录
-router.post('/', async (req, res) => {
+router.post('/', async (req, res, next) => {
   try {
     const { showId, showTitle, count, date } = req.body || {};
 
     if (showId) {
+      if (!mongoose.isObjectIdOrHexString(showId)) {
+        return res.status(400).json({ code: 'INVALID_ID', error: 'showId must be valid' });
+      }
       const ownsShow = await Show.exists({ _id: showId, userId: req.user.id });
-      if (!ownsShow) return res.status(404).json({ msg: 'Show not found' });
+      if (!ownsShow) return res.status(404).json({ code: 'SHOW_NOT_FOUND', error: 'Show not found' });
     }
 
     const newLog = new TvLog({
@@ -77,8 +70,7 @@ router.post('/', async (req, res) => {
     const log = await newLog.save();
     res.json(log);
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
+    next(err);
   }
 });
 

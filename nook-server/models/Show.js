@@ -63,6 +63,7 @@ const ShowSchema = new mongoose.Schema({
 
 ShowSchema.index({ userId: 1, updatedAt: -1 });
 ShowSchema.index({ userId: 1, tmdbId: 1 });
+ShowSchema.index({ userId: 1, status: 1, category: 1, lastAirDate: -1 });
 
 ShowSchema.pre('validate', function validateEpisodeTotals() {
   if (this.totalEpisodes > 0 && this.airedEpisodes > this.totalEpisodes) {

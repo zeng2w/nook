@@ -41,7 +41,7 @@
             <div class="card-header">
               <div class="title-with-select">
                 <h2>观影活跃度</h2>
-                <select v-model="heatmapYearMode" class="glass-selector">
+                <select v-model="heatmapYearMode" class="glass-selector" aria-label="活跃度年份范围">
                   <option value="rolling">最近一年</option>
                   <option v-for="year in availableYears" :key="year" :value="year">
                     {{ year }} 年
@@ -77,6 +77,7 @@ import { ref, computed, onMounted } from 'vue';
 import { updateTheme } from '@/store';
 import { fetchShowStatsApi, fetchTvActivityApi } from '@/api/shows';
 import { getApiErrorMessage } from '@/api/errors';
+import { getAuthUserId } from '@/auth';
 
 import TvStatsOverview from '@/components/home/TvStatsOverview.vue';
 import TvHeatmap from '@/components/home/TvHeatmap.vue';
@@ -109,17 +110,8 @@ const availableYears = computed(() => {
   return Array.from(years).sort((a, b) => b - a);
 });
 
-const getCurrentUserId = () => { 
-  try {
-    const userStr = sessionStorage.getItem('current_user'); 
-    return userStr ? JSON.parse(userStr).id : null; 
-  } catch {
-    return null;
-  }
-};
-
 const loadDashboard = async () => {
-  if (!getCurrentUserId()) return;
+  if (!getAuthUserId()) return;
   isLoading.value = true;
   loadError.value = '';
   try {

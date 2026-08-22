@@ -10,6 +10,7 @@ const HOST = process.env.HOST || '127.0.0.1';
 const tmdbRoutes = require('./routes/tmdb');
 const { requireAuth, validateSessionConfiguration } = require('./middleware/auth');
 const logger = require('./utils/logger');
+const { errorHandler, notFoundHandler } = require('./middleware/error');
 
 validateSessionConfiguration();
 
@@ -77,7 +78,7 @@ const databaseRequired = async (req, res, next) => {
     logger.error('database_connection_failed', { error: err });
     res.status(503).json({
       code: 'DATABASE_UNAVAILABLE',
-      msg: 'Database is unavailable. Check the server database connection and try again.'
+      error: 'Database is unavailable. Check the server database connection and try again.'
     });
   }
 };
@@ -119,6 +120,8 @@ app.use('/api/auth', authDatabaseRequired, require('./routes/auth'));
 app.use('/api/history', requireAuth, databaseRequired, require('./routes/history'));
 app.use('/api/shows', requireAuth, databaseRequired, require('./routes/shows'));
 app.use('/api/tvlog', requireAuth, databaseRequired, require('./routes/tvlog'));
+app.use('/api', notFoundHandler);
+app.use(errorHandler);
 
 // 只有在本地开发时才启动监听
 if (process.env.NODE_ENV !== 'production') {
