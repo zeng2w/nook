@@ -3,6 +3,7 @@ const router = express.Router();
 const Show = require('../models/Show'); 
 const { getAiredEpisodeCount } = require('../utils/tmdb');
 const { classifyTmdbError, sendTmdbError, tmdbGet } = require('../utils/tmdbClient');
+const { getSyncConcurrency, mapWithConcurrency } = require('../utils/concurrency');
 
 const ALLOWED_SHOW_FIELDS = [
   'title',
@@ -105,7 +106,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // ==========================================
-// 5. 🔄 手动同步接口 (修复：串行执行 + 延时控制防封 IP)
+// 5. 🔄 手动同步接口（受控并发 + 短期缓存）
 // ==========================================
 router.post('/sync', async (req, res) => {
   try {
@@ -115,82 +116,77 @@ router.post('/sync', async (req, res) => {
       updateFrequency: { $ne: 'ended' }
     });
 
-    const updateLogs = [];
-    let attemptedCount = 0;
-    let failedCount = 0;
-    let firstFailure = null;
+    const syncCandidates = activeShows.filter(show => show.tmdbId && show.category !== 'movie');
+    const syncResults = await mapWithConcurrency(
+      syncCandidates,
+      getSyncConcurrency(),
+      async show => {
+        try {
+          const tmdbRes = await tmdbGet(`/tv/${show.tmdbId}`, {
+            cacheTtlMs: 60 * 1000,
+            params: { language: 'zh-CN' }
+          });
 
-    // ★ 修复：改用 for...of 串行处理，保护 TMDB API 额度
-    for (const show of activeShows) {
-      if (!show.tmdbId) continue; 
+          const remoteData = tmdbRes.data;
+          let needsSave = false;
+          let updateLog = null;
 
-      const queryType = show.category === 'movie' ? 'movie' : 'tv';
-      if (queryType === 'movie') continue; 
-      attemptedCount++;
+          if (remoteData.last_episode_to_air) {
+            const newEpisodeCount = getAiredEpisodeCount(remoteData);
+            const newAirDate = remoteData.last_episode_to_air.air_date;
 
-      try {
-        const tmdbRes = await tmdbGet(`/${queryType}/${show.tmdbId}`, {
-          params: { language: 'zh-CN' }
-        });
-        
-        const remoteData = tmdbRes.data;
-        let needsSave = false;
-        
-        if (remoteData.last_episode_to_air) {
-          const newEpisodeCount = getAiredEpisodeCount(remoteData);
-          const newAirDate = remoteData.last_episode_to_air.air_date;
-          
-          if (newEpisodeCount > show.airedEpisodes) {
-            updateLogs.push({
-              id: show._id,
-              title: show.title,
-              oldEp: show.airedEpisodes,
-              newEp: newEpisodeCount,
-              date: newAirDate || new Date().toISOString().split('T')[0],
-              posterUrl: show.posterUrl
-            });
+            if (newEpisodeCount > show.airedEpisodes) {
+              updateLog = {
+                id: show._id,
+                title: show.title,
+                oldEp: show.airedEpisodes,
+                newEp: newEpisodeCount,
+                date: newAirDate || new Date().toISOString().split('T')[0],
+                posterUrl: show.posterUrl
+              };
 
-            show.airedEpisodes = newEpisodeCount;
-            if (newAirDate) show.lastAirDate = newAirDate;
+              show.airedEpisodes = newEpisodeCount;
+              if (newAirDate) show.lastAirDate = newAirDate;
+              needsSave = true;
+            }
+          }
+
+          if (remoteData.number_of_episodes && remoteData.number_of_episodes > show.totalEpisodes) {
+            show.totalEpisodes = remoteData.number_of_episodes;
             needsSave = true;
           }
-        }
-        
-        if (remoteData.number_of_episodes && remoteData.number_of_episodes > show.totalEpisodes) {
-          show.totalEpisodes = remoteData.number_of_episodes;
-          needsSave = true;
-        }
-        if (remoteData.status === 'Ended' || remoteData.status === 'Canceled') {
-           if (show.updateFrequency !== 'ended') {
-             show.updateFrequency = 'ended';
-             needsSave = true;
-           }
-        }
-        if (!show.network && remoteData.networks && remoteData.networks.length > 0) {
-           show.network = remoteData.networks[0].name;
-           if (remoteData.networks[0].logo_path) {
-             show.networkLogo = `https://image.tmdb.org/t/p/h60${remoteData.networks[0].logo_path}`;
-           }
-           needsSave = true;
-        }
+          if (
+            (remoteData.status === 'Ended' || remoteData.status === 'Canceled') &&
+            show.updateFrequency !== 'ended'
+          ) {
+            show.updateFrequency = 'ended';
+            needsSave = true;
+          }
+          if (!show.network && remoteData.networks && remoteData.networks.length > 0) {
+            show.network = remoteData.networks[0].name;
+            if (remoteData.networks[0].logo_path) {
+              show.networkLogo = `https://image.tmdb.org/t/p/h60${remoteData.networks[0].logo_path}`;
+            }
+            needsSave = true;
+          }
 
-        if (needsSave) {
-          await show.save();
+          if (needsSave) await show.save();
+          return { updateLog };
+        } catch (err) {
+          const failure = classifyTmdbError(err);
+          console.error(`[Sync] ${failure.code} for show ${show._id}`);
+          return { error: err };
         }
-
-      } catch (err) {
-        failedCount++;
-        firstFailure ||= err;
-        const failure = classifyTmdbError(err);
-        console.error(`[Sync] ${failure.code} for show ${show._id}`);
-      } finally {
-        // 每次请求后暂停 200 毫秒，避免短时间内触发上游限流。
-        await new Promise(resolve => setTimeout(resolve, 200));
       }
-    }
+    );
+
+    const failures = syncResults.filter(result => result.error);
+    const updateLogs = syncResults.flatMap(result => result.updateLog ? [result.updateLog] : []);
+    const attemptedCount = syncCandidates.length;
+    const failedCount = failures.length;
 
     if (attemptedCount > 0 && failedCount === attemptedCount) {
-      return sendTmdbError(res, firstFailure, 'sync');
+      return sendTmdbError(res, failures[0].error, 'sync');
     }
 
     res.json({ 
@@ -227,15 +223,34 @@ router.post('/import', async (req, res) => {
   if (shows.length > 1000) return res.status(400).json({ error: 'A maximum of 1000 shows can be imported at once' });
 
   let skipCount = 0;
+  let invalidCount = 0;
   const validShowsToInsert = [];
   const seenKeys = new Set();
 
   try {
+    // 一次性读取当前用户的查重字段，避免最多 1000 次逐条查询。
+    const existingShows = await Show.find({ userId: req.user.id })
+      .select({ tmdbId: 1, title: 1 })
+      .lean();
+    const existingTmdbIds = new Set(
+      existingShows.filter(show => show.tmdbId).map(show => String(show.tmdbId))
+    );
+    const existingTitles = new Set(
+      existingShows.map(show => String(show.title || '').trim().toLowerCase())
+    );
+
     for (const item of shows) {
       const showData = pickShowFields(item);
+      const normalizedTitle = String(showData.title || '').trim().toLowerCase();
+      if (!normalizedTitle || !showData.category) {
+        skipCount++;
+        invalidCount++;
+        continue;
+      }
+
       const duplicateKey = showData.tmdbId
-        ? `tmdb:${showData.tmdbId}`
-        : `title:${String(showData.title || '').trim().toLowerCase()}`;
+        ? `tmdb:${String(showData.tmdbId)}`
+        : `title:${normalizedTitle}`;
 
       if (seenKeys.has(duplicateKey)) {
         skipCount++;
@@ -243,12 +258,9 @@ router.post('/import', async (req, res) => {
       }
       seenKeys.add(duplicateKey);
 
-      let exists = null;
-      if (showData.tmdbId) {
-        exists = await Show.findOne({ userId: req.user.id, tmdbId: showData.tmdbId });
-      } else {
-        exists = await Show.findOne({ userId: req.user.id, title: showData.title });
-      }
+      const exists = showData.tmdbId
+        ? existingTmdbIds.has(String(showData.tmdbId))
+        : existingTitles.has(normalizedTitle);
 
       if (exists) {
         skipCount++;
@@ -265,7 +277,8 @@ router.post('/import', async (req, res) => {
       success: true, 
       message: `导入完成：成功 ${validShowsToInsert.length} 部，跳过重复 ${skipCount} 部`,
       successCount: validShowsToInsert.length,
-      skipCount 
+      skipCount,
+      invalidCount
     });
 
   } catch (err) {

@@ -33,6 +33,8 @@ The Vite development server proxies `/api` requests to `http://localhost:5001`.
 - `MONGO_URI`: MongoDB connection string.
 - `TMDB_API_KEY`: TMDB API key used by search and synchronization.
 - `TMDB_TIMEOUT_MS`: optional TMDB request timeout in milliseconds (defaults to 12000).
+- `TMDB_CACHE_TTL_MS`: optional successful TMDB response cache duration (defaults to 5 minutes).
+- `TMDB_SYNC_CONCURRENCY`: optional concurrent synchronization limit (defaults to 3, maximum 5).
 - `HTTP_PROXY` / `HTTPS_PROXY`: optional proxy URLs for local networks that cannot reach TMDB directly.
 - `SESSION_SECRET`: at least 32 random characters in production; signs the HttpOnly session cookie.
 - `CORS_ORIGIN`: optional comma-separated allowlist for trusted same-site frontend origins. It is not needed for the default same-origin deployment.

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getAiredEpisodeCount } = require('../utils/tmdb');
-const { sendTmdbError, tmdbGet } = require('../utils/tmdbClient');
+const { getCacheTtl, sendTmdbError, tmdbGet } = require('../utils/tmdbClient');
 
 const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500'; // w500 代表海报宽度
 
@@ -19,6 +19,7 @@ router.get('/search', async (req, res) => {
 
     // 使用 multi search 同时搜索 剧集(tv) 和 电影(movie)
     const response = await tmdbGet('/search/multi', {
+      cacheTtlMs: Math.min(getCacheTtl(), 60 * 1000),
       params: {
         language: 'zh-CN', // 优先返回中文结果
         query: query,
@@ -64,6 +65,7 @@ router.get('/details/:type/:id', async (req, res) => {
     }
 
     const response = await tmdbGet(`/${queryType}/${id}`, {
+      cacheTtlMs: getCacheTtl(),
       params: { language: 'zh-CN' }
     });
 
@@ -144,6 +146,7 @@ router.get('/details/:type/:id', async (req, res) => {
 router.get('/trending', async (req, res) => {
   try {
     const response = await tmdbGet('/tv/popular', {
+      cacheTtlMs: getCacheTtl(),
       params: { language: 'zh-CN', page: 1 }
     });
     // 只取前 10 条数据减轻前端渲染压力
@@ -158,6 +161,7 @@ router.get('/trending', async (req, res) => {
 router.get('/new-releases', async (req, res) => {
   try {
     const response = await tmdbGet('/tv/on_the_air', {
+      cacheTtlMs: getCacheTtl(),
       params: { language: 'zh-CN', page: 1 }
     });
     const newShows = response.data.results.slice(0, 10);

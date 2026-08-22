@@ -109,3 +109,47 @@ test('logout expires the session cookie', async () => {
   assert.equal(response.status, 204);
   assert.match(response.headers['set-cookie'][0], /Max-Age=0/);
 });
+
+test('show import performs one deduplication query before bulk insert', async () => {
+  const originalFind = Show.find;
+  const originalInsertMany = Show.insertMany;
+  let findCalls = 0;
+  let insertedShows = [];
+
+  Show.find = () => {
+    findCalls++;
+    return {
+      select() { return this; },
+      async lean() { return [{ tmdbId: 100, title: 'Existing Show' }]; }
+    };
+  };
+  Show.insertMany = async shows => {
+    insertedShows = shows;
+    return shows;
+  };
+
+  try {
+    const response = await request(createTestApp())
+      .post('/api/shows/import')
+      .set('Cookie', `nook_session=${createSessionToken(USER_A)}`)
+      .send({
+        shows: [
+          { title: 'Existing Show', category: 'tv', tmdbId: 100 },
+          { title: 'New Show', category: 'tv', tmdbId: 200 },
+          { title: 'New Show Duplicate', category: 'tv', tmdbId: 200 },
+          { title: 'existing show', category: 'tv' },
+          { title: '', category: 'tv' }
+        ]
+      });
+
+    assert.equal(response.status, 200);
+    assert.equal(findCalls, 1);
+    assert.equal(insertedShows.length, 1);
+    assert.equal(response.body.successCount, 1);
+    assert.equal(response.body.skipCount, 4);
+    assert.equal(response.body.invalidCount, 1);
+  } finally {
+    Show.find = originalFind;
+    Show.insertMany = originalInsertMany;
+  }
+});

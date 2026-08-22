@@ -2,6 +2,9 @@ const axios = require('axios');
 
 const DEFAULT_TIMEOUT_MS = 12000;
 const MAX_TIMEOUT_MS = 60000;
+const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
+const MAX_CACHE_TTL_MS = 60 * 60 * 1000;
+const MAX_CACHE_ENTRIES = 500;
 
 const getTimeout = () => {
   const configured = Number.parseInt(process.env.TMDB_TIMEOUT_MS, 10);
@@ -14,22 +17,80 @@ const tmdbClient = axios.create({
   timeout: getTimeout()
 });
 
-const tmdbGet = (path, config = {}) => {
-  const apiKey = process.env.TMDB_API_KEY;
-  if (!apiKey) {
-    const error = new Error('TMDB_API_KEY is not configured');
-    error.code = 'TMDB_NOT_CONFIGURED';
-    return Promise.reject(error);
-  }
-
-  return tmdbClient.get(path, {
-    ...config,
-    params: {
-      ...(config.params || {}),
-      api_key: apiKey
-    }
-  });
+const getCacheTtl = () => {
+  const configured = Number.parseInt(process.env.TMDB_CACHE_TTL_MS, 10);
+  if (!Number.isFinite(configured) || configured < 0) return DEFAULT_CACHE_TTL_MS;
+  return Math.min(configured, MAX_CACHE_TTL_MS);
 };
+
+const createTmdbGet = (client, options = {}) => {
+  const cache = new Map();
+  const inFlight = new Map();
+  const now = options.now || Date.now;
+  const maxEntries = options.maxEntries || MAX_CACHE_ENTRIES;
+
+  const getCacheKey = (path, params) => JSON.stringify([
+    path,
+    Object.entries(params || {}).sort(([left], [right]) => left.localeCompare(right))
+  ]);
+
+  const pruneCache = () => {
+    const currentTime = now();
+    for (const [key, entry] of cache) {
+      if (entry.expiresAt <= currentTime) cache.delete(key);
+    }
+    while (cache.size >= maxEntries) cache.delete(cache.keys().next().value);
+  };
+
+  const get = async (path, config = {}) => {
+    const apiKey = process.env.TMDB_API_KEY;
+    if (!apiKey) {
+      const error = new Error('TMDB_API_KEY is not configured');
+      error.code = 'TMDB_NOT_CONFIGURED';
+      throw error;
+    }
+
+    const { cacheTtlMs = 0, ...requestConfig } = config;
+    const params = requestConfig.params || {};
+    const cacheKey = cacheTtlMs > 0 ? getCacheKey(path, params) : null;
+    const cached = cacheKey ? cache.get(cacheKey) : null;
+
+    if (cached && cached.expiresAt > now()) return cached.response;
+    if (cacheKey && inFlight.has(cacheKey)) return inFlight.get(cacheKey);
+
+    const request = client.get(path, {
+      ...requestConfig,
+      params: { ...params, api_key: apiKey }
+    }).then(response => {
+      if (cacheKey) {
+        pruneCache();
+        cache.set(cacheKey, {
+          expiresAt: now() + cacheTtlMs,
+          response: {
+            data: response.data,
+            status: response.status,
+            headers: response.headers
+          }
+        });
+      }
+      return response;
+    }).finally(() => {
+      if (cacheKey) inFlight.delete(cacheKey);
+    });
+
+    if (cacheKey) inFlight.set(cacheKey, request);
+    return request;
+  };
+
+  get.clearCache = () => {
+    cache.clear();
+    inFlight.clear();
+  };
+
+  return get;
+};
+
+const tmdbGet = createTmdbGet(tmdbClient);
 
 const classifyTmdbError = (error) => {
   const upstreamStatus = error.response?.status;
@@ -79,6 +140,8 @@ const sendTmdbError = (res, error, operation) => {
 
 module.exports = {
   classifyTmdbError,
+  createTmdbGet,
+  getCacheTtl,
   getTimeout,
   sendTmdbError,
   tmdbGet

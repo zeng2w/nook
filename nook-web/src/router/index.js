@@ -1,13 +1,13 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import axios from 'axios';
 
-// 引入组件
-import Login from '../components/Login.vue';
-import Register from '../components/Register.vue';
-import SimpleCounter from '../components/SimpleCounter.vue';
-import MainLayout from '../views/MainLayout.vue'; // 布局组件
-import DashboardHome from '../views/DashboardHome.vue'; // 仪表盘组件
-import TvTrackerView from '../views/TvTrackerView.vue'; // 【新增】追剧记录组件
+// 页面组件按路由懒加载，减少首次打开时需要下载和解析的 JavaScript。
+const Login = () => import('../components/Login.vue');
+const Register = () => import('../components/Register.vue');
+const SimpleCounter = () => import('../components/SimpleCounter.vue');
+const MainLayout = () => import('../views/MainLayout.vue');
+const DashboardHome = () => import('../views/DashboardHome.vue');
+const TvTrackerView = () => import('../views/TvTrackerView.vue');
 
 const routes = [
   // 1. 根路径重定向到登录
