@@ -3,22 +3,39 @@ import './api/http'
 import App from './App.vue'
 import router from './router' // 引入路由配置
 
-// 在 Vue 实例挂载之前执行
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then(function(registrations) {
-    for (let registration of registrations) {
-      // 强制注销所有旧的 Service Worker
-      registration.unregister();
-    }
-  }).catch(() => {});
+const LEGACY_CACHE_CLEANUP_KEY = 'nook:legacy-cache-cleanup:v1'
 
-  // 2. 清理缓存库
+// 旧版本曾注册过 Service Worker。清理只执行一次，避免每次启动都删除缓存。
+const cleanupLegacyBrowserCachesOnce = async () => {
+  try {
+    if (localStorage.getItem(LEGACY_CACHE_CLEANUP_KEY) === 'done') return
+  } catch {
+    // 隐私模式下 localStorage 可能不可用，仍尝试完成本次清理。
+  }
+
+  const cleanupTasks = []
+  if ('serviceWorker' in navigator) {
+    cleanupTasks.push(
+      navigator.serviceWorker.getRegistrations().then(registrations => (
+        Promise.all(registrations.map(registration => registration.unregister()))
+      ))
+    )
+  }
   if (window.caches) {
-    caches.keys().then(keys => {
-      keys.forEach(key => caches.delete(key));
-    }).catch(() => {});
+    cleanupTasks.push(
+      window.caches.keys().then(keys => Promise.all(keys.map(key => window.caches.delete(key))))
+    )
+  }
+
+  await Promise.allSettled(cleanupTasks)
+  try {
+    localStorage.setItem(LEGACY_CACHE_CLEANUP_KEY, 'done')
+  } catch {
+    // 无法持久化标记时不影响应用启动。
   }
 }
+
+void cleanupLegacyBrowserCachesOnce()
 
 const app = createApp(App)
 

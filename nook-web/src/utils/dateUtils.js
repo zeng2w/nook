@@ -61,8 +61,12 @@ const addCalendarMonths = (value, amount, anchorDay) => {
   return date;
 };
 
+export const getCurrentTimeZone = () => (
+  Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+);
+
 export const getCurrentTimeZoneLabel = () => {
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || '本地时区';
+  const zone = getCurrentTimeZone();
   const shortName = new Intl.DateTimeFormat('zh-CN', { timeZoneName: 'short' })
     .formatToParts(new Date())
     .find(part => part.type === 'timeZoneName')?.value;
@@ -94,16 +98,31 @@ const getValidUpdateDays = (show) => (
 
 export const isShowUpdateDay = (show, targetDate) => {
   const target = toLocalCalendarDate(targetDate);
-  if (!target || !show || show.updateFrequency === 'ended' || show.updateFrequency === 'unknown') {
+  if (!target || !show || show.updateFrequency === 'ended') {
     return false;
   }
 
+  const lastUpdate = toLocalCalendarDate(show.lastAirDate);
+  const nextUpdate = toLocalCalendarDate(show.nextAirDate);
+  const targetDay = getCalendarDayNumber(target);
+  const lastUpdateDay = getCalendarDayNumber(lastUpdate);
+  const nextUpdateDay = getCalendarDayNumber(nextUpdate);
+
+  // 下一集日期是 TMDB 明确给出的时间锚点。停播期间不继续按旧星期外推，
+  // 但仍保留 lastAirDate 之前的历史日历计算。
+  if (Number.isFinite(nextUpdateDay)) {
+    if (targetDay === nextUpdateDay) return true;
+    const isAfterLastKnownUpdate = !Number.isFinite(lastUpdateDay) || targetDay > lastUpdateDay;
+    if (isAfterLastKnownUpdate && targetDay < nextUpdateDay) return false;
+  }
+
+  if (show.updateFrequency === 'unknown') return false;
   if (show.updateFrequency === 'daily') return true;
 
-  const lastUpdate = toLocalCalendarDate(show.lastAirDate);
   if (show.updateFrequency === 'weekly') {
     const updateDays = getValidUpdateDays(show);
     if (updateDays.length > 0) return updateDays.includes(target.getDay());
+    if (nextUpdate) return target.getDay() === nextUpdate.getDay();
     return Boolean(lastUpdate) && target.getDay() === lastUpdate.getDay();
   }
 

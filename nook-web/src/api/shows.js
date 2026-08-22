@@ -40,4 +40,6 @@ export const addTvLogApi = (data) => {
 };
 
 // 8. 获取观看历史 (用于 Dashboard 热力图)
-export const fetchTvActivityApi = () => axios.get('/api/tvlog/activity');
+export const fetchTvActivityApi = (timeZone) => axios.get('/api/tvlog/activity', {
+  params: timeZone ? { timeZone } : undefined
+});

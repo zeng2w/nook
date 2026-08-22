@@ -6,8 +6,10 @@ const request = require('supertest');
 
 const User = require('../models/User');
 const Show = require('../models/Show');
+const TvLog = require('../models/TvLog');
 const authRoutes = require('../routes/auth');
 const showRoutes = require('../routes/shows');
+const tvLogRoutes = require('../routes/tvlog');
 const { createSessionToken, requireAuth } = require('../middleware/auth');
 const { errorHandler } = require('../middleware/error');
 
@@ -20,6 +22,7 @@ const createTestApp = () => {
   app.use('/api/auth/me', requireAuth);
   app.use('/api/auth', authRoutes);
   app.use('/api/shows', requireAuth, showRoutes);
+  app.use('/api/tvlog', requireAuth, tvLogRoutes);
   app.use(errorHandler);
   return app;
 };
@@ -174,10 +177,39 @@ test('calendar shows include the episode counts required for calendar labels', a
     assert.equal(response.status, 200);
     assert.match(selectedFields, /\bairedEpisodes\b/);
     assert.match(selectedFields, /\btotalEpisodes\b/);
+    assert.match(selectedFields, /\bnextAirDate\b/);
     assert.equal(response.body[0].airedEpisodes, 237);
     assert.equal(response.body[0].totalEpisodes, 300);
   } finally {
     Show.find = originalFind;
+  }
+});
+
+test('activity uses the requested time zone and excludes negative corrections', async () => {
+  const originalAggregate = TvLog.aggregate;
+  let receivedPipeline = null;
+  TvLog.aggregate = async pipeline => {
+    receivedPipeline = pipeline;
+    return [{ date: '2026-08-21', count: 3 }];
+  };
+
+  try {
+    const response = await request(createTestApp())
+      .get('/api/tvlog/activity?timeZone=America%2FChicago')
+      .set('Cookie', `nook_session=${createSessionToken(USER_A)}`);
+
+    assert.equal(response.status, 200);
+    assert.equal(receivedPipeline[0].$match.count.$gt, 0);
+    assert.equal(receivedPipeline[1].$group._id.$dateToString.timezone, 'America/Chicago');
+    assert.deepEqual(response.body, [{ date: '2026-08-21', count: 3 }]);
+
+    const invalid = await request(createTestApp())
+      .get('/api/tvlog/activity?timeZone=not-a-time-zone')
+      .set('Cookie', `nook_session=${createSessionToken(USER_A)}`);
+    assert.equal(invalid.status, 400);
+    assert.equal(invalid.body.code, 'INVALID_TIME_ZONE');
+  } finally {
+    TvLog.aggregate = originalAggregate;
   }
 });
 

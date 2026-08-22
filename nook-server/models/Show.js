@@ -28,6 +28,7 @@ const ShowSchema = new mongoose.Schema({
   updateCount: { type: Number, default: 1, min: 1 },
   
   lastAirDate: { type: Date, default: null },
+  nextAirDate: { type: Date, default: null },
   estimatedFinishDate: { type: Date },
   
   // 媒体信息
