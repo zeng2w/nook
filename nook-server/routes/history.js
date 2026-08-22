@@ -42,11 +42,11 @@ router.put('/:id', async (req, res) => {
   try {
     const { count, duration, date } = req.body || {};
 
-    // 找到并更新，new: true 表示返回更新后的数据
+    // 找到并更新，返回更新后的数据。
     const history = await History.findOneAndUpdate(
       { _id: req.params.id, userId: req.user.id },
       { count, duration, date },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
 
     if (!history) return res.status(404).json({ msg: 'Record not found' });

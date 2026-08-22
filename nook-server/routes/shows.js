@@ -81,7 +81,7 @@ router.put('/:id', async (req, res) => {
     const show = await Show.findOneAndUpdate(
       { _id: req.params.id, userId: req.user.id },
       { $set: updateData },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
     if (!show) return res.status(404).json({ msg: 'Show not found' });
     res.json(show);
