@@ -108,7 +108,7 @@ defineProps({
   searchQuery: { type: String, default: '' } // 接收搜索词
 });
 
-defineEmits(['add', 'remove-noti', 'clear-notis', 'noti-read', 'sync', 'export', 'import', 'open-calendar', 'update:searchQuery']);
+const emit = defineEmits(['add', 'remove-noti', 'clear-notis', 'noti-read', 'sync', 'export', 'import', 'open-calendar', 'update:searchQuery']);
 
 const showNotiPanel = ref(false);
 const toggleNoti = () => {

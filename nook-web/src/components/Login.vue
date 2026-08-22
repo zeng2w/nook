@@ -56,6 +56,8 @@ import { ref, reactive } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 
+defineOptions({ name: 'LoginPage' });
+
 const router = useRouter();
 const email = ref('');
 const password = ref('');
@@ -96,9 +98,7 @@ const handleLogin = async () => {
 
     // 2. 登录成功
     const userData = res.data.user;
-    console.log("Login success:", userData);
-
-    // 3. 存入 SessionStorage (这就相当于“领了门票”)
+    // 3. 用户信息只用于界面展示；认证凭证由 HttpOnly Cookie 保存
     sessionStorage.setItem('current_user', JSON.stringify(userData));
 
     showToast(`Welcome back, ${userData.username}!`, "success");

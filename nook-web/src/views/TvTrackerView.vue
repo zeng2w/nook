@@ -215,7 +215,8 @@ onMounted(() => {
   fetchShows();
   applyModernTheme(); 
   updateTheme('#F9FAFB');
-  const savedNotis = localStorage.getItem('tv_notifications');
+  const notificationKey = getNotificationStorageKey();
+  const savedNotis = notificationKey ? localStorage.getItem(notificationKey) : null;
   if (savedNotis) notifications.value = JSON.parse(savedNotis);
 });
 
@@ -228,15 +229,27 @@ onUnmounted(() => {
     const show = shows.value.find(s => s._id === showId);
     if (show && pendingDeltas[showId] !== 0) {
       updateShowApi(show._id, { watchedEpisodes: show.watchedEpisodes, status: show.status }).catch(()=>{});
-      const userId = getCurrentUserId();
-      if (userId) addTvLogApi({ userId, showId, showTitle: show.title, count: pendingDeltas[showId], date: new Date() }).catch(()=>{});
+      addTvLogApi({ showId, showTitle: show.title, count: pendingDeltas[showId], date: new Date() }).catch(()=>{});
     }
   });
 });
 
-watch(notifications, (newVal) => { localStorage.setItem('tv_notifications', JSON.stringify(newVal)); }, { deep: true });
-
-const getCurrentUserId = () => { const userStr = sessionStorage.getItem('current_user'); return userStr ? JSON.parse(userStr).id : null; };
+const getCurrentUserId = () => {
+  try {
+    const userStr = sessionStorage.getItem('current_user');
+    return userStr ? JSON.parse(userStr).id : null;
+  } catch {
+    return null;
+  }
+};
+const getNotificationStorageKey = () => {
+  const userId = getCurrentUserId();
+  return userId ? `nook-tv-notifications-${userId}` : null;
+};
+watch(notifications, (newVal) => {
+  const notificationKey = getNotificationStorageKey();
+  if (notificationKey) localStorage.setItem(notificationKey, JSON.stringify(newVal));
+}, { deep: true });
 const showToast = (msg, type = 'success') => { toast.message = msg; toast.type = type; toast.visible = true; setTimeout(() => { toast.visible = false; }, 3000); };
 
 const fetchShows = async () => {
@@ -244,7 +257,7 @@ const fetchShows = async () => {
   if (!userId) return;
   isLoading.value = true;
   try {
-    const res = await fetchShowsApi(userId);
+    const res = await fetchShowsApi();
     shows.value = res.data;
   } catch (err) { console.error(err); } 
   finally { setTimeout(() => { isLoading.value = false; }, 300); }
@@ -269,7 +282,7 @@ const saveShow = async (formData) => {
       showToast("编辑成功", "success");
     } else {
       const initialStatus = calcStatus(formData.watchedEpisodes, formData.airedEpisodes, formData.totalEpisodes);
-      res = await addShowApi({ userId, ...formData, status: initialStatus });
+      res = await addShowApi({ ...formData, status: initialStatus });
       shows.value.unshift(res.data);
       showToast("添加成功", "success");
     }
@@ -296,10 +309,7 @@ const updateProgress = (show, delta) => {
     if (finalDelta === 0) return; 
     try {
       await updateShowApi(show._id, { watchedEpisodes: show.watchedEpisodes, status: show.status });
-      const userId = getCurrentUserId();
-      if (userId) {
-        await addTvLogApi({ userId: userId, showId: show._id, showTitle: show.title, count: finalDelta, date: new Date() });
-      }
+      await addTvLogApi({ showId: show._id, showTitle: show.title, count: finalDelta, date: new Date() });
     } catch (e) {
       console.error(e);
       show.watchedEpisodes = Math.max(0, show.watchedEpisodes - finalDelta);
@@ -325,8 +335,29 @@ const toggleFavorite = async (show) => {
 
 const openAddModal = () => { editingShow.value = null; showModal.value = true; };
 const openEditModal = (show) => { editingShow.value = { ...show }; showModal.value = true; };
-const dropShow = async (show) => { show.status = 'dropped'; try { await updateShowApi(show._id, { status: 'dropped' }); } catch(e){} };
-const restoreShow = async (show) => { const correctStatus = calcStatus(show.watchedEpisodes, show.airedEpisodes, show.totalEpisodes); show.status = correctStatus; try { await updateShowApi(show._id, { status: correctStatus }); } catch(e){} };
+const dropShow = async (show) => {
+  const originalStatus = show.status;
+  show.status = 'dropped';
+  try {
+    await updateShowApi(show._id, { status: 'dropped' });
+  } catch (err) {
+    console.error(err);
+    show.status = originalStatus;
+    showToast('状态更新失败，已回滚', 'error');
+  }
+};
+const restoreShow = async (show) => {
+  const originalStatus = show.status;
+  const correctStatus = calcStatus(show.watchedEpisodes, show.airedEpisodes, show.totalEpisodes);
+  show.status = correctStatus;
+  try {
+    await updateShowApi(show._id, { status: correctStatus });
+  } catch (err) {
+    console.error(err);
+    show.status = originalStatus;
+    showToast('状态更新失败，已回滚', 'error');
+  }
+};
 const requestHardDelete = (id) => { pendingDeletes[id] = setTimeout(() => confirmDelete(id), 3000); };
 const cancelDelete = (id) => { if (pendingDeletes[id]) { clearTimeout(pendingDeletes[id]); delete pendingDeletes[id]; } };
 const pauseDeleteTimer = (id) => { if (pendingDeletes[id]) clearTimeout(pendingDeletes[id]); };
@@ -347,7 +378,7 @@ const syncData = async () => {
   isSyncing.value = true;
   showToast("正在同步...", "success");
   try {
-    const res = await syncShowsApi(userId);
+    const res = await syncShowsApi();
     await fetchShows();
     if (res.data.updatedCount > 0) {
       if (res.data.logs?.length) {
@@ -363,7 +394,7 @@ const syncData = async () => {
 };
 
 const triggerImport = () => { fileInput.value.click(); };
-const exportData = () => { const userId = getCurrentUserId(); if (!userId) return; window.open(`/api/shows/export?userId=${userId}`, '_blank'); showToast("备份下载中...", "success"); };
+const exportData = () => { if (!getCurrentUserId()) return; window.open('/api/shows/export', '_blank'); showToast("备份下载中...", "success"); };
 const handleFileUpload = (event) => {
   const file = event.target.files[0]; if (!file) return;
   const reader = new FileReader();
@@ -371,12 +402,11 @@ const handleFileUpload = (event) => {
     try {
       const parsedData = JSON.parse(e.target.result);
       if (!Array.isArray(parsedData)) return showToast("文件格式错误", "error");
-      const userId = getCurrentUserId();
       showToast("正在导入...", "success");
-      await importShowsApi(userId, parsedData);
+      await importShowsApi(parsedData);
       showToast("导入成功", "success");
       await fetchShows();
-    } catch (err) { showToast("导入失败", "error"); } finally { event.target.value = ''; }
+    } catch { showToast("导入失败", "error"); } finally { event.target.value = ''; }
   };
   reader.readAsText(file);
 };

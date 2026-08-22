@@ -117,7 +117,7 @@ const props = defineProps({
   isPendingDelete: { type: Boolean, default: false }
 });
 
-const emit = defineEmits(['edit', 'update-progress', 'delete', 'drop', 'restore', 'pause-delete', 'resume-delete', 'cancel-delete', 'toggle-favorite']);
+defineEmits(['edit', 'update-progress', 'delete', 'drop', 'restore', 'pause-delete', 'resume-delete', 'cancel-delete', 'toggle-favorite']);
 
 const flipped = ref(false);
 

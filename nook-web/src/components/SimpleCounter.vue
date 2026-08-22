@@ -141,7 +141,7 @@
 
             <div class="history-list">
               <div v-if="history.length === 0" class="empty-history">No records yet.</div>
-              <div v-for="(item, index) in history" :key="item._id" class="history-item">
+              <div v-for="item in history" :key="item._id" class="history-item">
                 <div class="checkbox-wrapper" @click="toggleSelection(item._id)">
                   <div class="custom-checkbox" :class="{ checked: selectedIds.has(item._id) }">
                     <svg v-if="selectedIds.has(item._id)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
@@ -341,8 +341,6 @@ const last30DaysStats = computed(() => {
 });
 
 const selectedStats = computed(() => {
-  const _trigger = selectedIds.value.size; 
-
   let totalDuration = 0, totalCount = 0;
   history.value.forEach(item => {
     if (selectedIds.value.has(item._id)) {
@@ -377,7 +375,7 @@ const getCurrentUser = () => {
 const fetchHistory = async () => {
   if (!currentUser.value) return;
   try {
-    const res = await axios.get(`/api/history?userId=${currentUser.value.id}`);
+    const res = await axios.get('/api/history');
     history.value = res.data.map(item => ({
       _id: item._id,
       createdAt: item.date, 
@@ -410,7 +408,6 @@ const confirmSaveAndReset = async () => {
 
   try {
     const res = await axios.post('/api/history', {
-      userId: currentUser.value.id,
       count: settings.count,
       duration: totalMinutes,
       date: new Date().toISOString()
@@ -425,14 +422,14 @@ const confirmSaveAndReset = async () => {
       }
     };
     history.value.unshift(newRecord);
+
+    settings.count = 0;
+    resetInputs.hr = ''; resetInputs.min = ''; resetInputs.sec = '';
+    showResetModal.value = false;
   } catch (err) {
     console.error("Save failed:", err);
     alert("Failed to save to cloud");
   }
-
-  settings.count = 0;
-  resetInputs.hr = ''; resetInputs.min = ''; resetInputs.sec = '';
-  showResetModal.value = false;
 };
 
 const justReset = () => {
@@ -515,7 +512,6 @@ const saveHistoryForm = async () => {
   try {
     if (formMode.value === 'add') {
       const res = await axios.post('/api/history', {
-        userId: currentUser.value.id,
         count: Math.max(0, formData.count),
         duration: totalMinutes,
         date: isoDate

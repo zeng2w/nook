@@ -14,7 +14,7 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
-    "axios": "^1.13.4",
+    "axios": "^1.19.0",
     "vue": "^3.5.27",
     "vue-router": "^4.6.4"
   },
@@ -34,7 +34,13 @@
     "vite": "^7.3.1",
     "vite-plugin-vue-devtools": "^8.0.5"
   },
+  "overrides": {
+    "postcss": "8.5.26",
+    "vite": {
+      "nanoid": "3.3.18"
+    }
+  },
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": ">=24 <26"
   }
 }

@@ -2,16 +2,14 @@
 const express = require('express');
 const router = express.Router();
 const TvLog = require('../models/TvLog');
+const Show = require('../models/Show');
 
 // @route   GET /api/tvlog
 // @desc    获取用户的追剧热力图数据
 router.get('/', async (req, res) => {
   try {
-    const { userId } = req.query;
-    if (!userId) return res.status(400).json({ msg: 'User ID is required' });
-
     // 只查询该用户的记录，按日期倒序
-    const logs = await TvLog.find({ userId }).sort({ date: -1 });
+    const logs = await TvLog.find({ userId: req.user.id }).sort({ date: -1 });
     res.json(logs);
   } catch (err) {
     console.error(err.message);
@@ -23,10 +21,15 @@ router.get('/', async (req, res) => {
 // @desc    添加一条观看记录
 router.post('/', async (req, res) => {
   try {
-    const { userId, showId, showTitle, count, date } = req.body;
+    const { showId, showTitle, count, date } = req.body || {};
+
+    if (showId) {
+      const ownsShow = await Show.exists({ _id: showId, userId: req.user.id });
+      if (!ownsShow) return res.status(404).json({ msg: 'Show not found' });
+    }
 
     const newLog = new TvLog({
-      userId,
+      userId: req.user.id,
       showId,
       showTitle,
       count,

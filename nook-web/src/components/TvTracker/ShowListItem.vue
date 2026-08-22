@@ -110,7 +110,7 @@ const props = defineProps({
 });
 
 // ★ 增加 'toggle-favorite' 事件
-const emit = defineEmits(['edit', 'update-progress', 'delete', 'restore', 'drop', 'pause-delete', 'resume-delete', 'cancel-delete', 'toggle-favorite']);
+defineEmits(['edit', 'update-progress', 'delete', 'restore', 'drop', 'pause-delete', 'resume-delete', 'cancel-delete', 'toggle-favorite']);
 
 const getCategoryLabel = (cat) => ({ tv: '电视剧', anime: '动漫', movie: '电影', variety: '综艺' }[cat] || cat);
 const getCategoryColor = (cat) => ({ tv: '#e5e7eb', anime: '#f3e8ff', movie: '#e0f2fe', variety: '#ffedd5' }[cat] || '#eee');
