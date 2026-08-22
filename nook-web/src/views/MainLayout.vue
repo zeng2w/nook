@@ -17,38 +17,40 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import Sidebar from '../components/Sidebar.vue';
 import { store, updateTheme } from '../store'; 
+import { authUser, clearAuthUser } from '@/auth';
 
 const router = useRouter();
-const currentUsername = ref('');
+const currentUsername = computed(() => authUser.value?.username || authUser.value?.email || 'User');
 const isSidebarOpen = ref(true); 
+let isMobile = false;
 
 const toggleSidebar = () => { isSidebarOpen.value = !isSidebarOpen.value; };
 
-onMounted(() => {
-  const userStr = sessionStorage.getItem('current_user');
-  if (userStr) {
-    try {
-      const user = JSON.parse(userStr);
-      currentUsername.value = user.username || user.email;
-    } catch {
-      sessionStorage.removeItem('current_user');
-      router.push('/login');
-    }
-  } else {
-    router.push('/login');
+const updateResponsiveSidebar = () => {
+  const nextMobile = window.innerWidth <= 768;
+  if (nextMobile !== isMobile) {
+    isMobile = nextMobile;
+    isSidebarOpen.value = !nextMobile;
   }
+};
+
+onMounted(() => {
+  updateResponsiveSidebar();
+  window.addEventListener('resize', updateResponsiveSidebar);
 });
+
+onBeforeUnmount(() => window.removeEventListener('resize', updateResponsiveSidebar));
 
 const handleLogout = async () => {
   try {
     await axios.post('/api/auth/logout');
   } finally {
-    sessionStorage.removeItem('current_user');
+    clearAuthUser();
     updateTheme('#ffffff');
     router.push('/login');
   }
@@ -77,5 +79,9 @@ const handleLogout = async () => {
   overflow-y: auto;
   background-color: transparent; 
   transition: width 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+@media (max-width: 768px) {
+  .sidebar-open-width { width: 220px !important; }
 }
 </style>

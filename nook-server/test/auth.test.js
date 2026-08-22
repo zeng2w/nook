@@ -63,7 +63,10 @@ test('authentication middleware rejects a request without a session', () => {
   requireAuth(req, res, () => assert.fail('next should not be called'));
 
   assert.equal(res.statusCode, 401);
-  assert.deepEqual(res.body, { msg: 'Authentication required' });
+  assert.deepEqual(res.body, {
+    code: 'AUTHENTICATION_REQUIRED',
+    error: 'Authentication required'
+  });
 });
 
 test('session cookies are HttpOnly and restricted to same-site requests', () => {

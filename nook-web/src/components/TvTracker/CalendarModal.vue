@@ -1,40 +1,43 @@
 <template>
   <Transition name="fade">
     <div v-if="visible" class="modal-overlay glass-background" @click.self="close">
-      <div class="glass-calendar-card compact-mode">
+      <div class="glass-calendar-card compact-mode" role="dialog" aria-modal="true" aria-labelledby="calendar-modal-title">
         
         <div class="glass-header">
           <div class="header-left">
-            <h3>追剧日历</h3>
-            <span class="month-label">{{ monthTitle }}</span>
+            <h3 id="calendar-modal-title">追剧日历</h3>
+            <div class="calendar-context">
+              <span class="month-label">{{ monthTitle }}</span>
+              <span class="timezone-label" :title="timeZoneLabel">{{ timeZoneLabel }}</span>
+            </div>
           </div>
           <div class="header-right">
             <button class="nav-btn today-btn" @click="resetToToday">今天</button>
             <div class="nav-group">
-              <button class="nav-btn arrow" @click="changeWeek(-1)">❮</button>
-              <button class="nav-btn arrow" @click="changeWeek(1)">❯</button>
+              <button class="nav-btn arrow" aria-label="上一周" @click="changeWeek(-1)">❮</button>
+              <button class="nav-btn arrow" aria-label="下一周" @click="changeWeek(1)">❯</button>
             </div>
-            <button class="close-glass-btn" @click="close">✕</button>
+            <button class="close-glass-btn" aria-label="关闭追剧日历" @click="close">✕</button>
           </div>
         </div>
         
         <div class="calendar-grid-view">
           <div 
-            v-for="(offset, idx) in 7" 
-            :key="idx" 
+            v-for="day in calendarDays"
+            :key="day.key"
             class="day-column" 
-            :class="{ 'is-today': isDateToday(getCalendarDate(idx)) }"
+            :class="{ 'is-today': isSameCalendarDay(day.date, new Date()) }"
             ref="dayColumns"
           >
             <div class="day-header">
-              <span class="day-name">{{ weekDaysAbbr[getCalendarDate(idx).getDay()] }}</span>
-              <div class="day-circle">{{ getCalendarDate(idx).getDate() }}</div>
+              <span class="day-name">{{ weekDaysAbbr[day.date.getDay()] }}</span>
+              <div class="day-circle">{{ day.date.getDate() }}</div>
             </div>
             
             <div class="day-body">
-              <div v-for="(item, k) in getShowsForDate(getCalendarDate(idx))" :key="`${item.show._id}-${k}`" class="mini-item-card">
+              <div v-for="(item, k) in day.items" :key="`${item.show._id}-${k}`" class="mini-item-card">
                 <div class="mini-poster">
-                  <img v-if="item.show.posterUrl" :src="item.show.posterUrl" loading="lazy"/>
+                  <img v-if="item.show.posterUrl" :src="item.show.posterUrl" :alt="item.show.title" loading="lazy" decoding="async"/>
                   <span v-else>{{ item.show.title.charAt(0) }}</span>
                 </div>
                 
@@ -48,7 +51,7 @@
                 </div>
               </div>
               
-              <div v-if="getShowsForDate(getCalendarDate(idx)).length === 0" class="empty-line"></div>
+              <div v-if="day.items.length === 0" class="empty-line"></div>
             </div>
           </div>
         </div>
@@ -58,27 +61,35 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue';
-// ★ 引入我们刚刚提取的公共工具函数
-import { calculateEpisodeForDate } from '@/utils/dateUtils';
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import {
+  calculateEpisodeForDate,
+  getCurrentTimeZoneLabel,
+  isAfterCalendarDay,
+  isSameCalendarDay,
+  isShowUpdateDay,
+  toLocalCalendarDate
+} from '@/utils/dateUtils';
 
 const props = defineProps({
   visible: Boolean,
-  shows: Array
+  shows: { type: Array, default: () => [] }
 });
 const emit = defineEmits(['update:visible']);
 
-const calendarStart = ref(new Date());
-const weekDaysAbbr = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const calendarStart = ref(toLocalCalendarDate(new Date()));
+const weekDaysAbbr = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 const dayColumns = ref([]);
+const timeZoneLabel = ref(getCurrentTimeZoneLabel());
 
 const initCalendar = () => {
-  const d = new Date();
+  const d = toLocalCalendarDate(new Date());
   const day = d.getDay();
   const diff = d.getDate() - day;
   const sunday = new Date(d.setDate(diff));
   sunday.setHours(12,0,0,0);
   calendarStart.value = sunday;
+  timeZoneLabel.value = getCurrentTimeZoneLabel();
 };
 
 const scrollToToday = () => {
@@ -104,6 +115,12 @@ watch(() => props.visible, (val) => {
 });
 
 const close = () => emit('update:visible', false);
+const handleKeydown = event => {
+  if (props.visible && event.key === 'Escape') close();
+};
+onMounted(() => window.addEventListener('keydown', handleKeydown));
+onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown));
+
 const changeWeek = (offset) => {
   const d = new Date(calendarStart.value);
   d.setDate(d.getDate() + (offset * 7));
@@ -111,7 +128,7 @@ const changeWeek = (offset) => {
 };
 
 const monthTitle = computed(() => {
-  return new Date(calendarStart.value).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  return new Date(calendarStart.value).toLocaleDateString('zh-CN', { month: 'long', year: 'numeric' });
 });
 
 const getCalendarDate = (offsetIndex) => {
@@ -120,32 +137,16 @@ const getCalendarDate = (offsetIndex) => {
   return d;
 };
 
-const isDateToday = (dateObj) => {
-  const today = new Date();
-  return dateObj.getDate() === today.getDate() && dateObj.getMonth() === today.getMonth() && dateObj.getFullYear() === today.getFullYear();
-};
-
-// ★ 核心替换：过滤剧集，并调用抽离出的工具函数计算集数
 const getShowsForDate = (dateObj) => {
-  const dayIndex = dateObj.getDay();
-  const time = dateObj.getTime(); 
   const results = [];
   
   props.shows.forEach(s => {
     // 过滤掉弃剧、已看完、或状态明确为已完结的
     if (s.status === 'dropped' || s.status === 'watched' || s.updateFrequency === 'ended') return;
     
-    // 如果超过了预计完结日期加上一天的缓冲，过滤掉
-    if (s.estimatedFinishDate) {
-      if (time > new Date(s.estimatedFinishDate).getTime() + 86400000) return;
-    }
+    if (s.estimatedFinishDate && isAfterCalendarDay(dateObj, s.estimatedFinishDate)) return;
     
-    let isAirDay = false;
-    if (s.updateFrequency === 'daily') isAirDay = true;
-    else if (s.updateDays && s.updateDays.includes(dayIndex)) isAirDay = true;
-    
-    if (isAirDay) {
-      // ★ 直接调用 utils 里的函数
+    if (isShowUpdateDay(s, dateObj)) {
       const epText = calculateEpisodeForDate(s, dateObj);
       if (epText !== '待定' && epText !== '完结') {
         results.push({ show: s, episodeText: epText });
@@ -154,6 +155,15 @@ const getShowsForDate = (dateObj) => {
   });
   return results;
 };
+
+const calendarDays = computed(() => Array.from({ length: 7 }, (_, index) => {
+  const date = getCalendarDate(index);
+  return {
+    date,
+    items: getShowsForDate(date),
+    key: `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+  };
+}));
 </script>
 
 <style scoped>
@@ -177,9 +187,11 @@ const getShowsForDate = (dateObj) => {
 
 /* Header */
 .glass-header { padding: 12px 24px; border-bottom: 1px solid rgba(0,0,0,0.06); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; background: rgba(255,255,255,0.5); }
-.header-left { display: flex; align-items: baseline; gap: 10px; }
+.header-left { display: flex; align-items: center; gap: 10px; }
 .header-left h3 { margin: 0; font-size: 1.2rem; font-weight: 800; letter-spacing: -0.5px; }
+.calendar-context { display: flex; flex-direction: column; gap: 1px; }
 .month-label { color: #86868b; font-size: 0.85rem; font-weight: 500; }
+.timezone-label { max-width: 160px; color: #9ca3af; font-size: 0.62rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .header-right { display: flex; align-items: center; gap: 12px; }
 .nav-group { display: flex; gap: 4px; background: #f2f2f7; padding: 2px; border-radius: 8px; }
@@ -274,6 +286,12 @@ const getShowsForDate = (dateObj) => {
 
 @media (max-width: 768px) {
   .glass-calendar-card.compact-mode { width: 100vw; height: 60vh; border-radius: 20px 20px 0 0; position: absolute; bottom: 0; max-width: none; }
+  .glass-header { padding: 10px 12px; gap: 8px; }
+  .header-left { min-width: 0; gap: 8px; }
+  .header-left h3 { font-size: 1rem; white-space: nowrap; }
+  .timezone-label { max-width: 100px; }
+  .header-right { gap: 6px; }
+  .nav-btn.today-btn { padding: 0 8px; }
   /* 修复：移动端列宽与 Grid 一致 */
   .day-column { min-width: 120px; }
 }

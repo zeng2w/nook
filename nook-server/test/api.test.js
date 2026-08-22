@@ -9,6 +9,7 @@ const Show = require('../models/Show');
 const authRoutes = require('../routes/auth');
 const showRoutes = require('../routes/shows');
 const { createSessionToken, requireAuth } = require('../middleware/auth');
+const { errorHandler } = require('../middleware/error');
 
 const USER_A = '507f1f77bcf86cd799439011';
 const USER_B = '507f1f77bcf86cd799439012';
@@ -16,8 +17,10 @@ const USER_B = '507f1f77bcf86cd799439012';
 const createTestApp = () => {
   const app = express();
   app.use(express.json());
+  app.use('/api/auth/me', requireAuth);
   app.use('/api/auth', authRoutes);
   app.use('/api/shows', requireAuth, showRoutes);
+  app.use(errorHandler);
   return app;
 };
 
@@ -73,16 +76,48 @@ test('login verifies the password and returns a cookie instead of a token', asyn
   }
 });
 
+test('the current user endpoint restores identity from the session cookie', async () => {
+  const originalFindById = User.findById;
+  const user = new User({
+    _id: USER_A,
+    username: 'Existing User',
+    email: 'existing@example.com',
+    password: 'unused-password-hash'
+  });
+  User.findById = async id => String(id) === USER_A ? user : null;
+
+  try {
+    const response = await request(createTestApp())
+      .get('/api/auth/me')
+      .set('Cookie', `nook_session=${createSessionToken(USER_A)}`);
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.user, {
+      id: USER_A,
+      username: 'Existing User',
+      email: 'existing@example.com'
+    });
+  } finally {
+    User.findById = originalFindById;
+  }
+});
+
 test('show queries are scoped to the authenticated user', async () => {
-  const originalFind = Show.find;
+  const originalAggregate = Show.aggregate;
   const seenUserIds = [];
 
-  Show.find = (filter) => ({
-    sort: async () => {
-      seenUserIds.push(String(filter.userId));
-      return [];
-    }
-  });
+  Show.aggregate = async pipeline => {
+    seenUserIds.push(String(pipeline[0].$match.userId));
+    return [{
+      items: [],
+      total: [],
+      allCount: [],
+      statusCounts: [],
+      categoryCounts: [],
+      networkTotal: [],
+      networks: []
+    }];
+  };
 
   try {
     const app = createTestApp();
@@ -97,9 +132,86 @@ test('show queries are scoped to the authenticated user', async () => {
     assert.equal(responseA.status, 200);
     assert.equal(responseB.status, 200);
     assert.equal(unauthorized.status, 401);
+    assert.deepEqual(responseA.body.pagination, {
+      page: 1,
+      limit: 24,
+      total: 0,
+      totalPages: 0,
+      hasMore: false
+    });
     assert.deepEqual(seenUserIds, [USER_A, USER_B]);
   } finally {
+    Show.aggregate = originalAggregate;
+  }
+});
+
+test('calendar shows include the episode counts required for calendar labels', async () => {
+  const originalFind = Show.find;
+  let selectedFields = '';
+
+  Show.find = filter => ({
+    select(fields) {
+      selectedFields = fields;
+      return this;
+    },
+    sort() { return this; },
+    async lean() {
+      assert.equal(String(filter.userId), USER_A);
+      return [{
+        _id: '507f1f77bcf86cd799439021',
+        title: 'Long-running Anime',
+        airedEpisodes: 237,
+        totalEpisodes: 300
+      }];
+    }
+  });
+
+  try {
+    const response = await request(createTestApp())
+      .get('/api/shows/calendar')
+      .set('Cookie', `nook_session=${createSessionToken(USER_A)}`);
+
+    assert.equal(response.status, 200);
+    assert.match(selectedFields, /\bairedEpisodes\b/);
+    assert.match(selectedFields, /\btotalEpisodes\b/);
+    assert.equal(response.body[0].airedEpisodes, 237);
+    assert.equal(response.body[0].totalEpisodes, 300);
+  } finally {
     Show.find = originalFind;
+  }
+});
+
+test('show list rejects unsupported filters through the shared error format', async () => {
+  const response = await request(createTestApp())
+    .get('/api/shows?status=unknown')
+    .set('Cookie', `nook_session=${createSessionToken(USER_A)}`);
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(response.body, {
+    code: 'INVALID_QUERY',
+    error: 'status is not supported'
+  });
+});
+
+test('show mutations reject malformed ids before querying MongoDB', async () => {
+  const originalFindOne = Show.findOne;
+  let queryCalled = false;
+  Show.findOne = async () => {
+    queryCalled = true;
+    return null;
+  };
+
+  try {
+    const response = await request(createTestApp())
+      .put('/api/shows/not-an-object-id')
+      .set('Cookie', `nook_session=${createSessionToken(USER_A)}`)
+      .send({ title: 'Example' });
+
+    assert.equal(response.status, 400);
+    assert.equal(response.body.code, 'INVALID_ID');
+    assert.equal(queryCalled, false);
+  } finally {
+    Show.findOne = originalFindOne;
   }
 });
 

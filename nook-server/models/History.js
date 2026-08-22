@@ -9,7 +9,8 @@ const HistorySchema = new mongoose.Schema({
   count: {
     type: Number,
     required: true,
-    min: 0
+    min: 0,
+    validate: Number.isInteger
   },
   duration: {
     type: Number, // 单位：分钟

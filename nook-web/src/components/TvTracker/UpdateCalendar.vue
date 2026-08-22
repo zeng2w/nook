@@ -1,21 +1,29 @@
 <template>
   <div class="update-calendar-widget">
     <div class="calendar-header">
-      <h3 class="title">更新日历</h3>
-      <a href="#" class="more-link">更多 <span class="arrow">&gt;</span></a>
+      <div class="title-group">
+        <h3 class="title">更新日历</h3>
+        <span class="timezone-label" :title="timeZoneLabel">{{ timeZoneLabel }}</span>
+      </div>
+      <button type="button" class="more-link" aria-label="打开完整追剧日历" @click="$emit('open-calendar')">
+        更多 <span class="arrow">&gt;</span>
+      </button>
     </div>
 
     <div class="week-selector">
-      <div 
+      <button
         v-for="(day, index) in weekDays" 
         :key="index"
+        type="button"
         class="day-item"
-        :class="{ active: isSameDay(day.date, selectedDate) }"
+        :class="{ active: isSameCalendarDay(day.date, selectedDate) }"
+        :aria-pressed="isSameCalendarDay(day.date, selectedDate)"
+        :aria-label="`${day.label} ${day.date.getMonth() + 1}月${day.date.getDate()}日`"
         @click="selectDate(day.date)"
       >
         <span class="day-label">{{ day.label }}</span>
         <span class="day-number">{{ day.date.getDate() }}</span>
-      </div>
+      </button>
     </div>
 
     <div class="update-summary">
@@ -23,10 +31,10 @@
     </div>
 
     <div class="shows-list-scroll-area">
-      <div v-if="showsList.length === 0" class="empty-state">今天暂无剧集更新</div>
+      <div v-if="showsList.length === 0" class="empty-state">当日暂无剧集更新</div>
       
       <div v-else v-for="show in showsList" :key="show._id" class="show-item">
-        <img :src="show.posterUrl || show.poster_path" :alt="show.title || show.name" class="show-cover" />
+        <img :src="show.posterUrl || show.poster_path" :alt="show.title || show.name" class="show-cover" loading="lazy" decoding="async" />
         
         <div class="show-info">
           <h4 class="show-title">{{ show.title || show.name }}</h4>
@@ -34,7 +42,7 @@
         </div>
         
         <div class="platform-info" v-if="show.network">
-          <img v-if="show.networkLogo" :src="show.networkLogo" class="platform-logo-img" />
+          <img v-if="show.networkLogo" :src="show.networkLogo" class="platform-logo-img" alt="Network" loading="lazy" decoding="async" />
           
           <span v-else class="platform-icon-fallback" :class="getNetworkClass(show.network)">
             {{ show.network.charAt(0).toUpperCase() }}
@@ -47,18 +55,27 @@
 
 <script setup>
 import { ref, computed } from 'vue';
-import { calculateEpisodeForDate } from '@/utils/dateUtils';
+import {
+  calculateEpisodeForDate,
+  getCurrentTimeZoneLabel,
+  isAfterCalendarDay,
+  isSameCalendarDay,
+  isShowUpdateDay,
+  toLocalCalendarDate
+} from '@/utils/dateUtils';
 
 const props = defineProps({
   shows: { type: Array, default: () => [] }
 });
+defineEmits(['open-calendar']);
 
-const selectedDate = ref(new Date());
+const selectedDate = ref(toLocalCalendarDate(new Date()));
 const dayLabels = ['一', '二', '三', '四', '五', '六', '日'];
+const timeZoneLabel = getCurrentTimeZoneLabel();
 
 const weekDays = computed(() => {
   const days = [];
-  const curr = new Date();
+  const curr = toLocalCalendarDate(new Date());
   let dayOfWeek = curr.getDay();
   dayOfWeek = dayOfWeek === 0 ? 7 : dayOfWeek; 
   
@@ -73,26 +90,22 @@ const weekDays = computed(() => {
   return days;
 });
 
-const isSameDay = (d1, d2) => {
-  return d1.getFullYear() === d2.getFullYear() &&
-         d1.getMonth() === d2.getMonth() &&
-         d1.getDate() === d2.getDate();
-};
-
 const selectDate = (date) => {
-  if (!isSameDay(selectedDate.value, date)) selectedDate.value = date;
+  if (!isSameCalendarDay(selectedDate.value, date)) {
+    selectedDate.value = toLocalCalendarDate(date);
+  }
 };
 
 const getSummaryText = () => {
-  if (isSameDay(selectedDate.value, new Date())) return '今天将';
+  if (isSameCalendarDay(selectedDate.value, new Date())) return '今天将';
   
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  if (isSameDay(selectedDate.value, tomorrow)) return '明天将';
+  if (isSameCalendarDay(selectedDate.value, tomorrow)) return '明天将';
 
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-  if (isSameDay(selectedDate.value, yesterday)) return '昨天已';
+  if (isSameCalendarDay(selectedDate.value, yesterday)) return '昨天已';
 
   const dayIndex = selectedDate.value.getDay();
   return `周${dayLabels[dayIndex === 0 ? 6 : dayIndex - 1]}将`;
@@ -110,19 +123,13 @@ const getNetworkClass = (network) => {
 
 const showsList = computed(() => {
   const targetDate = selectedDate.value;
-  const dayIndex = targetDate.getDay();
-  const time = targetDate.getTime();
   const results = [];
 
   props.shows.forEach(s => {
     if (s.status === 'dropped' || s.status === 'watched' || s.updateFrequency === 'ended') return;
-    if (s.estimatedFinishDate && time > new Date(s.estimatedFinishDate).getTime() + 86400000) return;
+    if (s.estimatedFinishDate && isAfterCalendarDay(targetDate, s.estimatedFinishDate)) return;
 
-    let isAirDay = false;
-    if (s.updateFrequency === 'daily') isAirDay = true;
-    else if (s.updateDays && s.updateDays.includes(dayIndex)) isAirDay = true;
-
-    if (isAirDay) {
+    if (isShowUpdateDay(s, targetDate)) {
       const epText = calculateEpisodeForDate(s, targetDate);
       if (epText !== '待定' && epText !== '完结') {
         results.push({ ...s, calculatedEpisodeText: epText });
@@ -153,15 +160,18 @@ const showsList = computed(() => {
 
 /* ★ 2. 压缩头部和间距 */
 .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-shrink: 0; }
+.title-group { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .title { font-size: 1rem; font-weight: 700; margin: 0; color: #1e293b; }
-.more-link { font-size: 12px; color: #94a3b8; text-decoration: none; font-weight: 500; }
+.timezone-label { max-width: 150px; color: #94a3b8; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.more-link { border: 0; padding: 4px; background: transparent; cursor: pointer; font-size: 12px; color: #6366f1; text-decoration: none; font-weight: 600; }
+.more-link:hover { color: #4338ca; }
 
 .week-selector { display: flex; justify-content: space-between; margin-bottom: 12px; flex-shrink: 0; }
 .day-item { 
   display: flex; flex-direction: column; align-items: center; justify-content: center; 
   width: 30px; /* ★ 日期宽度缩小 */
   height: 44px; /* ★ 日期高度缩小 */
-  border-radius: 8px; 
+  border: 0; background: transparent; border-radius: 8px;
   cursor: pointer; transition: all 0.2s ease; 
 }
 .day-label { font-size: 11px; color: #94a3b8; margin-bottom: 2px; font-weight: 500; }

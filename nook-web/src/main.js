@@ -9,17 +9,14 @@ if ('serviceWorker' in navigator) {
     for (let registration of registrations) {
       // 强制注销所有旧的 Service Worker
       registration.unregister();
-      console.log('旧版 Service Worker 已注销');
     }
-  }).catch(function(err) {
-    console.log('注销 Service Worker 失败: ', err);
-  });
+  }).catch(() => {});
 
   // 2. 清理缓存库
   if (window.caches) {
     caches.keys().then(keys => {
       keys.forEach(key => caches.delete(key));
-    });
+    }).catch(() => {});
   }
 }
 

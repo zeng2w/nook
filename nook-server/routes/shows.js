@@ -4,6 +4,11 @@ const Show = require('../models/Show');
 const { getAiredEpisodeCount } = require('../utils/tmdb');
 const { classifyTmdbError, sendTmdbError, tmdbGet } = require('../utils/tmdbClient');
 const { getSyncConcurrency, mapWithConcurrency } = require('../utils/concurrency');
+const { buildShowListPipeline, parseShowQuery, SHOW_CATEGORIES, SHOW_STATUSES } = require('../utils/showQuery');
+const logger = require('../utils/logger');
+const { validateObjectIdParam } = require('../middleware/validate');
+
+const SHOW_LIST_FIELDS = '-userId -__v';
 
 const ALLOWED_SHOW_FIELDS = [
   'title',
@@ -37,20 +42,139 @@ const pickShowFields = (source) => {
 // ==========================================
 // 1. 获取剧集列表
 // ==========================================
-router.get('/', async (req, res) => {
+router.get('/', async (req, res, next) => {
   try {
-    const shows = await Show.find({ userId: req.user.id }).sort({ updatedAt: -1 });
+    const options = parseShowQuery(req.query);
+    const userId = new Show.base.Types.ObjectId(req.user.id);
+    const [aggregateResult] = await Show.aggregate(buildShowListPipeline(userId, options));
+    const result = aggregateResult || {
+      items: [], total: [], allCount: [], statusCounts: [],
+      categoryCounts: [], networkTotal: [], networks: []
+    };
+    const total = result.total[0]?.count || 0;
+    const totalPages = total === 0 ? 0 : Math.ceil(total / options.limit);
+    const toCountMap = (rows, keys) => Object.fromEntries(
+      keys.map(key => [key, rows.find(row => row._id === key)?.count || 0])
+    );
+
+    res.json({
+      items: result.items,
+      pagination: {
+        page: options.page,
+        limit: options.limit,
+        total,
+        totalPages,
+        hasMore: options.page < totalPages
+      },
+      facets: {
+        allCount: result.allCount[0]?.count || 0,
+        statusCounts: toCountMap(result.statusCounts, SHOW_STATUSES),
+        categoryCounts: toCountMap(result.categoryCounts, SHOW_CATEGORIES),
+        networkTotal: result.networkTotal[0]?.count || 0,
+        networks: result.networks
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Dashboard 使用聚合结果，避免为了四个统计数字下载全部剧集。
+router.get('/stats', async (req, res, next) => {
+  try {
+    const userId = new Show.base.Types.ObjectId(req.user.id);
+    const [stats] = await Show.aggregate([
+      { $match: { userId } },
+      {
+        $project: {
+          status: 1,
+          watched: { $ifNull: ['$watchedEpisodes', 0] },
+          aired: { $ifNull: ['$airedEpisodes', 0] },
+          total: { $ifNull: ['$totalEpisodes', 0] }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          showCount: { $sum: 1 },
+          watching: { $sum: { $cond: [{ $eq: ['$status', 'watching'] }, 1, 0] } },
+          watchedCount: { $sum: { $cond: [{ $eq: ['$status', 'watched'] }, 1, 0] } },
+          wish: { $sum: { $cond: [{ $eq: ['$status', 'wish'] }, 1, 0] } },
+          dropped: { $sum: { $cond: [{ $eq: ['$status', 'dropped'] }, 1, 0] } },
+          watchedEpisodes: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['watching', 'watched']] },
+                '$watched',
+                0
+              ]
+            }
+          },
+          targetEpisodes: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['watching', 'watched']] },
+                {
+                  $let: {
+                    vars: { target: { $cond: [{ $gt: ['$total', 0] }, '$total', '$aired'] } },
+                    in: { $cond: [{ $gt: ['$watched', '$$target'] }, '$watched', '$$target'] }
+                  }
+                },
+                0
+              ]
+            }
+          },
+          lagEpisodes: {
+            $sum: {
+              $cond: [
+                { $eq: ['$status', 'watching'] },
+                { $cond: [{ $gt: ['$aired', '$watched'] }, { $subtract: ['$aired', '$watched'] }, 0] },
+                0
+              ]
+            }
+          }
+        }
+      }
+    ]);
+
+    const watchedEpisodes = stats?.watchedEpisodes || 0;
+    const targetEpisodes = stats?.targetEpisodes || 0;
+    res.json({
+      showCount: stats?.showCount || 0,
+      statusCounts: {
+        watching: stats?.watching || 0,
+        watched: stats?.watchedCount || 0,
+        wish: stats?.wish || 0,
+        dropped: stats?.dropped || 0
+      },
+      progressStats: {
+        watched: watchedEpisodes,
+        total: targetEpisodes,
+        lag: stats?.lagEpisodes || 0,
+        percent: targetEpisodes > 0 ? Math.round((watchedEpisodes / targetEpisodes) * 100) : 0
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/calendar', async (req, res, next) => {
+  try {
+    const shows = await Show.find({ userId: req.user.id })
+      .select('title posterUrl network networkLogo status totalEpisodes airedEpisodes updateFrequency updateDays updateCount lastAirDate estimatedFinishDate')
+      .sort({ lastAirDate: -1, title: 1 })
+      .lean();
     res.json(shows);
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Server Error');
+    next(err);
   }
 });
 
 // ==========================================
 // 2. 添加新剧集 (含查重逻辑)
 // ==========================================
-router.post('/', async (req, res) => {
+router.post('/', async (req, res, next) => {
   try {
     const showData = pickShowFields(req.body);
     const { tmdbId } = showData;
@@ -58,7 +182,7 @@ router.post('/', async (req, res) => {
     if (tmdbId) {
       const existingShow = await Show.findOne({ userId: req.user.id, tmdbId });
       if (existingShow) {
-        return res.status(400).json({ error: `剧集《${existingShow.title}》已存在，请勿重复添加。` });
+        return res.status(409).json({ code: 'DUPLICATE_SHOW', error: `剧集《${existingShow.title}》已存在，请勿重复添加。` });
       }
     }
 
@@ -67,48 +191,43 @@ router.post('/', async (req, res) => {
     const show = await newShow.save();
     res.json(show);
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Server Error');
+    next(err);
   }
 });
 
 // ==========================================
 // 3. 更新剧集 (进度/状态)
 // ==========================================
-router.put('/:id', async (req, res) => {
+router.put('/:id', validateObjectIdParam(), async (req, res, next) => {
   try {
-    const updateData = { ...pickShowFields(req.body), updatedAt: Date.now() };
-    const show = await Show.findOneAndUpdate(
-      { _id: req.params.id, userId: req.user.id },
-      { $set: updateData },
-      { returnDocument: 'after', runValidators: true }
-    );
-    if (!show) return res.status(404).json({ msg: 'Show not found' });
+    const show = await Show.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!show) return res.status(404).json({ code: 'SHOW_NOT_FOUND', error: 'Show not found' });
+
+    Object.assign(show, pickShowFields(req.body), { updatedAt: Date.now() });
+    await show.save();
     res.json(show);
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Server Error');
+    next(err);
   }
 });
 
 // ==========================================
 // 4. 删除剧集
 // ==========================================
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', validateObjectIdParam(), async (req, res, next) => {
   try {
     const show = await Show.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
-    if (!show) return res.status(404).json({ msg: 'Show not found' });
-    res.json({ msg: 'Show removed' });
+    if (!show) return res.status(404).json({ code: 'SHOW_NOT_FOUND', error: 'Show not found' });
+    res.json({ message: 'Show removed' });
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Server Error');
+    next(err);
   }
 });
 
 // ==========================================
 // 5. 🔄 手动同步接口（受控并发 + 短期缓存）
 // ==========================================
-router.post('/sync', async (req, res) => {
+router.post('/sync', async (req, res, next) => {
   try {
     const activeShows = await Show.find({
       userId: req.user.id,
@@ -174,7 +293,7 @@ router.post('/sync', async (req, res) => {
           return { updateLog };
         } catch (err) {
           const failure = classifyTmdbError(err);
-          console.error(`[Sync] ${failure.code} for show ${show._id}`);
+          logger.warn('show_sync_item_failed', { code: failure.code, showId: String(show._id) });
           return { error: err };
         }
       }
@@ -197,30 +316,38 @@ router.post('/sync', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Sync Error:', err);
-    res.status(500).json({ error: '同步服务出错' });
+    next(err);
   }
 });
 
 // GET /api/shows/export
-router.get('/export', async (req, res) => {
+router.get('/export', async (req, res, next) => {
   try {
-    const shows = await Show.find({ userId: req.user.id });
+    const shows = await Show.find({ userId: req.user.id })
+      .select(SHOW_LIST_FIELDS)
+      .lean();
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', `attachment; filename=tv_shows_backup_${Date.now()}.json`);
     res.send(JSON.stringify(shows, null, 2));
   } catch (err) {
-    res.status(500).send('Export Failed');
+    next(err);
   }
 });
 
 // ==========================================
 // 6. 📥 数据导入接口 (批量化 & 事务优化)
 // ==========================================
-router.post('/import', async (req, res) => {
+router.post('/import', async (req, res, next) => {
   const { shows } = req.body || {};
-  if (!Array.isArray(shows)) return res.status(400).json({ error: 'Invalid data format' });
-  if (shows.length > 1000) return res.status(400).json({ error: 'A maximum of 1000 shows can be imported at once' });
+  if (!Array.isArray(shows)) {
+    return res.status(400).json({ code: 'INVALID_IMPORT', error: 'Invalid data format' });
+  }
+  if (shows.length > 1000) {
+    return res.status(400).json({
+      code: 'IMPORT_LIMIT_EXCEEDED',
+      error: 'A maximum of 1000 shows can be imported at once'
+    });
+  }
 
   let skipCount = 0;
   let invalidCount = 0;
@@ -282,8 +409,7 @@ router.post('/import', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Import Error:', err);
-    res.status(500).json({ error: '导入过程中发生错误' });
+    next(err);
   }
 });
 

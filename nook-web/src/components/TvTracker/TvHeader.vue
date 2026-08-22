@@ -16,24 +16,25 @@
           <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
           <input 
             type="text" 
+            aria-label="搜索剧集名称"
             placeholder="搜索剧集名称..." 
             :value="searchQuery"
             @input="$emit('update:searchQuery', $event.target.value)"
           />
-          <button v-if="searchQuery" class="clear-btn" @click="$emit('update:searchQuery', '')">×</button>
+          <button v-if="searchQuery" class="clear-btn" aria-label="清除搜索" @click="$emit('update:searchQuery', '')">×</button>
         </div>
       </div>
       
       <div class="header-right">
         <div class="action-group">
-          <button class="icon-action-btn" :disabled="isSyncing" @click="$emit('sync')" title="同步 TMDB 数据">
+          <button class="icon-action-btn" aria-label="同步 TMDB 数据" :disabled="isSyncing" @click="$emit('sync')" title="同步 TMDB 数据">
             <svg class="icon" :class="{ 'spin': isSyncing }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
             </svg>
             <span>同步</span>
           </button>
           
-          <button class="icon-action-btn" @click="$emit('open-calendar')" title="追剧日历">
+          <button class="icon-action-btn" aria-label="打开追剧日历" @click="$emit('open-calendar')" title="追剧日历">
             <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
               <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
@@ -41,14 +42,14 @@
             <span>日历</span>
           </button>
 
-          <button class="icon-action-btn" @click="$emit('import')" title="导入备份">
+          <button class="icon-action-btn" aria-label="导入备份" @click="$emit('import')" title="导入备份">
             <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M14 11l-2 2-2-2M12 13V3"/>
             </svg>
             <span>导入</span>
           </button>
 
-          <button class="icon-action-btn" @click="$emit('export')" title="导出备份">
+          <button class="icon-action-btn" aria-label="导出备份" @click="$emit('export')" title="导出备份">
             <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M14 11l-2-2-2 2M12 3v10"/>
             </svg>
@@ -59,7 +60,7 @@
         <div class="divider"></div>
 
         <div class="notification-wrapper">
-          <button class="icon-btn noti-btn" @click="toggleNoti" :class="{ active: showNotiPanel }" title="消息通知">
+          <button class="icon-btn noti-btn" aria-label="消息通知" @click="toggleNoti" :class="{ active: showNotiPanel }" title="消息通知">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
             <span v-if="hasNew" class="red-dot"></span>
           </button>
@@ -70,14 +71,14 @@
               <div class="noti-list" v-if="notifications.length > 0">
                 <div v-for="(item, index) in notifications" :key="item.uniqueId" class="noti-item">
                   <div class="noti-poster-box">
-                    <img v-if="item.posterUrl" :src="item.posterUrl" class="noti-img" loading="lazy" />
+                    <img v-if="item.posterUrl" :src="item.posterUrl" :alt="item.title" class="noti-img" loading="lazy" decoding="async" />
                     <div v-else class="noti-img-placeholder">{{ item.title.charAt(0) }}</div>
                   </div>
                   <div class="noti-info">
                     <div class="noti-top-line"><span class="noti-title">{{ item.title }}</span></div>
                     <div class="noti-desc">更新至 <span class="highlight-ep">第 {{ item.newEp }} 集</span></div>
                   </div>
-                  <button class="noti-delete-btn" @click.stop="$emit('remove-noti', index)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                  <button class="noti-delete-btn" :aria-label="`删除 ${item.title} 通知`" @click.stop="$emit('remove-noti', index)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                 </div>
               </div>
               <div v-else class="noti-empty"><p>暂无新消息</p></div>
@@ -100,7 +101,6 @@
 import { ref } from 'vue';
 
 defineProps({
-  isVisible: { type: Boolean, default: true },
   notifications: { type: Array, default: () => [] },
   hasNew: { type: Boolean, default: false },
   totalCount: { type: Number, default: 0 },
@@ -200,5 +200,16 @@ const toggleNoti = () => {
   .header-center { width: 100%; padding: 0; order: 3; }
   .search-box { max-width: 100%; }
   .header-right { width: 100%; justify-content: space-between; }
+}
+
+@media (max-width: 640px) {
+  .sticky-header-wrapper { padding: 12px; }
+  .header-right { gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+  .action-group { gap: 2px; }
+  .icon-action-btn { width: 38px; padding: 8px; justify-content: center; }
+  .icon-action-btn span { display: none; }
+  .divider { display: none; }
+  .add-btn { padding: 0 14px; }
+  .noti-dropdown { position: fixed; top: 64px; right: 12px; left: 12px; width: auto; }
 }
 </style>

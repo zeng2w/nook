@@ -3,35 +3,38 @@
     <div class="list-card full-height-poster" :class="{ 'blur-bg': isPendingDelete, 'dropped-card': show.status === 'dropped' }">
       
       <div class="list-poster-side" :style="{ backgroundColor: show.posterUrl ? 'transparent' : getCategoryColor(show.category) }">
-        <img v-if="show.posterUrl" :src="show.posterUrl" alt="Poster" loading="lazy" />
+        <img v-if="show.posterUrl" :src="show.posterUrl" :alt="show.title" loading="lazy" decoding="async" />
         <span v-else>{{ show.title.charAt(0) }}</span>
       </div>
       
       <div class="list-main-content">
         <div class="list-info-col">
-          <div class="title-row" @click="$emit('edit', show)" style="cursor:pointer">
-            <h3>{{ show.title }}</h3>
-            <div 
+          <div class="title-row">
+            <button class="title-edit-btn" :aria-label="`编辑 ${show.title}`" @click="$emit('edit', show)">
+              <h3>{{ show.title }}</h3>
+            </button>
+            <button
               class="hover-action-btn favorite-btn" 
               :class="{ 'active': show.isFavorite }" 
+              :aria-label="show.isFavorite ? `取消喜爱 ${show.title}` : `喜爱 ${show.title}`"
               @click.stop="$emit('toggle-favorite', show)" 
               title="标记喜爱并置顶"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" :fill="show.isFavorite ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2">
                 <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
               </svg>
-            </div>
+            </button>
             
-            <div class="hover-action-btn edit-btn" title="编辑">
+            <button class="hover-action-btn edit-btn" :aria-label="`编辑 ${show.title}`" title="编辑" @click="$emit('edit', show)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-            </div>
+            </button>
           </div>
           
           <div class="list-meta">
             <span class="tag-badge" :class="show.category">{{ getCategoryLabel(show.category) }}</span>
             <span class="status-tag" :class="show.status">{{ getStatusLabel(show.status) }}</span>
             <div v-if="show.networkLogo" class="network-tag-logo" :title="show.network">
-              <img :src="show.networkLogo" alt="Network" />
+              <img :src="show.networkLogo" alt="Network" loading="lazy" decoding="async" />
             </div>
           </div>
 
@@ -65,24 +68,24 @@
 
         <div class="list-new-actions">
           <div class="stepper-group">
-            <button class="stepper-btn minus" @click.stop="$emit('update-progress', show, -1)" :disabled="show.watchedEpisodes <= 0">
+            <button class="stepper-btn minus" :aria-label="`${show.title} 已看集数减一`" @click.stop="$emit('update-progress', show, -1)" :disabled="show.status === 'dropped' || show.watchedEpisodes <= 0">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
             <div class="stepper-divider"></div>
-            <button class="stepper-btn plus" @click.stop="$emit('update-progress', show, 1)">
+            <button class="stepper-btn plus" :aria-label="`${show.title} 已看集数加一`" @click.stop="$emit('update-progress', show, 1)" :disabled="show.status === 'dropped'">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
           </div>
 
           <template v-if="show.status === 'dropped'">
-            <button class="restore-btn" @click.stop="$emit('restore', show)">恢复</button>
-            <button class="hover-action-btn trash-btn" @click.stop="$emit('delete', show._id)" title="彻底删除">
+            <button class="restore-btn" :aria-label="`恢复 ${show.title}`" @click.stop="$emit('restore', show)">恢复</button>
+            <button class="hover-action-btn trash-btn" :aria-label="`永久删除 ${show.title}`" @click.stop="$emit('delete', show._id)" title="彻底删除">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
             </button>
           </template>
 
           <template v-else>
-            <button class="hover-action-btn trash-btn" @click.stop="$emit('drop', show)" title="弃剧">
+            <button class="hover-action-btn trash-btn" :aria-label="`将 ${show.title} 标记为弃剧`" @click.stop="$emit('drop', show)" title="弃剧">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
             </button>
           </template>
@@ -157,6 +160,7 @@ const estimateDate = computed(() => getEstimatedDateText(props.show));
 .list-main-content { flex: 1; min-width: 0; /* ✨ 防撑破神器 */ display: flex; align-items: center; padding: 0 24px; gap: 24px; }
 .list-info-col { flex: 0 0 200px; min-width: 0; /* ✨ 防撑破神器 */ display: flex; flex-direction: column; justify-content: center; gap: 6px; }
 .title-row { display: flex; align-items: center; gap: 8px; }
+.title-edit-btn { min-width: 0; padding: 0; border: 0; background: transparent; cursor: pointer; text-align: left; }
 .list-info-col h3 { margin: 0; font-size: 1.15rem; font-weight: 700; color: #1d1d1f; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ★ 喜爱按钮样式 */
@@ -201,6 +205,7 @@ const estimateDate = computed(() => getEstimatedDateText(props.show));
 .restore-btn { font-size: 0.8rem; color: #16a34a; border: 1px solid #dcfce7; background: #f0fdf4; padding: 4px 8px; border-radius: 4px; cursor: pointer; transition: all 0.2s; }
 .restore-btn:hover { background: #16a34a; color: white; }
 .hover-action-btn { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; background: transparent; border: none; color: #94a3b8; opacity: 0; transform: translateX(-10px); transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.hover-action-btn:focus-visible { opacity: 1; transform: none; outline: 2px solid #3b82f6; outline-offset: 2px; }
 .trash-btn:hover { color: #ef4444; background: #fee2e2; }
 .edit-btn:hover { color: #3b82f6; background: #dbeafe; }
 .list-card:hover .hover-action-btn { opacity: 1; transform: translateX(0); }

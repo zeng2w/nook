@@ -120,7 +120,10 @@ const requireAuth = (req, res, next) => {
   const session = verifySessionToken(token);
 
   if (!session) {
-    return res.status(401).json({ msg: 'Authentication required' });
+    return res.status(401).json({
+      code: 'AUTHENTICATION_REQUIRED',
+      error: 'Authentication required'
+    });
   }
 
   req.user = { id: session.sub };

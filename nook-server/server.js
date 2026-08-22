@@ -1,12 +1,16 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const { randomUUID } = require('node:crypto');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5001;
+const HOST = process.env.HOST || '127.0.0.1';
 const tmdbRoutes = require('./routes/tmdb');
 const { requireAuth, validateSessionConfiguration } = require('./middleware/auth');
+const logger = require('./utils/logger');
+const { errorHandler, notFoundHandler } = require('./middleware/error');
 
 validateSessionConfiguration();
 
@@ -26,6 +30,21 @@ if (allowedOrigins.length > 0) {
 }
 
 app.use(express.json({ limit: '1mb' }));
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+  const requestId = randomUUID();
+  res.setHeader('X-Request-Id', requestId);
+  res.on('finish', () => {
+    logger.info('http_request', {
+      requestId,
+      method: req.method,
+      path: req.path,
+      status: res.statusCode,
+      durationMs: Date.now() - startedAt
+    });
+  });
+  next();
+});
 
 // === 核心修改：Serverless 环境下的数据库连接逻辑 ===
 const uri = process.env.MONGO_URI;
@@ -39,7 +58,7 @@ const connectDB = async () => {
   if (!connectPromise) {
     connectPromise = mongoose.connect(uri, { serverSelectionTimeoutMS: 8000 })
       .then(connection => {
-        console.log('✅ MongoDB database connection established successfully');
+        logger.info('database_connected', { database: connection.connection.name });
         return connection;
       })
       .catch(err => {
@@ -56,10 +75,10 @@ const databaseRequired = async (req, res, next) => {
     await connectDB();
     next();
   } catch (err) {
-    console.error('❌ MongoDB connection error:', err.message);
+    logger.error('database_connection_failed', { error: err });
     res.status(503).json({
       code: 'DATABASE_UNAVAILABLE',
-      msg: 'Database is unavailable. Check the server database connection and try again.'
+      error: 'Database is unavailable. Check the server database connection and try again.'
     });
   }
 };
@@ -74,15 +93,46 @@ const authDatabaseRequired = (req, res, next) => {
 // =================================================
 
 // === 路由 ===
+app.get('/api/health', async (req, res) => {
+  try {
+    const connection = await connectDB();
+    await connection.connection.db.admin().ping();
+    res.json({
+      status: 'ok',
+      database: 'connected',
+      tmdbConfigured: Boolean(process.env.TMDB_API_KEY),
+      uptimeSeconds: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    logger.error('health_check_failed', { error: err });
+    res.status(503).json({
+      status: 'degraded',
+      database: 'unavailable',
+      tmdbConfigured: Boolean(process.env.TMDB_API_KEY),
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 app.use('/api/tmdb', requireAuth, tmdbRoutes);
 app.use('/api/auth', authDatabaseRequired, require('./routes/auth'));
 app.use('/api/history', requireAuth, databaseRequired, require('./routes/history'));
 app.use('/api/shows', requireAuth, databaseRequired, require('./routes/shows'));
 app.use('/api/tvlog', requireAuth, databaseRequired, require('./routes/tvlog'));
+app.use('/api', notFoundHandler);
+app.use(errorHandler);
 
 // 只有在本地开发时才启动监听
 if (process.env.NODE_ENV !== 'production') {
-  app.listen(PORT, () => console.log(`🚀 Server started on port ${PORT}`));
+  app.listen(PORT, HOST, error => {
+    if (error) {
+      logger.error('server_start_failed', { host: HOST, port: Number(PORT), error });
+      process.exitCode = 1;
+      return;
+    }
+    logger.info('server_started', { host: HOST, port: Number(PORT) });
+  });
 }
 
 // 关键：导出 app 供 Vercel 使用

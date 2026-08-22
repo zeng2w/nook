@@ -1,23 +1,24 @@
 <template>
   <Transition name="fade">
     <div v-if="visible" class="modal-overlay" @click.self="close">
-      <div class="modal-container modern-modal">
+      <div class="modal-container modern-modal" role="dialog" aria-modal="true" aria-labelledby="show-modal-title">
         
-        <div class="modal-header"><h3>{{ isEditing ? '编辑剧集' : '添加新剧集' }}</h3></div>
+        <div class="modal-header"><h3 id="show-modal-title">{{ isEditing ? '编辑剧集' : '添加新剧集' }}</h3></div>
         
         <div v-if="!isEditing" class="search-fixed-area">
           <div class="tmdb-search-section">
             <div class="search-box-modern compact">
               <span class="search-icon">🔍</span>
-              <input v-model="tmdbQuery" @keyup.enter="searchTMDB" placeholder="搜索剧名 (例如: 仙逆)" class="modern-input search-input" />
-              <button class="btn-icon" @click="searchTMDB" :disabled="isSearching">{{ isSearching ? '...' : '→' }}</button>
+              <input id="tmdb-query" v-model="tmdbQuery" aria-label="搜索 TMDB 剧名" @keyup.enter="searchTMDB" placeholder="搜索剧名 (例如: 仙逆)" class="modern-input search-input" />
+              <button type="button" class="btn-icon" aria-label="搜索 TMDB" @click="searchTMDB" :disabled="isSearching">{{ isSearching ? '...' : '→' }}</button>
             </div>
+            <p v-if="searchError" class="search-error">{{ searchError }}</p>
             
             <transition name="fade">
               <div v-if="tmdbResults.length > 0" class="tmdb-results-floating">
-                <div v-for="res in tmdbResults" :key="res.tmdbId" class="tmdb-item" @click="selectTMDBResult(res)">
+                <button v-for="res in tmdbResults" :key="res.tmdbId" type="button" class="tmdb-item" @click="selectTMDBResult(res)">
                   <div class="tmdb-thumb-wrapper">
-                    <img v-if="res.posterUrl" :src="res.posterUrl" class="tmdb-thumb" />
+                    <img v-if="res.posterUrl" :src="res.posterUrl" :alt="res.title" class="tmdb-thumb" loading="lazy" decoding="async" />
                     <div v-else class="tmdb-thumb-placeholder">{{ res.title.charAt(0) }}</div>
                   </div>
                   <div class="tmdb-info">
@@ -28,7 +29,7 @@
                       <span>{{ getCategoryLabel(res.category) }}</span>
                     </div>
                   </div>
-                </div>
+                </button>
               </div>
             </transition>
           </div>
@@ -38,12 +39,12 @@
           
           <div class="form-grid-row main-info">
             <div class="form-group title-group">
-              <label>作品名称</label>
-              <input v-model="form.title" type="text" class="modern-input" placeholder="输入名称" />
+              <label for="show-title">作品名称</label>
+              <input id="show-title" v-model="form.title" type="text" class="modern-input" placeholder="输入名称" />
             </div>
             <div class="form-group category-group">
-              <label>分类</label>
-              <select v-model="form.category" class="modern-input">
+              <label for="show-category">分类</label>
+              <select id="show-category" v-model="form.category" class="modern-input">
                 <option value="tv">📺 电视剧</option>
                 <option value="anime">🎎 动漫</option>
                 <option value="movie">🎬 电影</option>
@@ -54,17 +55,17 @@
 
           <div class="form-grid-row" :class="{ 'single-col': !isEditing }">
             <div class="form-group">
-              <label>播放平台</label>
+              <label for="show-network">播放平台</label>
               <div class="network-input-compact">
-                <input v-model="form.network" type="text" class="modern-input" placeholder="如: Netflix" />
+                <input id="show-network" v-model="form.network" type="text" class="modern-input" placeholder="如: Netflix" />
                 <div v-if="form.networkLogo" class="network-logo-mini">
-                  <img :src="form.networkLogo" alt="Logo" />
+                  <img :src="form.networkLogo" alt="Logo" loading="lazy" decoding="async" />
                 </div>
               </div>
             </div>
             <div class="form-group" v-if="isEditing">
-              <label>状态</label>
-              <select v-model="form.status" class="modern-input">
+              <label for="show-status">状态</label>
+              <select id="show-status" v-model="form.status" class="modern-input">
                 <option value="wish">想看</option>
                 <option value="watching">在追</option>
                 <option value="watched">已看</option>
@@ -84,12 +85,12 @@
             <div class="compact-header">
               <label>更新频率</label>
               <div class="segmented-control mini">
-                <div v-for="opt in freqOptions" :key="opt.val" class="segment-option" :class="{ active: form.updateFrequency === opt.val }" @click="form.updateFrequency = opt.val">{{ opt.label }}</div>
+                <button v-for="opt in freqOptions" :key="opt.val" type="button" class="segment-option" :class="{ active: form.updateFrequency === opt.val }" :aria-pressed="form.updateFrequency === opt.val" @click="form.updateFrequency = opt.val">{{ opt.label }}</button>
               </div>
             </div>
             
             <div v-if="form.updateFrequency === 'weekly'" class="week-selector-mini">
-              <button v-for="(day, idx) in weekDays" :key="idx" class="day-chip mini" :class="{ active: form.updateDays.includes(idx) }" @click="toggleDay(idx)">{{ day }}</button>
+              <button v-for="(day, idx) in weekDays" :key="idx" type="button" class="day-chip mini" :class="{ active: form.updateDays.includes(idx) }" :aria-pressed="form.updateDays.includes(idx)" @click="toggleDay(idx)">{{ day }}</button>
             </div>
             
             <div v-if="form.updateFrequency !== 'ended' && form.updateFrequency !== 'unknown'" class="inline-row">
@@ -105,17 +106,17 @@
           <div class="form-section-compact">
             <label>当前进度</label>
             <div class="stats-row-compact">
-              <div class="stat-input-wrap"><span>已看</span><input v-model.number="form.watchedEpisodes" type="number" class="modern-input" /></div>
-              <div class="stat-input-wrap"><span>已更</span><input v-model.number="form.airedEpisodes" type="number" class="modern-input" /></div>
-              <div class="stat-input-wrap"><span>总集</span><input v-model.number="form.totalEpisodes" type="number" class="modern-input" /></div>
+              <div class="stat-input-wrap"><span>已看</span><input v-model.number="form.watchedEpisodes" type="number" min="0" :max="form.totalEpisodes || undefined" class="modern-input" /></div>
+              <div class="stat-input-wrap"><span>已更</span><input v-model.number="form.airedEpisodes" type="number" min="0" :max="form.totalEpisodes || undefined" class="modern-input" /></div>
+              <div class="stat-input-wrap"><span>总集</span><input v-model.number="form.totalEpisodes" type="number" min="0" class="modern-input" /></div>
             </div>
           </div>
 
         </div>
         
         <div class="modal-footer">
-          <button class="btn text-btn" @click="close">取消</button>
-          <button class="btn primary-btn" @click="save">保存</button>
+          <button type="button" class="btn text-btn" @click="close">取消</button>
+          <button type="button" class="btn primary-btn" @click="save">保存</button>
         </div>
       </div>
     </div>
@@ -125,6 +126,8 @@
 <script setup>
 import { ref, reactive, watch, computed } from 'vue';
 import axios from 'axios';
+import { getApiErrorMessage } from '@/api/errors';
+import { toCalendarDateInput } from '@/utils/dateUtils';
 
 const props = defineProps({
   visible: Boolean,
@@ -138,25 +141,14 @@ const tmdbQuery = ref('');
 const tmdbResults = ref([]);
 const isSearching = ref(false);
 const availableSeasons = ref([]);
+const searchError = ref('');
 
-const initialForm = { title: '', category: 'tv', status: 'watching', updateFrequency: 'weekly', updateDays: [], updateCount: 1, watchedEpisodes: 0, airedEpisodes: 0, totalEpisodes: 0, lastAirDate: new Date().toISOString().split('T')[0], posterUrl: '', network: '', networkLogo: '', tmdbId: null };
+const initialForm = { title: '', category: 'tv', status: 'watching', updateFrequency: 'weekly', updateDays: [], updateCount: 1, watchedEpisodes: 0, airedEpisodes: 0, totalEpisodes: 0, lastAirDate: toCalendarDateInput(new Date()), posterUrl: '', network: '', networkLogo: '', tmdbId: null };
 const form = reactive({ ...initialForm });
 
 const freqOptions = [ { label: '周更', val: 'weekly' }, { label: '日更', val: 'daily' }, { label: '月更', val: 'monthly' }, { label: '完结', val: 'ended' } ];
 const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
-// 初始化表单数据
-// watch(() => props.editData, (newVal) => {
-//   if (newVal) {
-//     Object.assign(form, newVal);
-//     if (newVal.lastAirDate) {
-//       form.lastAirDate = new Date(newVal.lastAirDate).toISOString().split('T')[0];
-//     }
-//   } else {
-//     Object.assign(form, initialForm);
-//     form.updateDays = [];
-//   }
-// });
 watch(
   [() => props.visible, () => props.editData], 
   ([isOpen, newData]) => {
@@ -166,18 +158,19 @@ watch(
         Object.assign(form, newData);
         // 特殊处理日期格式
         if (newData.lastAirDate) {
-          form.lastAirDate = new Date(newData.lastAirDate).toISOString().split('T')[0];
+          form.lastAirDate = toCalendarDateInput(newData.lastAirDate);
         }
       } else {
         // --- 添加模式：彻底重置表单 ---
         // 1. 重置基础字段
-        Object.assign(form, { ...initialForm });
+        Object.assign(form, { ...initialForm, lastAirDate: toCalendarDateInput(new Date()) });
         // 2. 重置引用类型字段 (确保数组清空)
         form.updateDays = [];
         // 3. 重置搜索状态
         tmdbQuery.value = '';
         tmdbResults.value = [];
         availableSeasons.value = [];
+        searchError.value = '';
       }
     }
   }
@@ -201,12 +194,10 @@ const searchTMDB = async () => {
   
   isSearching.value = true;
   tmdbResults.value = [];
-  
-  console.log("🔍 开始搜索:", tmdbQuery.value);
+  searchError.value = '';
 
   try {
-    const res = await axios.get(`/api/tmdb/search?query=${tmdbQuery.value}`);
-    console.log("📦 搜索结果:", res.data);
+    const res = await axios.get('/api/tmdb/search', { params: { query: tmdbQuery.value } });
 
     // ★ 关键修复：兼容直接返回数组或 { results: [] } 的情况
     if (Array.isArray(res.data)) {
@@ -218,13 +209,14 @@ const searchTMDB = async () => {
     }
   } catch (err) {
     console.error("❌ 搜索失败:", err);
+    searchError.value = getApiErrorMessage(err, 'TMDB 搜索失败');
   } finally {
     isSearching.value = false;
   }
 };
 
 const selectTMDBResult = async (item) => {
-  console.log("👉 选中剧集:", item);
+  searchError.value = '';
   form.tmdbId = item.tmdbId;
   form.title = item.title;
   form.category = item.category;
@@ -251,7 +243,7 @@ const selectTMDBResult = async (item) => {
     
     if (details.updateFrequency === 'ended') form.updateFrequency = 'ended';
     if (details.lastAirDate) {
-      form.lastAirDate = new Date(details.lastAirDate).toISOString().split('T')[0];
+      form.lastAirDate = toCalendarDateInput(details.lastAirDate);
       const [y, m, d] = form.lastAirDate.split('-').map(Number);
       form.updateDays = [new Date(y, m - 1, d).getDay()];
     }
@@ -264,6 +256,7 @@ const selectTMDBResult = async (item) => {
     
   } catch (err) {
     console.error("❌ 获取详情失败:", err);
+    searchError.value = getApiErrorMessage(err, 'TMDB 详情获取失败，可以手动填写');
   }
 };
 
@@ -292,6 +285,7 @@ const onSeasonSelect = (event) => {
 
 /* ★ 关键样式：固定搜索区域，确保 z-index 高于内容区 */
 .search-fixed-area { padding: 0 24px 10px 24px; background: #fff; position: relative; z-index: 50; }
+.search-error { color: #dc2626; font-size: 0.78rem; margin: 6px 2px 0; }
 
 /* 主体滚动区 */
 .modal-body-scroll.compact-mode { padding: 5px 24px 15px; gap: 12px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; }
@@ -319,7 +313,7 @@ const onSeasonSelect = (event) => {
 .compact-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .compact-header label { margin: 0; }
 .segmented-control.mini { margin: 0; padding: 2px; background: #e5e5ea; height: 28px; display: flex; border-radius: 8px; }
-.segmented-control.mini .segment-option { padding: 0 10px; font-size: 0.8rem; line-height: 24px; flex: 1; text-align: center; cursor: pointer; border-radius: 6px; transition: all 0.2s; }
+.segmented-control.mini .segment-option { padding: 0 10px; font-size: 0.8rem; line-height: 24px; flex: 1; text-align: center; cursor: pointer; border: 0; background: transparent; border-radius: 6px; transition: all 0.2s; }
 .segment-option.active { background: #fff; color: #000; box-shadow: 0 2px 5px rgba(0,0,0,0.05); font-weight: 600; }
 .week-selector-mini { display: flex; justify-content: space-between; margin-bottom: 8px; }
 .day-chip.mini { width: 30px; height: 30px; font-size: 0.75rem; margin: 0; border-radius: 50%; border: 1px solid #eee; background: #fff; color: #666; display: flex; align-items: center; justify-content: center; cursor: pointer; }
@@ -350,7 +344,7 @@ const onSeasonSelect = (event) => {
 
 /* ★ 关键样式：搜索结果下拉，绝对定位，高层级 */
 .tmdb-results-floating { position: absolute; width: calc(100% - 48px); left: 24px; top: 100%; z-index: 1000; background: white; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.25); max-height: 280px; overflow-y: auto; padding: 8px; border: 1px solid #eee; margin-top: 6px; }
-.tmdb-item { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 12px; cursor: pointer; transition: 0.2s; }
+.tmdb-item { width: 100%; border: 0; background: #fff; text-align: left; display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 12px; cursor: pointer; transition: 0.2s; }
 .tmdb-item:hover { background: #f5f5f7; }
 .tmdb-thumb-wrapper { width: 48px; height: 72px; flex-shrink: 0; border-radius: 6px; overflow: hidden; background: #eee; display: flex; align-items: center; justify-content: center; }
 .tmdb-thumb { width: 100%; height: 100%; object-fit: cover; }

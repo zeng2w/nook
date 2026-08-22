@@ -3,7 +3,7 @@ const router = express.Router();
 const { getAiredEpisodeCount } = require('../utils/tmdb');
 const { getCacheTtl, sendTmdbError, tmdbGet } = require('../utils/tmdbClient');
 
-const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500'; // w500 代表海报宽度
+const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w342';
 
 // 辅助函数：拼接完整的海报 URL
 const getPosterUrl = (path) => path ? `${IMAGE_BASE_URL}${path}` : '';
@@ -15,7 +15,7 @@ const getPosterUrl = (path) => path ? `${IMAGE_BASE_URL}${path}` : '';
 router.get('/search', async (req, res) => {
   try {
     const { query } = req.query;
-    if (!query) return res.status(400).json({ msg: 'Query is required' });
+    if (!query) return res.status(400).json({ code: 'INVALID_QUERY', error: 'Query is required' });
 
     // 使用 multi search 同时搜索 剧集(tv) 和 电影(movie)
     const response = await tmdbGet('/search/multi', {
@@ -61,7 +61,7 @@ router.get('/details/:type/:id', async (req, res) => {
     // 如果前端传的是 'anime'，我们需要把它转回 'tv' 来查询
     const queryType = type === 'anime' ? 'tv' : type;
     if (!['tv', 'movie'].includes(queryType) || !/^\d+$/.test(id)) {
-      return res.status(400).json({ msg: 'Invalid TMDB type or id' });
+      return res.status(400).json({ code: 'INVALID_TMDB_ID', error: 'Invalid TMDB type or id' });
     }
 
     const response = await tmdbGet(`/${queryType}/${id}`, {

@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import axios from 'axios';
+import { hydrateAuth } from '@/auth';
 
 // 页面组件按路由懒加载，减少首次打开时需要下载和解析的 JavaScript。
 const Login = () => import('../components/Login.vue');
@@ -11,7 +11,7 @@ const TvTrackerView = () => import('../views/TvTrackerView.vue');
 
 const routes = [
   // 1. 根路径重定向到登录
-  { path: '/', redirect: '/login' },
+  { path: '/', redirect: '/home' },
   
   // 2. 登录页
   { path: '/login', name: 'Login', component: Login },
@@ -55,26 +55,12 @@ const router = createRouter({
   routes
 });
 
-let sessionVerified = false;
-
-// 路由守卫：本地状态用于快速判断，服务端会话负责最终认证
+// 路由守卫始终以服务端 Cookie 会话为准，因此新标签页也能恢复登录状态。
 router.beforeEach(async (to) => {
   if (!to.meta.requiresAuth) return true;
 
-  const storedUser = sessionStorage.getItem('current_user');
-  if (!storedUser) return '/login';
-  if (sessionVerified) return true;
-
-  try {
-    JSON.parse(storedUser);
-    const res = await axios.get('/api/auth/me');
-    sessionStorage.setItem('current_user', JSON.stringify(res.data.user));
-    sessionVerified = true;
-    return true;
-  } catch {
-    sessionStorage.removeItem('current_user');
-    return '/login';
-  }
+  const user = await hydrateAuth();
+  return user ? true : '/login';
 });
 
 export default router;

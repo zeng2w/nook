@@ -10,6 +10,7 @@
             <button 
               class="action-circle-btn favorite-btn" 
               :class="{ 'active': show.isFavorite }" 
+              :aria-label="show.isFavorite ? `取消喜爱 ${show.title}` : `喜爱 ${show.title}`"
               @click.stop="$emit('toggle-favorite', show)"
               title="标记喜爱并置顶"
             >
@@ -18,19 +19,19 @@
               </svg>
             </button>
 
-            <button class="action-circle-btn edit" @click.stop="$emit('edit', show)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+            <button class="action-circle-btn edit" :aria-label="`编辑 ${show.title}`" @click.stop="$emit('edit', show)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
             <template v-if="show.status === 'dropped'">
-              <button class="action-circle-btn restore" @click.stop="$emit('restore', show)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"></path></svg></button>
-              <button class="action-circle-btn hard-delete" @click.stop="$emit('delete', show._id)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+              <button class="action-circle-btn restore" :aria-label="`恢复 ${show.title}`" @click.stop="$emit('restore', show)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"></path></svg></button>
+              <button class="action-circle-btn hard-delete" :aria-label="`永久删除 ${show.title}`" @click.stop="$emit('delete', show._id)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
             </template>
             <template v-else>
-              <button class="action-circle-btn soft-delete" @click.stop="$emit('drop', show)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+              <button class="action-circle-btn soft-delete" :aria-label="`将 ${show.title} 标记为弃剧`" @click.stop="$emit('drop', show)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
             </template>
           </div>
           
           <div class="card-header-grid">
             <div class="poster-mini trigger-flip" :style="{ backgroundColor: getCategoryColor(show.category) }" @mouseenter="flipped = true">
-              <img v-if="show.posterUrl" :src="show.posterUrl" class="mini-img" loading="lazy" /><span v-else>{{ show.title.charAt(0) }}</span>
+              <img v-if="show.posterUrl" :src="show.posterUrl" class="mini-img" loading="lazy" decoding="async" /><span v-else>{{ show.title.charAt(0) }}</span>
               <div class="flip-hint">↻</div>
             </div>
             <div class="header-info">
@@ -38,13 +39,13 @@
               <div class="tags-line">
                 <span class="tag-badge" :class="show.category">{{ getCategoryLabel(show.category) }}</span>
                 <span class="status-tag" :class="show.status">{{ getStatusLabel(show.status) }}</span>
-                <div v-if="show.networkLogo" class="network-tag-logo" :title="show.network"><img :src="show.networkLogo" alt="Network" /></div>
+                <div v-if="show.networkLogo" class="network-tag-logo" :title="show.network"><img :src="show.networkLogo" alt="Network" loading="lazy" decoding="async" /></div>
               </div>
             </div>
           </div>
 
           <div class="simple-dashboard" :class="{ 'disabled': show.status === 'dropped' }">
-            <button class="control-btn minus" :disabled="show.status === 'dropped' || show.watchedEpisodes <= 0" @click.stop="$emit('update-progress', show, -1)">
+            <button class="control-btn minus" :aria-label="`${show.title} 已看集数减一`" :disabled="show.status === 'dropped' || show.watchedEpisodes <= 0" @click.stop="$emit('update-progress', show, -1)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
             
@@ -63,7 +64,7 @@
               </div>
             </div>
             
-            <button class="control-btn plus" :disabled="show.status === 'dropped'" @click.stop="$emit('update-progress', show, 1)">
+            <button class="control-btn plus" :aria-label="`${show.title} 已看集数加一`" :disabled="show.status === 'dropped'" @click.stop="$emit('update-progress', show, 1)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
           </div>
@@ -88,7 +89,7 @@
         </div>
         
         <div class="card-face back">
-          <img v-if="show.posterUrl" :src="show.posterUrl" class="full-poster" loading="lazy" />
+          <img v-if="show.posterUrl" :src="show.posterUrl" class="full-poster" loading="lazy" decoding="async" />
           <div v-else class="back-placeholder" :style="{ backgroundColor: getCategoryColor(show.category) }">
             <span>{{ show.title }}</span>
           </div>

@@ -18,8 +18,13 @@
         <div class="spinner"></div> <span>数据加载中...</span>
       </div>
 
+      <div v-else-if="loadError" class="glass-card state-box empty">
+        <p>{{ loadError }}</p>
+        <button class="primary-btn" @click="loadDashboard">重新加载</button>
+      </div>
+
       <template v-else>
-        <div v-if="shows.length === 0" class="glass-card state-box empty">
+        <div v-if="showCount === 0" class="glass-card state-box empty">
           <p>暂无数据，快去添加第一部剧集吧！</p>
           <button class="primary-btn" @click="$router.push('/home/tv-shows')">去添加</button>
         </div>
@@ -36,7 +41,7 @@
             <div class="card-header">
               <div class="title-with-select">
                 <h2>观影活跃度</h2>
-                <select v-model="heatmapYearMode" class="glass-selector">
+                <select v-model="heatmapYearMode" class="glass-selector" aria-label="活跃度年份范围">
                   <option value="rolling">最近一年</option>
                   <option v-for="year in availableYears" :key="year" :value="year">
                     {{ year }} 年
@@ -70,18 +75,19 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { updateTheme } from '@/store';
-import { fetchShowsApi, fetchTvLogApi } from '@/api/shows';
+import { fetchShowStatsApi, fetchTvActivityApi } from '@/api/shows';
+import { getApiErrorMessage } from '@/api/errors';
+import { getAuthUserId } from '@/auth';
 
 import TvStatsOverview from '@/components/home/TvStatsOverview.vue';
 import TvHeatmap from '@/components/home/TvHeatmap.vue';
-import { useTvStatistics } from '@/composables/useTvStatistics';
-
-const shows = ref([]);
 const historyData = ref({}); 
 const isLoading = ref(true);
+const loadError = ref('');
+const showCount = ref(0);
+const statusCounts = ref({ watching: 0, watched: 0, wish: 0, dropped: 0 });
+const progressStats = ref({ watched: 0, total: 0, lag: 0, percent: 0 });
 const heatmapYearMode = ref('rolling');
-
-const { statusCounts, progressStats } = useTvStatistics(shows);
 
 // ★ 优化：自动往前填充过去 5 年的年份选项
 const availableYears = computed(() => {
@@ -104,50 +110,32 @@ const availableYears = computed(() => {
   return Array.from(years).sort((a, b) => b - a);
 });
 
-const getCurrentUserId = () => { 
-  try {
-    const userStr = sessionStorage.getItem('current_user'); 
-    return userStr ? JSON.parse(userStr).id : null; 
-  } catch {
-    return null;
-  }
-};
-
-const fetchHistory = async () => {
-  const userId = getCurrentUserId();
-  if (!userId) return;
-  try {
-    const res = await fetchTvLogApi();
-    const map = {};
-    if (Array.isArray(res.data)) {
-      res.data.forEach(item => {
-        const dateObj = new Date(item.date);
-        const dateStr = dateObj.toLocaleDateString('en-CA'); 
-        map[dateStr] = (map[dateStr] || 0) + item.count;
-      });
-    }
-    historyData.value = map;
-  } catch (err) {
-    console.error("❌ 获取热力图数据失败:", err);
-  }
-};
-
-const fetchShows = async () => {
-  const userId = getCurrentUserId();
-  if (!userId) return;
-  try {
-    const res = await fetchShowsApi();
-    shows.value = res.data;
-  } catch (err) {
-    console.error("❌ 获取剧集数据失败:", err);
-  } 
-};
-
-onMounted(async () => {
-  updateTheme('#f5f7fa'); // 换一个更加素雅干净的底色
+const loadDashboard = async () => {
+  if (!getAuthUserId()) return;
   isLoading.value = true;
-  await Promise.all([fetchShows(), fetchHistory()]);
-  isLoading.value = false;
+  loadError.value = '';
+  try {
+    const [statsResponse, activityResponse] = await Promise.all([
+      fetchShowStatsApi(),
+      fetchTvActivityApi()
+    ]);
+    showCount.value = statsResponse.data.showCount;
+    statusCounts.value = statsResponse.data.statusCounts;
+    progressStats.value = statsResponse.data.progressStats;
+    historyData.value = Object.fromEntries(
+      activityResponse.data.map(item => [item.date, item.count])
+    );
+  } catch (err) {
+    console.error('Dashboard load failed:', err);
+    loadError.value = getApiErrorMessage(err, 'Dashboard 数据加载失败');
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+onMounted(() => {
+  updateTheme('#f5f7fa'); // 换一个更加素雅干净的底色
+  loadDashboard();
 });
 </script>
 

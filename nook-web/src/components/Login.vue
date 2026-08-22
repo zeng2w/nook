@@ -5,9 +5,11 @@
       <p class="subtitle">Log in to your personal dashboard</p>
 
       <div class="form-group">
-        <label>Email</label>
+        <label for="login-email">Email</label>
         <input 
+          id="login-email"
           type="email" 
+          autocomplete="email"
           v-model="email" 
           placeholder="Enter email" 
           class="auth-input" 
@@ -16,9 +18,11 @@
       </div>
 
       <div class="form-group">
-        <label>Password</label>
+        <label for="login-password">Password</label>
         <input 
+          id="login-password"
           type="password" 
+          autocomplete="current-password"
           v-model="password" 
           placeholder="Enter password" 
           class="auth-input" 
@@ -26,12 +30,12 @@
         />
       </div>
 
-      <button class="auth-btn primary" @click="handleLogin" :disabled="isLoading">
+      <button class="auth-btn primary" :aria-busy="isLoading" @click="handleLogin" :disabled="isLoading">
         {{ isLoading ? 'Logging in...' : 'Log In' }}
       </button>
 
       <div class="footer-link">
-        No account yet? <span class="link-text" @click="goToRegister">Sign up</span>
+        No account yet? <button type="button" class="link-text" @click="goToRegister">Sign up</button>
       </div>
     </div>
 
@@ -55,6 +59,8 @@
 import { ref, reactive } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
+import { getApiErrorMessage } from '@/api/errors';
+import { setAuthUser } from '@/auth';
 
 defineOptions({ name: 'LoginPage' });
 
@@ -99,7 +105,7 @@ const handleLogin = async () => {
     // 2. 登录成功
     const userData = res.data.user;
     // 3. 用户信息只用于界面展示；认证凭证由 HttpOnly Cookie 保存
-    sessionStorage.setItem('current_user', JSON.stringify(userData));
+    setAuthUser(userData);
 
     showToast(`Welcome back, ${userData.username}!`, "success");
 
@@ -110,11 +116,7 @@ const handleLogin = async () => {
 
   } catch (err) {
     console.error(err);
-    if (err.response && err.response.data && err.response.data.msg) {
-      showToast(err.response.data.msg, "error"); // 显示后端返回的具体错误
-    } else {
-      showToast("Login failed. Check your network.", "error");
-    }
+    showToast(getApiErrorMessage(err, 'Login failed. Please try again.'), "error");
   } finally {
     isLoading.value = false;
   }
@@ -136,7 +138,7 @@ const handleLogin = async () => {
 .auth-btn:hover { opacity: 0.8; }
 .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .footer-link { text-align: center; font-size: 0.9rem; color: #666; margin-top: 10px; }
-.link-text { color: #0066cc; cursor: pointer; font-weight: 600; }
+.link-text { color: #0066cc; cursor: pointer; font: inherit; font-weight: 600; border: 0; padding: 0; background: transparent; }
 .link-text:hover { text-decoration: underline; }
 
 /* Toast */

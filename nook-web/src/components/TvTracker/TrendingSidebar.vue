@@ -9,10 +9,17 @@
       <button :class="{ active: activeTab === 'new' }" @click="activeTab = 'new'">刚上映</button>
     </div>
 
-    <div class="show-list" v-if="!isLoading">
+    <div v-if="isLoading" class="loading-state">数据加载中...</div>
+
+    <div v-else-if="loadError" class="loading-state error-state">
+      <span>{{ loadError }}</span>
+      <button @click="loadTrending">重试</button>
+    </div>
+
+    <div v-else class="show-list">
       <div v-for="(show, index) in displayList" :key="show.id" class="show-item">
         <div class="rank" v-if="activeTab === 'popular'">{{ index + 1 }}</div>
-        <img :src="getPosterUrl(show.poster_path)" :alt="show.name" class="mini-poster" />
+        <img :src="getPosterUrl(show.poster_path)" :alt="show.name" class="mini-poster" loading="lazy" decoding="async" />
         <div class="show-info">
           <span class="title">{{ show.name }}</span>
           <span class="meta">
@@ -22,19 +29,19 @@
         </div>
       </div>
     </div>
-    
-    <div v-else class="loading-state">数据加载中...</div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { fetchTrendingShows, fetchNewReleases } from '@/api/tmdb';
+import { getApiErrorMessage } from '@/api/errors';
 
 const activeTab = ref('popular');
 const popularShows = ref([]);
 const newShows = ref([]);
 const isLoading = ref(true);
+const loadError = ref('');
 
 const displayList = computed(() => {
   return activeTab.value === 'popular' ? popularShows.value : newShows.value;
@@ -44,9 +51,10 @@ const getPosterUrl = (path) => {
   return path ? `https://image.tmdb.org/t/p/w92${path}` : '/placeholder.jpg';
 };
 
-onMounted(async () => {
+const loadTrending = async () => {
   try {
     isLoading.value = true;
+    loadError.value = '';
     const [popRes, newRes] = await Promise.all([
       fetchTrendingShows(),
       fetchNewReleases()
@@ -55,10 +63,13 @@ onMounted(async () => {
     newShows.value = newRes.data;
   } catch (error) {
     console.error("加载侧边栏失败", error);
+    loadError.value = getApiErrorMessage(error, '探索内容加载失败');
   } finally {
     isLoading.value = false;
   }
-});
+};
+
+onMounted(loadTrending);
 </script>
 
 <style scoped>
@@ -122,4 +133,6 @@ onMounted(async () => {
 .meta { font-size: 0.7rem; color: #94a3b8; font-weight: 500; }
 .rank { font-weight: 800; font-size: 1rem; color: #cbd5e1; width: 18px; text-align: center; flex-shrink: 0; }
 .loading-state { text-align: center; color: #94a3b8; margin-top: 40px; font-size: 0.85rem; }
+.error-state { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.error-state button { border: 1px solid #cbd5e1; background: #fff; color: #475569; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
 </style>
