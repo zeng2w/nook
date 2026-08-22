@@ -43,6 +43,22 @@ test('update days support weekly fallback and end-of-month schedules', () => {
   }, new Date(2026, 1, 28)), true)
 })
 
+test('a known next episode prevents updates from appearing during a hiatus', () => {
+  const show = {
+    updateFrequency: 'weekly',
+    updateDays: [1],
+    updateCount: 1,
+    lastAirDate: '2026-08-03',
+    nextAirDate: '2026-09-07',
+    airedEpisodes: 237,
+    totalEpisodes: 300,
+  }
+
+  assert.equal(isShowUpdateDay(show, '2026-08-10'), false)
+  assert.equal(isShowUpdateDay(show, '2026-09-07'), true)
+  assert.equal(calculateEpisodeForDate(show, '2026-09-07'), 'Ep 238')
+})
+
 test('episode calculation counts every scheduled update day', () => {
   const show = {
     lastAirDate: '2026-08-03T00:00:00.000Z',

@@ -101,6 +101,11 @@
               <span class="sub-label">最近:</span>
               <input v-model="form.lastAirDate" type="date" class="modern-input inline-date" />
             </div>
+            <div v-if="form.updateFrequency !== 'ended' && form.updateFrequency !== 'unknown'" class="inline-row next-air-row">
+              <span class="sub-label">下次更新:</span>
+              <input v-model="form.nextAirDate" type="date" class="modern-input inline-date" />
+              <span class="schedule-hint">TMDB 没有明确日期时可留空</span>
+            </div>
           </div>
 
           <div class="form-section-compact">
@@ -143,10 +148,10 @@ const isSearching = ref(false);
 const availableSeasons = ref([]);
 const searchError = ref('');
 
-const initialForm = { title: '', category: 'tv', status: 'watching', updateFrequency: 'weekly', updateDays: [], updateCount: 1, watchedEpisodes: 0, airedEpisodes: 0, totalEpisodes: 0, lastAirDate: toCalendarDateInput(new Date()), posterUrl: '', network: '', networkLogo: '', tmdbId: null };
+const initialForm = { title: '', category: 'tv', status: 'watching', updateFrequency: 'weekly', updateDays: [], updateCount: 1, watchedEpisodes: 0, airedEpisodes: 0, totalEpisodes: 0, lastAirDate: toCalendarDateInput(new Date()), nextAirDate: '', posterUrl: '', network: '', networkLogo: '', tmdbId: null };
 const form = reactive({ ...initialForm });
 
-const freqOptions = [ { label: '周更', val: 'weekly' }, { label: '日更', val: 'daily' }, { label: '月更', val: 'monthly' }, { label: '完结', val: 'ended' } ];
+const freqOptions = [ { label: '周更', val: 'weekly' }, { label: '日更', val: 'daily' }, { label: '月更', val: 'monthly' }, { label: '待定', val: 'unknown' }, { label: '完结', val: 'ended' } ];
 const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
 watch(
@@ -160,6 +165,7 @@ watch(
         if (newData.lastAirDate) {
           form.lastAirDate = toCalendarDateInput(newData.lastAirDate);
         }
+        form.nextAirDate = toCalendarDateInput(newData.nextAirDate);
       } else {
         // --- 添加模式：彻底重置表单 ---
         // 1. 重置基础字段
@@ -241,11 +247,11 @@ const selectTMDBResult = async (item) => {
       form.network = ''; form.networkLogo = '';
     }
     
-    if (details.updateFrequency === 'ended') form.updateFrequency = 'ended';
+    form.updateFrequency = details.updateFrequency || 'unknown';
+    form.updateDays = Array.isArray(details.updateDays) ? [...details.updateDays] : [];
+    form.nextAirDate = toCalendarDateInput(details.nextAirDate);
     if (details.lastAirDate) {
       form.lastAirDate = toCalendarDateInput(details.lastAirDate);
-      const [y, m, d] = form.lastAirDate.split('-').map(Number);
-      form.updateDays = [new Date(y, m - 1, d).getDay()];
     }
     
     if (details.seasons && details.seasons.length > 0) availableSeasons.value = details.seasons;
@@ -270,6 +276,8 @@ const onSeasonSelect = (event) => {
     form.totalEpisodes = targetSeason.episodeCount;
     form.airedEpisodes = targetSeason.episodeCount;
     form.updateFrequency = 'ended';
+    form.updateDays = [];
+    form.nextAirDate = '';
   }
 };
 </script>
@@ -319,6 +327,8 @@ const onSeasonSelect = (event) => {
 .day-chip.mini { width: 30px; height: 30px; font-size: 0.75rem; margin: 0; border-radius: 50%; border: 1px solid #eee; background: #fff; color: #666; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .day-chip.active { background: #007aff; color: white; border-color: #007aff; }
 .inline-row { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #666; }
+.next-air-row { margin-top: 8px; }
+.schedule-hint { color: #a1a1aa; font-size: 0.7rem; }
 .modern-input.inline-input { width: 50px; text-align: center; padding: 4px; height: 30px; }
 .modern-input.inline-date { width: 130px; padding: 4px 8px; height: 30px; font-size: 0.8rem; }
 .spacer { color: #ddd; margin: 0 4px; }

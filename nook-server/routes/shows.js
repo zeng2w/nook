@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Show = require('../models/Show'); 
-const { getAiredEpisodeCount } = require('../utils/tmdb');
+const { getAiredEpisodeCount, getTmdbSchedule } = require('../utils/tmdb');
 const { classifyTmdbError, sendTmdbError, tmdbGet } = require('../utils/tmdbClient');
 const { getSyncConcurrency, mapWithConcurrency } = require('../utils/concurrency');
 const { buildShowListPipeline, parseShowQuery, SHOW_CATEGORIES, SHOW_STATUSES } = require('../utils/showQuery');
@@ -23,6 +23,7 @@ const ALLOWED_SHOW_FIELDS = [
   'updateDays',
   'updateCount',
   'lastAirDate',
+  'nextAirDate',
   'estimatedFinishDate',
   'network',
   'networkLogo',
@@ -38,6 +39,19 @@ const pickShowFields = (source) => {
       .map(field => [field, source[field]])
   );
 };
+
+const toCalendarDateKey = (value) => {
+  if (!value) return null;
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return value.slice(0, 10);
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
+};
+
+const hasSameUpdateDays = (left = [], right = []) => (
+  left.length === right.length && left.every((day, index) => Number(day) === Number(right[index]))
+);
 
 // ==========================================
 // 1. 获取剧集列表
@@ -162,7 +176,7 @@ router.get('/stats', async (req, res, next) => {
 router.get('/calendar', async (req, res, next) => {
   try {
     const shows = await Show.find({ userId: req.user.id })
-      .select('title posterUrl network networkLogo status totalEpisodes airedEpisodes updateFrequency updateDays updateCount lastAirDate estimatedFinishDate')
+      .select('title posterUrl network networkLogo status totalEpisodes airedEpisodes updateFrequency updateDays updateCount lastAirDate nextAirDate estimatedFinishDate')
       .sort({ lastAirDate: -1, title: 1 })
       .lean();
     res.json(shows);
@@ -247,6 +261,7 @@ router.post('/sync', async (req, res, next) => {
           });
 
           const remoteData = tmdbRes.data;
+          const remoteSchedule = getTmdbSchedule(remoteData);
           let needsSave = false;
           let updateLog = null;
 
@@ -274,12 +289,33 @@ router.post('/sync', async (req, res, next) => {
             show.totalEpisodes = remoteData.number_of_episodes;
             needsSave = true;
           }
-          if (
-            (remoteData.status === 'Ended' || remoteData.status === 'Canceled') &&
-            show.updateFrequency !== 'ended'
-          ) {
-            show.updateFrequency = 'ended';
-            needsSave = true;
+          const scheduleIsManagedByTmdb = ['weekly', 'unknown'].includes(show.updateFrequency);
+          if (remoteSchedule.updateFrequency === 'ended') {
+            if (show.updateFrequency !== 'ended') {
+              show.updateFrequency = 'ended';
+              needsSave = true;
+            }
+            if (show.nextAirDate) {
+              show.nextAirDate = null;
+              needsSave = true;
+            }
+            if (Array.isArray(show.updateDays) && show.updateDays.length > 0) {
+              show.updateDays = [];
+              needsSave = true;
+            }
+          } else if (scheduleIsManagedByTmdb) {
+            if (show.updateFrequency !== remoteSchedule.updateFrequency) {
+              show.updateFrequency = remoteSchedule.updateFrequency;
+              needsSave = true;
+            }
+            if (!hasSameUpdateDays(show.updateDays, remoteSchedule.updateDays)) {
+              show.updateDays = remoteSchedule.updateDays;
+              needsSave = true;
+            }
+            if (toCalendarDateKey(show.nextAirDate) !== remoteSchedule.nextAirDate) {
+              show.nextAirDate = remoteSchedule.nextAirDate;
+              needsSave = true;
+            }
           }
           if (!show.network && remoteData.networks && remoteData.networks.length > 0) {
             show.network = remoteData.networks[0].name;

@@ -309,6 +309,18 @@ const fetchCalendarShows = async () => {
   }
 };
 
+const patchShowCollections = (updatedShow, overrides = {}) => {
+  if (!updatedShow?._id) return;
+  const safeShow = { ...updatedShow };
+  delete safeShow.userId;
+  delete safeShow.__v;
+  const patch = { ...safeShow, ...overrides };
+  [shows, calendarShows].forEach(collection => {
+    const existing = collection.value.find(show => show._id === patch._id);
+    if (existing) Object.assign(existing, patch);
+  });
+};
+
 const refreshShowData = async () => Promise.all([fetchShows(true), fetchCalendarShows()]);
 
 watch(
@@ -363,10 +375,42 @@ const updateProgress = (show, delta) => {
     delete pendingDeltas[show._id];
     delete updateTimers[show._id];
     if (finalDelta === 0) return; 
+    const previousStatus = calcStatus(
+      Math.max(0, show.watchedEpisodes - finalDelta),
+      show.airedEpisodes,
+      show.totalEpisodes
+    );
     try {
-      await updateShowApi(show._id, { watchedEpisodes: show.watchedEpisodes, status: show.status });
-      await addTvLogApi({ showId: show._id, showTitle: show.title, count: finalDelta, date: new Date() });
-      await refreshShowData();
+      const response = await updateShowApi(show._id, {
+        watchedEpisodes: show.watchedEpisodes,
+        status: show.status
+      });
+      const queuedDelta = pendingDeltas[show._id] || 0;
+      const overrides = queuedDelta === 0 ? {} : {
+        watchedEpisodes: response.data.watchedEpisodes + queuedDelta,
+        status: calcStatus(
+          response.data.watchedEpisodes + queuedDelta,
+          response.data.airedEpisodes,
+          response.data.totalEpisodes
+        )
+      };
+      patchShowCollections(response.data, overrides);
+
+      if (queuedDelta === 0 && (previousStatus !== response.data.status || sortBy.value === 'lag')) {
+        await fetchShows(true);
+      }
+
+      try {
+        await addTvLogApi({
+          showId: show._id,
+          showTitle: show.title,
+          count: finalDelta,
+          date: new Date()
+        });
+      } catch (logError) {
+        console.error('Activity log save failed:', logError);
+        showToast('观看进度已保存，但活跃度记录失败', 'error');
+      }
     } catch (e) {
       console.error(e);
       show.watchedEpisodes = Math.max(0, show.watchedEpisodes - finalDelta);
@@ -381,8 +425,9 @@ const toggleFavorite = async (show) => {
   const newState = !originalState;
   show.isFavorite = newState; 
   try {
-    await updateShowApi(show._id, { isFavorite: newState });
-    await refreshShowData();
+    const response = await updateShowApi(show._id, { isFavorite: newState });
+    patchShowCollections(response.data);
+    await fetchShows(true);
     showToast(newState ? "已加入喜爱并置顶" : "已取消喜爱", "success");
   } catch (err) {
     console.error("更新喜爱状态失败:", err);
@@ -397,8 +442,9 @@ const dropShow = async (show) => {
   const originalStatus = show.status;
   show.status = 'dropped';
   try {
-    await updateShowApi(show._id, { status: 'dropped' });
-    await refreshShowData();
+    const response = await updateShowApi(show._id, { status: 'dropped' });
+    patchShowCollections(response.data);
+    await fetchShows(true);
   } catch (err) {
     console.error(err);
     show.status = originalStatus;
@@ -410,8 +456,9 @@ const restoreShow = async (show) => {
   const correctStatus = calcStatus(show.watchedEpisodes, show.airedEpisodes, show.totalEpisodes);
   show.status = correctStatus;
   try {
-    await updateShowApi(show._id, { status: correctStatus });
-    await refreshShowData();
+    const response = await updateShowApi(show._id, { status: correctStatus });
+    patchShowCollections(response.data);
+    await fetchShows(true);
   } catch (err) {
     console.error(err);
     show.status = originalStatus;
@@ -426,13 +473,15 @@ const confirmDelete = async (id) => {
   if (pendingDeletes[id]) { clearTimeout(pendingDeletes[id]); delete pendingDeletes[id]; }
   const backup = shows.value.find(s => s._id === id);
   shows.value = shows.value.filter(s => s._id !== id);
+  calendarShows.value = calendarShows.value.filter(s => s._id !== id);
   try {
     await deleteShowApi(id);
-    await refreshShowData();
+    await fetchShows(true);
     showToast("删除成功", "success");
   } catch (err) {
     console.error(err);
     if (backup) shows.value.push(backup);
+    await fetchCalendarShows();
     showToast(getApiErrorMessage(err, '删除失败'), "error");
   }
 };

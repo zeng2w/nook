@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getAiredEpisodeCount } = require('../utils/tmdb');
+const { getAiredEpisodeCount, getTmdbSchedule } = require('../utils/tmdb');
 const { getCacheTtl, sendTmdbError, tmdbGet } = require('../utils/tmdbClient');
 
 const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w342';
@@ -123,18 +123,11 @@ router.get('/details/:type/:id', async (req, res) => {
       networks: networksData,
       
       // 分季列表
-      seasons: validSeasons
-    };
+      seasons: validSeasons,
 
-    // --- E. 推断更新频率 ---
-    // 如果状态是完结或被砍，频率设为 ended
-    if (data.status === 'Ended' || data.status === 'Canceled') {
-      details.updateFrequency = 'ended';
-    } 
-    // 如果还在连载，默认设为周更
-    else if (data.status === 'Returning Series') {
-      details.updateFrequency = 'weekly'; 
-    }
+      // 只有 TMDB 明确提供下一集日期时才推断周更，避免停播期无限外推。
+      ...getTmdbSchedule(data)
+    };
 
     res.json(details);
   } catch (err) {

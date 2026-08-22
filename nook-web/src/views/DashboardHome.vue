@@ -78,6 +78,7 @@ import { updateTheme } from '@/store';
 import { fetchShowStatsApi, fetchTvActivityApi } from '@/api/shows';
 import { getApiErrorMessage } from '@/api/errors';
 import { getAuthUserId } from '@/auth';
+import { getCurrentTimeZone } from '@/utils/dateUtils';
 
 import TvStatsOverview from '@/components/home/TvStatsOverview.vue';
 import TvHeatmap from '@/components/home/TvHeatmap.vue';
@@ -117,7 +118,7 @@ const loadDashboard = async () => {
   try {
     const [statsResponse, activityResponse] = await Promise.all([
       fetchShowStatsApi(),
-      fetchTvActivityApi()
+      fetchTvActivityApi(getCurrentTimeZone())
     ]);
     showCount.value = statsResponse.data.showCount;
     statusCounts.value = statsResponse.data.statusCounts;

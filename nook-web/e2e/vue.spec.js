@@ -19,14 +19,17 @@ const mockSignedOut = async (page) => {
   }, 401))
 }
 
-const mockSignedIn = async (page) => {
+const mockSignedIn = async (page, { onActivityRequest } = {}) => {
   await page.route('**/api/auth/me', route => fulfillJson(route, { user: TEST_USER }))
   await page.route('**/api/shows/stats', route => fulfillJson(route, {
     showCount: 2,
     statusCounts: { watching: 2, watched: 0, wish: 0, dropped: 0 },
     progressStats: { watched: 4, total: 20, lag: 6, percent: 20 },
   }))
-  await page.route('**/api/tvlog/activity', route => fulfillJson(route, []))
+  await page.route(/\/api\/tvlog\/activity(?:\?.*)?$/, route => {
+    onActivityRequest?.(new URL(route.request().url()))
+    return fulfillJson(route, [])
+  })
 }
 
 test('redirects the app root to login', async ({ page }) => {
@@ -51,7 +54,8 @@ test('opens the registration page', async ({ page }) => {
 })
 
 test('restores a Cookie session even when sessionStorage is empty', async ({ page }) => {
-  await mockSignedIn(page)
+  let activityRequestUrl = null
+  await mockSignedIn(page, { onActivityRequest: url => { activityRequestUrl = url } })
 
   await page.goto('/')
 
@@ -60,6 +64,33 @@ test('restores a Cookie session even when sessionStorage is empty', async ({ pag
   await expect.poll(() => page.evaluate(() => (
     JSON.parse(sessionStorage.getItem('current_user') || 'null')?.id
   ))).toBe(TEST_USER.id)
+  await expect.poll(() => activityRequestUrl?.searchParams.get('timeZone') || '').toMatch(/\S/)
+})
+
+test('cleans legacy browser caches once', async ({ page }) => {
+  const cleanupKey = 'nook:legacy-cache-cleanup:v1'
+  await mockSignedOut(page)
+  await page.goto('/login')
+  await page.evaluate(async key => {
+    localStorage.removeItem(key)
+    await caches.open('legacy-cache-before-cleanup')
+  }, cleanupKey)
+
+  await page.reload()
+
+  await expect.poll(() => page.evaluate(key => localStorage.getItem(key), cleanupKey)).toBe('done')
+  await expect.poll(() => page.evaluate(async () => (
+    (await caches.keys()).includes('legacy-cache-before-cleanup')
+  ))).toBe(false)
+
+  await page.evaluate(async () => {
+    await caches.open('cache-created-after-cleanup')
+  })
+  await page.reload()
+
+  await expect.poll(() => page.evaluate(async () => (
+    (await caches.keys()).includes('cache-created-after-cleanup')
+  ))).toBe(true)
 })
 
 test('loads, filters, adds, and edits shows through the paginated API', async ({ page }) => {
@@ -86,10 +117,20 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
     watchedEpisodes: 4,
   }
   const listRequests = []
+  let calendarRequests = 0
+  let tvLogRequests = 0
   let createdPayload = null
   let updatedPayload = null
+  let updatedShowId = null
 
-  await page.route('**/api/shows/calendar', route => fulfillJson(route, [firstShow, secondShow]))
+  await page.route('**/api/shows/calendar', route => {
+    calendarRequests += 1
+    return fulfillJson(route, [firstShow, secondShow])
+  })
+  await page.route('**/api/tvlog', route => {
+    tvLogRequests += 1
+    return fulfillJson(route, { success: true })
+  })
   await page.route('**/api/tmdb/trending', route => fulfillJson(route, []))
   await page.route('**/api/tmdb/new-releases', route => fulfillJson(route, []))
   await page.route(/\/api\/shows(?:\?.*)?$/, async route => {
@@ -126,8 +167,10 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
     })
   })
   await page.route(/\/api\/shows\/[a-f\d]{24}$/, async route => {
+    updatedShowId = route.request().url().split('/').pop()
     updatedPayload = route.request().postDataJSON()
-    return fulfillJson(route, { ...secondShow, ...updatedPayload })
+    const originalShow = updatedShowId === firstShow._id ? firstShow : secondShow
+    return fulfillJson(route, { ...originalShow, ...updatedPayload })
   })
 
   await page.goto('/home/tv-shows')
@@ -138,6 +181,16 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
     url.searchParams.get('sort') === 'date' &&
     url.searchParams.get('order') === 'desc'
   ))).toBe(true)
+
+  const listRequestCount = listRequests.length
+  const calendarRequestCount = calendarRequests
+  await page.getByRole('button', { name: 'First Show 已看集数加一' }).click()
+  await expect.poll(() => (
+    updatedShowId === firstShow._id ? updatedPayload?.watchedEpisodes : null
+  )).toBe(3)
+  await expect.poll(() => tvLogRequests).toBe(1)
+  expect(listRequests).toHaveLength(listRequestCount)
+  expect(calendarRequests).toBe(calendarRequestCount)
 
   await page.getByRole('button', { name: '打开完整追剧日历' }).click()
   const calendarDialog = page.getByRole('dialog', { name: '追剧日历' })
