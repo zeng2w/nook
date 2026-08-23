@@ -254,6 +254,46 @@ test('logout expires the session cookie', async () => {
   assert.match(response.headers['set-cookie'][0], /Max-Age=0/);
 });
 
+test('the same TMDB show can be added once per season', async () => {
+  const originalFindOne = Show.findOne;
+  const originalSave = Show.prototype.save;
+  const lookups = [];
+
+  Show.findOne = async query => {
+    lookups.push(query);
+    return query.seasonNumber === 1 ? { title: 'Example · 第 1 季' } : null;
+  };
+  Show.prototype.save = async function save() { return this; };
+
+  try {
+    const secondSeason = await request(createTestApp())
+      .post('/api/shows')
+      .set('Cookie', `nook_session=${createSessionToken(USER_A)}`)
+      .send({
+        title: 'Example · 第 2 季',
+        category: 'tv',
+        tmdbId: 100,
+        seasonNumber: 2
+      });
+    const duplicateSeason = await request(createTestApp())
+      .post('/api/shows')
+      .set('Cookie', `nook_session=${createSessionToken(USER_A)}`)
+      .send({
+        title: 'Example · 第 1 季',
+        category: 'tv',
+        tmdbId: 100,
+        seasonNumber: 1
+      });
+
+    assert.equal(secondSeason.status, 200);
+    assert.equal(duplicateSeason.status, 409);
+    assert.deepEqual(lookups.map(query => query.seasonNumber), [2, 1]);
+  } finally {
+    Show.findOne = originalFindOne;
+    Show.prototype.save = originalSave;
+  }
+});
+
 test('show import performs one deduplication query before bulk insert', async () => {
   const originalFind = Show.find;
   const originalInsertMany = Show.insertMany;
@@ -279,6 +319,9 @@ test('show import performs one deduplication query before bulk insert', async ()
       .send({
         shows: [
           { title: 'Existing Show', category: 'tv', tmdbId: 100 },
+          { title: 'Existing Show · 第 1 季', category: 'tv', tmdbId: 100, seasonNumber: 1 },
+          { title: 'Existing Show · 第 1 季 Duplicate', category: 'tv', tmdbId: 100, seasonNumber: 1 },
+          { title: 'Existing Show · 第 2 季', category: 'tv', tmdbId: 100, seasonNumber: 2 },
           { title: 'New Show', category: 'tv', tmdbId: 200 },
           { title: 'New Show Duplicate', category: 'tv', tmdbId: 200 },
           { title: 'existing show', category: 'tv' },
@@ -288,9 +331,10 @@ test('show import performs one deduplication query before bulk insert', async ()
 
     assert.equal(response.status, 200);
     assert.equal(findCalls, 1);
-    assert.equal(insertedShows.length, 1);
-    assert.equal(response.body.successCount, 1);
-    assert.equal(response.body.skipCount, 4);
+    assert.equal(insertedShows.length, 3);
+    assert.deepEqual(insertedShows.map(show => show.seasonNumber || null), [1, 2, null]);
+    assert.equal(response.body.successCount, 3);
+    assert.equal(response.body.skipCount, 5);
     assert.equal(response.body.invalidCount, 1);
   } finally {
     Show.find = originalFind;

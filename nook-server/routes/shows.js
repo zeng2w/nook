@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Show = require('../models/Show'); 
-const { getAiredEpisodeCount, getTmdbSchedule } = require('../utils/tmdb');
+const { getAiredEpisodeCount, getTmdbSchedule, getTmdbSeasonProgress } = require('../utils/tmdb');
 const { classifyTmdbError, sendTmdbError, tmdbGet } = require('../utils/tmdbClient');
 const { getSyncConcurrency, mapWithConcurrency } = require('../utils/concurrency');
 const { buildShowListPipeline, parseShowQuery, SHOW_CATEGORIES, SHOW_STATUSES } = require('../utils/showQuery');
@@ -27,7 +27,10 @@ const ALLOWED_SHOW_FIELDS = [
   'estimatedFinishDate',
   'network',
   'networkLogo',
-  'isFavorite'
+  'isFavorite',
+  'seriesTitle',
+  'seasonNumber',
+  'seasonName'
 ];
 
 const pickShowFields = (source) => {
@@ -51,6 +54,15 @@ const toCalendarDateKey = (value) => {
 
 const hasSameUpdateDays = (left = [], right = []) => (
   left.length === right.length && left.every((day, index) => Number(day) === Number(right[index]))
+);
+
+const normalizeSeasonNumber = (value) => {
+  const seasonNumber = Number(value);
+  return Number.isInteger(seasonNumber) && seasonNumber > 0 ? seasonNumber : null;
+};
+
+const getTmdbDuplicateKey = show => (
+  `tmdb:${String(show.tmdbId)}:season:${normalizeSeasonNumber(show.seasonNumber) || 'all'}`
 );
 
 // ==========================================
@@ -176,7 +188,7 @@ router.get('/stats', async (req, res, next) => {
 router.get('/calendar', async (req, res, next) => {
   try {
     const shows = await Show.find({ userId: req.user.id })
-      .select('title posterUrl network networkLogo status totalEpisodes airedEpisodes updateFrequency updateDays updateCount lastAirDate nextAirDate estimatedFinishDate')
+      .select('title posterUrl network networkLogo status totalEpisodes airedEpisodes updateFrequency updateDays updateCount lastAirDate nextAirDate estimatedFinishDate seriesTitle seasonNumber seasonName')
       .sort({ lastAirDate: -1, title: 1 })
       .lean();
     res.json(shows);
@@ -194,9 +206,14 @@ router.post('/', async (req, res, next) => {
     const { tmdbId } = showData;
 
     if (tmdbId) {
-      const existingShow = await Show.findOne({ userId: req.user.id, tmdbId });
+      const seasonNumber = normalizeSeasonNumber(showData.seasonNumber);
+      const existingShow = await Show.findOne({ userId: req.user.id, tmdbId, seasonNumber });
       if (existingShow) {
-        return res.status(409).json({ code: 'DUPLICATE_SHOW', error: `剧集《${existingShow.title}》已存在，请勿重复添加。` });
+        const seasonLabel = seasonNumber ? `第 ${seasonNumber} 季` : '整部剧';
+        return res.status(409).json({
+          code: 'DUPLICATE_SHOW',
+          error: `剧集《${existingShow.title}》的${seasonLabel}已存在，请勿重复添加。`
+        });
       }
     }
 
@@ -246,7 +263,10 @@ router.post('/sync', async (req, res, next) => {
     const activeShows = await Show.find({
       userId: req.user.id,
       status: { $ne: 'dropped' },
-      updateFrequency: { $ne: 'ended' }
+      $or: [
+        { updateFrequency: { $ne: 'ended' } },
+        { seasonNumber: { $exists: true, $ne: null } }
+      ]
     });
 
     const syncCandidates = activeShows.filter(show => show.tmdbId && show.category !== 'movie');
@@ -261,35 +281,69 @@ router.post('/sync', async (req, res, next) => {
           });
 
           const remoteData = tmdbRes.data;
-          const remoteSchedule = getTmdbSchedule(remoteData);
+          let seasonProgress = null;
+          if (show.seasonNumber) {
+            const seasonRes = await tmdbGet(`/tv/${show.tmdbId}/season/${show.seasonNumber}`, {
+              cacheTtlMs: 60 * 1000,
+              params: { language: 'zh-CN' }
+            });
+            seasonProgress = getTmdbSeasonProgress(seasonRes.data, remoteData, {
+              seasonNumber: show.seasonNumber
+            });
+          }
+          const remoteSchedule = seasonProgress || getTmdbSchedule(remoteData);
+          const remoteEpisodeCount = seasonProgress
+            ? seasonProgress.airedEpisodes
+            : getAiredEpisodeCount(remoteData);
+          const remoteAirDate = seasonProgress
+            ? seasonProgress.lastAirDate
+            : remoteData.last_episode_to_air?.air_date;
+          const remoteTotalEpisodes = seasonProgress
+            ? seasonProgress.totalEpisodes
+            : remoteData.number_of_episodes;
           let needsSave = false;
           let updateLog = null;
 
-          if (remoteData.last_episode_to_air) {
-            const newEpisodeCount = getAiredEpisodeCount(remoteData);
-            const newAirDate = remoteData.last_episode_to_air.air_date;
-
-            if (newEpisodeCount > show.airedEpisodes) {
-              updateLog = {
-                id: show._id,
-                title: show.title,
-                oldEp: show.airedEpisodes,
-                newEp: newEpisodeCount,
-                date: newAirDate || new Date().toISOString().split('T')[0],
-                posterUrl: show.posterUrl
-              };
-
-              show.airedEpisodes = newEpisodeCount;
-              if (newAirDate) show.lastAirDate = newAirDate;
-              needsSave = true;
-            }
+          if (remoteEpisodeCount > show.airedEpisodes) {
+            updateLog = {
+              id: show._id,
+              title: show.title,
+              oldEp: show.airedEpisodes,
+              newEp: remoteEpisodeCount,
+              date: remoteAirDate || new Date().toISOString().split('T')[0],
+              posterUrl: show.posterUrl
+            };
           }
-
-          if (remoteData.number_of_episodes && remoteData.number_of_episodes > show.totalEpisodes) {
-            show.totalEpisodes = remoteData.number_of_episodes;
+          if (
+            seasonProgress
+              ? remoteEpisodeCount !== show.airedEpisodes
+              : remoteEpisodeCount > show.airedEpisodes
+          ) {
+            show.airedEpisodes = remoteEpisodeCount;
             needsSave = true;
           }
-          const scheduleIsManagedByTmdb = ['weekly', 'unknown'].includes(show.updateFrequency);
+          if (remoteAirDate && toCalendarDateKey(show.lastAirDate) !== remoteAirDate) {
+            show.lastAirDate = remoteAirDate;
+            needsSave = true;
+          }
+
+          const canUseExactSeasonTotal = seasonProgress && remoteTotalEpisodes >= Math.max(
+            show.watchedEpisodes,
+            remoteEpisodeCount
+          );
+          if (
+            remoteTotalEpisodes &&
+            (remoteTotalEpisodes > show.totalEpisodes || (
+              canUseExactSeasonTotal && remoteTotalEpisodes !== show.totalEpisodes
+            ))
+          ) {
+            show.totalEpisodes = remoteTotalEpisodes;
+            needsSave = true;
+          }
+          const managedFrequencies = seasonProgress
+            ? ['weekly', 'unknown', 'ended']
+            : ['weekly', 'unknown'];
+          const scheduleIsManagedByTmdb = managedFrequencies.includes(show.updateFrequency);
           if (remoteSchedule.updateFrequency === 'ended') {
             if (show.updateFrequency !== 'ended') {
               show.updateFrequency = 'ended';
@@ -314,6 +368,10 @@ router.post('/sync', async (req, res, next) => {
             }
             if (toCalendarDateKey(show.nextAirDate) !== remoteSchedule.nextAirDate) {
               show.nextAirDate = remoteSchedule.nextAirDate;
+              needsSave = true;
+            }
+            if (seasonProgress && show.updateCount !== remoteSchedule.updateCount) {
+              show.updateCount = remoteSchedule.updateCount;
               needsSave = true;
             }
           }
@@ -393,10 +451,10 @@ router.post('/import', async (req, res, next) => {
   try {
     // 一次性读取当前用户的查重字段，避免最多 1000 次逐条查询。
     const existingShows = await Show.find({ userId: req.user.id })
-      .select({ tmdbId: 1, title: 1 })
+      .select({ tmdbId: 1, seasonNumber: 1, title: 1 })
       .lean();
-    const existingTmdbIds = new Set(
-      existingShows.filter(show => show.tmdbId).map(show => String(show.tmdbId))
+    const existingTmdbKeys = new Set(
+      existingShows.filter(show => show.tmdbId).map(getTmdbDuplicateKey)
     );
     const existingTitles = new Set(
       existingShows.map(show => String(show.title || '').trim().toLowerCase())
@@ -412,7 +470,7 @@ router.post('/import', async (req, res, next) => {
       }
 
       const duplicateKey = showData.tmdbId
-        ? `tmdb:${String(showData.tmdbId)}`
+        ? getTmdbDuplicateKey(showData)
         : `title:${normalizedTitle}`;
 
       if (seenKeys.has(duplicateKey)) {
@@ -422,7 +480,7 @@ router.post('/import', async (req, res, next) => {
       seenKeys.add(duplicateKey);
 
       const exists = showData.tmdbId
-        ? existingTmdbIds.has(String(showData.tmdbId))
+        ? existingTmdbKeys.has(getTmdbDuplicateKey(showData))
         : existingTitles.has(normalizedTitle);
 
       if (exists) {

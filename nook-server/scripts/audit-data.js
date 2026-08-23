@@ -52,7 +52,7 @@ const run = async () => {
     ]).toArray(),
     shows.aggregate([
       { $match: { tmdbId: { $exists: true, $ne: null } } },
-      { $group: { _id: { userId: '$userId', tmdbId: '$tmdbId' }, count: { $sum: 1 } } },
+      { $group: { _id: { userId: '$userId', tmdbId: '$tmdbId', seasonNumber: '$seasonNumber' }, count: { $sum: 1 } } },
       { $match: { count: { $gt: 1 } } },
       { $count: 'count' }
     ]).toArray()

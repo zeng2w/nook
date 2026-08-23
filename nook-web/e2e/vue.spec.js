@@ -93,6 +93,89 @@ test('cleans legacy browser caches once', async ({ page }) => {
   ))).toBe(true)
 })
 
+test('adds and tracks a specific TMDB season', async ({ page }) => {
+  await mockSignedIn(page)
+  let createdPayload = null
+
+  await page.route('**/api/shows/calendar', route => fulfillJson(route, []))
+  await page.route('**/api/tmdb/trending', route => fulfillJson(route, []))
+  await page.route('**/api/tmdb/new-releases', route => fulfillJson(route, []))
+  await page.route(/\/api\/tmdb\/search(?:\?.*)?$/, route => fulfillJson(route, [{
+    tmdbId: 100,
+    title: 'Example Show',
+    category: 'tv',
+    posterUrl: '',
+    releaseDate: '2026-01-01',
+  }]))
+  await page.route('**/api/tmdb/details/tv/100', route => fulfillJson(route, {
+    tmdbId: 100,
+    title: 'Example Show',
+    totalEpisodes: 13,
+    airedEpisodes: 12,
+    updateFrequency: 'unknown',
+    updateDays: [],
+    seasons: [
+      { seasonNumber: 1, name: 'Season 1', episodeCount: 10 },
+      { seasonNumber: 2, name: 'Season 2', episodeCount: 3 },
+    ],
+    networks: [],
+  }))
+  await page.route('**/api/tmdb/season/100/2', route => fulfillJson(route, {
+    seriesTitle: 'Example Show',
+    seasonNumber: 2,
+    seasonName: 'Season 2',
+    totalEpisodes: 3,
+    airedEpisodes: 2,
+    lastAirDate: '2026-08-10',
+    nextAirDate: '2026-08-30',
+    updateFrequency: 'weekly',
+    updateDays: [0],
+    updateCount: 1,
+    isEnded: false,
+  }))
+  await page.route(/\/api\/shows(?:\?.*)?$/, route => {
+    if (route.request().method() === 'POST') {
+      createdPayload = route.request().postDataJSON()
+      return fulfillJson(route, { ...createdPayload, _id: '507f1f77bcf86cd799439023' })
+    }
+    return fulfillJson(route, {
+      items: [],
+      pagination: { page: 1, limit: 24, total: 0, totalPages: 0, hasMore: false },
+      facets: {
+        allCount: 0,
+        statusCounts: { watching: 0, watched: 0, wish: 0, dropped: 0 },
+        categoryCounts: { tv: 0, anime: 0, movie: 0, variety: 0 },
+        networkTotal: 0,
+        networks: [],
+      },
+    })
+  })
+
+  await page.goto('/home/tv-shows')
+  await page.getByRole('button', { name: '+ 添加' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('搜索 TMDB 剧名').fill('Example')
+  await dialog.getByRole('button', { name: '搜索 TMDB' }).click()
+  await dialog.getByText('Example Show', { exact: true }).click()
+  await dialog.getByLabel('追踪范围').selectOption({ label: '第 2 季（共 3 集）' })
+
+  await expect(dialog.getByText('已更新至第 2 集 / 共 3 集')).toBeVisible()
+  await expect(dialog.getByText('下集：2026-08-30')).toBeVisible()
+  await dialog.getByRole('button', { name: '保存' }).click()
+
+  await expect.poll(() => createdPayload?.seasonNumber).toBe(2)
+  expect(createdPayload).toMatchObject({
+    tmdbId: 100,
+    title: 'Example Show · 第 2 季',
+    seriesTitle: 'Example Show',
+    seasonName: 'Season 2',
+    airedEpisodes: 2,
+    totalEpisodes: 3,
+    nextAirDate: '2026-08-30',
+    updateFrequency: 'weekly',
+  })
+})
+
 test('loads, filters, adds, and edits shows through the paginated API', async ({ page }) => {
   await mockSignedIn(page)
 

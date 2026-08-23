@@ -58,12 +58,15 @@ const ShowSchema = new mongoose.Schema({
   isFavorite: { type: Boolean, default: false },
 
   tmdbId: { type: Number, min: 1 },
+  seriesTitle: { type: String, trim: true, maxlength: 200 },
+  seasonNumber: { type: Number, min: 1, validate: Number.isInteger },
+  seasonName: { type: String, trim: true, maxlength: 200 },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
 
 ShowSchema.index({ userId: 1, updatedAt: -1 });
-ShowSchema.index({ userId: 1, tmdbId: 1 });
+ShowSchema.index({ userId: 1, tmdbId: 1, seasonNumber: 1 });
 ShowSchema.index({ userId: 1, status: 1, category: 1, lastAirDate: -1 });
 
 ShowSchema.pre('validate', function validateEpisodeTotals() {

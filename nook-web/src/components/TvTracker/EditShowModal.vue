@@ -74,11 +74,25 @@
             </div>
           </div>
 
-          <div v-if="!isEditing && availableSeasons.length > 0" class="form-group compact-group">
-            <select @change="onSeasonSelect" class="modern-input">
-              <option value="">-- 添加整部剧 (默认) --</option>
-              <option v-for="s in availableSeasons" :key="s.seasonNumber" :value="s.seasonNumber">第 {{ s.seasonNumber }} 季 ({{ s.episodeCount }} 集)</option>
+          <div v-if="!isEditing && availableSeasons.length > 0" class="form-group compact-group season-picker">
+            <label for="show-season">追踪范围</label>
+            <select id="show-season" v-model="selectedSeasonNumber" @change="onSeasonSelect" class="modern-input" :disabled="isSeasonLoading">
+              <option :value="null">整部剧</option>
+              <option v-for="s in availableSeasons" :key="s.seasonNumber" :value="s.seasonNumber">第 {{ s.seasonNumber }} 季（共 {{ s.episodeCount }} 集）</option>
             </select>
+            <div v-if="isSeasonLoading" class="season-summary loading">正在读取这一季的更新进度…</div>
+            <div v-else-if="seasonSummary" class="season-summary" :class="{ ended: seasonSummary.isEnded }">
+              <strong>第 {{ seasonSummary.seasonNumber }} 季</strong>
+              <span>已更新至第 {{ seasonSummary.airedEpisodes }} 集 / 共 {{ seasonSummary.totalEpisodes }} 集</span>
+              <span v-if="seasonSummary.isEnded" class="season-state">已完结</span>
+              <span v-else-if="seasonSummary.nextAirDate" class="season-state">下集：{{ seasonSummary.nextAirDate }}</span>
+              <span v-else class="season-state paused">暂无下一集日期</span>
+            </div>
+          </div>
+
+          <div v-if="isEditing && form.seasonNumber" class="season-summary editing-summary">
+            <strong>正在追踪第 {{ form.seasonNumber }} 季</strong>
+            <span>{{ form.seasonName || form.seriesTitle }}</span>
           </div>
 
           <div class="form-section-compact">
@@ -121,7 +135,7 @@
         
         <div class="modal-footer">
           <button type="button" class="btn text-btn" @click="close">取消</button>
-          <button type="button" class="btn primary-btn" @click="save">保存</button>
+          <button type="button" class="btn primary-btn" @click="save" :disabled="isSeasonLoading">保存</button>
         </div>
       </div>
     </div>
@@ -145,10 +159,14 @@ const isEditing = computed(() => !!props.editData);
 const tmdbQuery = ref('');
 const tmdbResults = ref([]);
 const isSearching = ref(false);
+const isSeasonLoading = ref(false);
 const availableSeasons = ref([]);
+const selectedSeasonNumber = ref(null);
+const selectedSeriesDetails = ref(null);
+const seasonSummary = ref(null);
 const searchError = ref('');
 
-const initialForm = { title: '', category: 'tv', status: 'watching', updateFrequency: 'weekly', updateDays: [], updateCount: 1, watchedEpisodes: 0, airedEpisodes: 0, totalEpisodes: 0, lastAirDate: toCalendarDateInput(new Date()), nextAirDate: '', posterUrl: '', network: '', networkLogo: '', tmdbId: null };
+const initialForm = { title: '', category: 'tv', status: 'watching', updateFrequency: 'weekly', updateDays: [], updateCount: 1, watchedEpisodes: 0, airedEpisodes: 0, totalEpisodes: 0, lastAirDate: toCalendarDateInput(new Date()), nextAirDate: '', posterUrl: '', network: '', networkLogo: '', tmdbId: null, seriesTitle: '', seasonNumber: null, seasonName: '' };
 const form = reactive({ ...initialForm });
 
 const freqOptions = [ { label: '周更', val: 'weekly' }, { label: '日更', val: 'daily' }, { label: '月更', val: 'monthly' }, { label: '待定', val: 'unknown' }, { label: '完结', val: 'ended' } ];
@@ -176,6 +194,10 @@ watch(
         tmdbQuery.value = '';
         tmdbResults.value = [];
         availableSeasons.value = [];
+        selectedSeasonNumber.value = null;
+        selectedSeriesDetails.value = null;
+        seasonSummary.value = null;
+        isSeasonLoading.value = false;
         searchError.value = '';
       }
     }
@@ -193,6 +215,22 @@ const toggleDay = (idx) => {
 };
 
 const getCategoryLabel = (cat) => ({ tv: '电视剧', anime: '动漫', movie: '电影', variety: '综艺' }[cat] || cat);
+
+const applySeriesDetails = (details) => {
+  form.title = details.title || form.title;
+  form.seriesTitle = details.title || form.title;
+  form.seasonNumber = null;
+  form.seasonName = '';
+  form.totalEpisodes = details.totalEpisodes || 0;
+  form.airedEpisodes = details.airedEpisodes || 0;
+  form.watchedEpisodes = 0;
+  form.updateFrequency = details.updateFrequency || 'unknown';
+  form.updateDays = Array.isArray(details.updateDays) ? [...details.updateDays] : [];
+  form.updateCount = details.updateCount || 1;
+  form.lastAirDate = toCalendarDateInput(details.lastAirDate);
+  form.nextAirDate = toCalendarDateInput(details.nextAirDate);
+  if (details.posterUrl) form.posterUrl = details.posterUrl;
+};
 
 // --- 搜索逻辑修复 ---
 const searchTMDB = async () => {
@@ -228,15 +266,17 @@ const selectTMDBResult = async (item) => {
   form.category = item.category;
   form.posterUrl = item.posterUrl;
   availableSeasons.value = [];
+  selectedSeasonNumber.value = null;
+  selectedSeriesDetails.value = null;
+  seasonSummary.value = null;
   
   try {
     const type = item.category;
     const res = await axios.get(`/api/tmdb/details/${type}/${item.tmdbId}`);
     const details = res.data;
     
-    // 填充详情
-    form.totalEpisodes = details.totalEpisodes || 0;
-    form.airedEpisodes = details.airedEpisodes || 0;
+    selectedSeriesDetails.value = details;
+    applySeriesDetails(details);
     
     if (details.networks && details.networks.length > 0) {
       const mainNet = details.networks[0];
@@ -245,13 +285,6 @@ const selectTMDBResult = async (item) => {
       else form.networkLogo = '';
     } else {
       form.network = ''; form.networkLogo = '';
-    }
-    
-    form.updateFrequency = details.updateFrequency || 'unknown';
-    form.updateDays = Array.isArray(details.updateDays) ? [...details.updateDays] : [];
-    form.nextAirDate = toCalendarDateInput(details.nextAirDate);
-    if (details.lastAirDate) {
-      form.lastAirDate = toCalendarDateInput(details.lastAirDate);
     }
     
     if (details.seasons && details.seasons.length > 0) availableSeasons.value = details.seasons;
@@ -266,18 +299,40 @@ const selectTMDBResult = async (item) => {
   }
 };
 
-const onSeasonSelect = (event) => {
-  const seasonNum = parseInt(event.target.value);
-  if (!seasonNum) return;
-  const targetSeason = availableSeasons.value.find(s => s.seasonNumber === seasonNum);
-  if (targetSeason) {
-    const baseTitle = form.title.replace(/\s\(Season \d+\)$/, '');
-    form.title = `${baseTitle} (Season ${targetSeason.seasonNumber})`;
-    form.totalEpisodes = targetSeason.episodeCount;
-    form.airedEpisodes = targetSeason.episodeCount;
-    form.updateFrequency = 'ended';
-    form.updateDays = [];
-    form.nextAirDate = '';
+const onSeasonSelect = async () => {
+  seasonSummary.value = null;
+  if (!selectedSeasonNumber.value) {
+    if (selectedSeriesDetails.value) applySeriesDetails(selectedSeriesDetails.value);
+    return;
+  }
+
+  isSeasonLoading.value = true;
+  searchError.value = '';
+  try {
+    const res = await axios.get(`/api/tmdb/season/${form.tmdbId}/${selectedSeasonNumber.value}`);
+    const details = res.data;
+    const seriesTitle = details.seriesTitle || selectedSeriesDetails.value?.title || form.title;
+    form.title = `${seriesTitle} · 第 ${details.seasonNumber} 季`;
+    form.seriesTitle = seriesTitle;
+    form.seasonNumber = details.seasonNumber;
+    form.seasonName = details.seasonName || '';
+    form.totalEpisodes = details.totalEpisodes || 0;
+    form.airedEpisodes = details.airedEpisodes || 0;
+    form.watchedEpisodes = 0;
+    form.updateFrequency = details.updateFrequency || 'unknown';
+    form.updateDays = Array.isArray(details.updateDays) ? [...details.updateDays] : [];
+    form.updateCount = details.updateCount || 1;
+    form.lastAirDate = toCalendarDateInput(details.lastAirDate);
+    form.nextAirDate = toCalendarDateInput(details.nextAirDate);
+    if (details.posterUrl) form.posterUrl = details.posterUrl;
+    seasonSummary.value = details;
+  } catch (err) {
+    console.error('❌ 获取季度详情失败:', err);
+    searchError.value = getApiErrorMessage(err, '无法读取这一季的更新进度');
+    selectedSeasonNumber.value = null;
+    if (selectedSeriesDetails.value) applySeriesDetails(selectedSeriesDetails.value);
+  } finally {
+    isSeasonLoading.value = false;
   }
 };
 </script>
@@ -329,6 +384,14 @@ const onSeasonSelect = (event) => {
 .inline-row { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #666; }
 .next-air-row { margin-top: 8px; }
 .schedule-hint { color: #a1a1aa; font-size: 0.7rem; }
+.season-picker { gap: 6px; }
+.season-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 9px 11px; border-radius: 9px; background: #eef6ff; color: #334155; font-size: 0.78rem; }
+.season-summary strong { color: #0f172a; }
+.season-summary.ended { background: #f1f5f9; }
+.season-summary.loading { color: #64748b; }
+.season-state { margin-left: auto; color: #047857; font-weight: 700; }
+.season-state.paused { color: #a16207; }
+.editing-summary { margin-bottom: 0; }
 .modern-input.inline-input { width: 50px; text-align: center; padding: 4px; height: 30px; }
 .modern-input.inline-date { width: 130px; padding: 4px 8px; height: 30px; font-size: 0.8rem; }
 .spacer { color: #ddd; margin: 0 4px; }
