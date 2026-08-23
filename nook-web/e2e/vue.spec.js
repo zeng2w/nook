@@ -12,7 +12,12 @@ const fulfillJson = (route, body, status = 200) => route.fulfill({
   body: JSON.stringify(body),
 })
 
+const mockRuntimeConfig = async (page, registrationEnabled = true) => {
+  await page.route('**/api/config', route => fulfillJson(route, { registrationEnabled }))
+}
+
 const mockSignedOut = async (page) => {
+  await mockRuntimeConfig(page)
   await page.route('**/api/auth/me', route => fulfillJson(route, {
     code: 'AUTHENTICATION_REQUIRED',
     error: 'Authentication required',
@@ -20,6 +25,7 @@ const mockSignedOut = async (page) => {
 }
 
 const mockSignedIn = async (page, { onActivityRequest } = {}) => {
+  await mockRuntimeConfig(page)
   await page.route('**/api/auth/me', route => fulfillJson(route, { user: TEST_USER }))
   await page.route('**/api/shows/stats', route => fulfillJson(route, {
     showCount: 2,
@@ -47,6 +53,7 @@ test('protects authenticated routes', async ({ page }) => {
 })
 
 test('opens the registration page', async ({ page }) => {
+  await mockSignedOut(page)
   await page.goto('/login')
   await page.getByText('Sign up', { exact: true }).click()
   await expect(page).toHaveURL(/\/register$/)
@@ -201,7 +208,7 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
   }
   const listRequests = []
   let calendarRequests = 0
-  let tvLogRequests = 0
+  let progressRequests = 0
   let createdPayload = null
   let updatedPayload = null
   let updatedShowId = null
@@ -209,10 +216,6 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
   await page.route('**/api/shows/calendar', route => {
     calendarRequests += 1
     return fulfillJson(route, [firstShow, secondShow])
-  })
-  await page.route('**/api/tvlog', route => {
-    tvLogRequests += 1
-    return fulfillJson(route, { success: true })
   })
   await page.route('**/api/tmdb/trending', route => fulfillJson(route, []))
   await page.route('**/api/tmdb/new-releases', route => fulfillJson(route, []))
@@ -255,6 +258,16 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
     const originalShow = updatedShowId === firstShow._id ? firstShow : secondShow
     return fulfillJson(route, { ...originalShow, ...updatedPayload })
   })
+  await page.route(/\/api\/shows\/[a-f\d]{24}\/progress$/, async route => {
+    progressRequests += 1
+    updatedShowId = route.request().url().split('/').at(-2)
+    updatedPayload = route.request().postDataJSON()
+    const originalShow = updatedShowId === firstShow._id ? firstShow : secondShow
+    return fulfillJson(route, {
+      show: { ...originalShow, ...updatedPayload },
+      loggedDelta: updatedPayload.watchedEpisodes - originalShow.watchedEpisodes,
+    })
+  })
 
   await page.goto('/home/tv-shows')
 
@@ -271,7 +284,7 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
   await expect.poll(() => (
     updatedShowId === firstShow._id ? updatedPayload?.watchedEpisodes : null
   )).toBe(3)
-  await expect.poll(() => tvLogRequests).toBe(1)
+  await expect.poll(() => progressRequests).toBe(1)
   expect(listRequests).toHaveLength(listRequestCount)
   expect(calendarRequests).toBe(calendarRequestCount)
 

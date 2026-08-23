@@ -2,12 +2,15 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const mongoose = require('mongoose');
 const request = require('supertest');
 
 const User = require('../models/User');
 const Show = require('../models/Show');
 const TvLog = require('../models/TvLog');
+const History = require('../models/History');
 const authRoutes = require('../routes/auth');
+const historyRoutes = require('../routes/history');
 const showRoutes = require('../routes/shows');
 const tvLogRoutes = require('../routes/tvlog');
 const { createSessionToken, requireAuth } = require('../middleware/auth');
@@ -23,6 +26,7 @@ const createTestApp = () => {
   app.use('/api/auth', authRoutes);
   app.use('/api/shows', requireAuth, showRoutes);
   app.use('/api/tvlog', requireAuth, tvLogRoutes);
+  app.use('/api/history', requireAuth, historyRoutes);
   app.use(errorHandler);
   return app;
 };
@@ -254,6 +258,115 @@ test('logout expires the session cookie', async () => {
   assert.match(response.headers['set-cookie'][0], /Max-Age=0/);
 });
 
+test('production registration is closed unless explicitly enabled', async () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalAllowRegistration = process.env.ALLOW_REGISTRATION;
+
+  try {
+    process.env.NODE_ENV = 'production';
+    delete process.env.ALLOW_REGISTRATION;
+    const response = await request(createTestApp())
+      .post('/api/auth/register')
+      .send({ username: 'User', email: 'user@example.com', password: 'safe-password-123' });
+
+    assert.equal(response.status, 403);
+    assert.equal(response.body.code, 'REGISTRATION_DISABLED');
+  } finally {
+    if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = originalNodeEnv;
+    if (originalAllowRegistration === undefined) delete process.env.ALLOW_REGISTRATION;
+    else process.env.ALLOW_REGISTRATION = originalAllowRegistration;
+  }
+});
+
+test('progress updates and activity logs share one transaction and retries are idempotent', async () => {
+  const originalStartSession = mongoose.startSession;
+  const originalFindOne = Show.findOne;
+  const originalSave = Show.prototype.save;
+  const originalCreate = TvLog.create;
+  const createdLogs = [];
+  let transactionCount = 0;
+  let sessionEnded = 0;
+
+  const show = new Show({
+    _id: '507f1f77bcf86cd799439021',
+    userId: USER_A,
+    title: 'Example',
+    category: 'tv',
+    watchedEpisodes: 2,
+    airedEpisodes: 10,
+    totalEpisodes: 10,
+    status: 'watching'
+  });
+
+  mongoose.startSession = async () => ({
+    async withTransaction(callback) {
+      transactionCount++;
+      await callback();
+    },
+    async endSession() { sessionEnded++; }
+  });
+  Show.findOne = async () => show;
+  Show.prototype.save = async function save() { return this; };
+  TvLog.create = async documents => {
+    createdLogs.push(...documents);
+    return documents;
+  };
+
+  try {
+    const app = createTestApp();
+    const first = await request(app)
+      .patch(`/api/shows/${show.id}/progress`)
+      .set('Cookie', `nook_session=${createSessionToken(USER_A)}`)
+      .send({ watchedEpisodes: 5, status: 'watching', date: '2026-08-23T00:00:00.000Z' });
+    const retry = await request(app)
+      .patch(`/api/shows/${show.id}/progress`)
+      .set('Cookie', `nook_session=${createSessionToken(USER_A)}`)
+      .send({ watchedEpisodes: 5, status: 'watching', date: '2026-08-23T00:00:00.000Z' });
+
+    assert.equal(first.status, 200);
+    assert.equal(first.body.loggedDelta, 3);
+    assert.equal(first.body.show.watchedEpisodes, 5);
+    assert.equal(retry.status, 200);
+    assert.equal(retry.body.loggedDelta, 0);
+    assert.equal(createdLogs.length, 1);
+    assert.equal(createdLogs[0].count, 3);
+    assert.equal(transactionCount, 2);
+    assert.equal(sessionEnded, 2);
+  } finally {
+    mongoose.startSession = originalStartSession;
+    Show.findOne = originalFindOne;
+    Show.prototype.save = originalSave;
+    TvLog.create = originalCreate;
+  }
+});
+
+test('history stats aggregate the complete requested date range', async () => {
+  const originalAggregate = History.aggregate;
+  let receivedPipeline;
+  History.aggregate = async pipeline => {
+    receivedPipeline = pipeline;
+    return [{ totalDuration: 90, totalCount: 6 }];
+  };
+
+  try {
+    const response = await request(createTestApp())
+      .get('/api/history/stats?days=30')
+      .set('Cookie', `nook_session=${createSessionToken(USER_A)}`);
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body, {
+      days: 30,
+      totalDuration: 90,
+      totalCount: 6,
+      avgEfficiency: 15
+    });
+    assert.ok(receivedPipeline[0].$match.date.$gte instanceof Date);
+  } finally {
+    History.aggregate = originalAggregate;
+  }
+});
+
 test('the same TMDB show can be added once per season', async () => {
   const originalFindOne = Show.findOne;
   const originalSave = Show.prototype.save;
@@ -322,10 +435,11 @@ test('show import performs one deduplication query before bulk insert', async ()
           { title: 'Existing Show · 第 1 季', category: 'tv', tmdbId: 100, seasonNumber: 1 },
           { title: 'Existing Show · 第 1 季 Duplicate', category: 'tv', tmdbId: 100, seasonNumber: 1 },
           { title: 'Existing Show · 第 2 季', category: 'tv', tmdbId: 100, seasonNumber: 2 },
-          { title: 'New Show', category: 'tv', tmdbId: 200 },
+          { title: 'New Show', category: 'tv', tmdbId: 200, createdAt: '2025-01-02T03:04:05.000Z' },
           { title: 'New Show Duplicate', category: 'tv', tmdbId: 200 },
           { title: 'existing show', category: 'tv' },
-          { title: '', category: 'tv' }
+          { title: '', category: 'tv' },
+          { title: 'Invalid Poster', category: 'tv', posterUrl: 'javascript:alert(1)' }
         ]
       });
 
@@ -333,9 +447,12 @@ test('show import performs one deduplication query before bulk insert', async ()
     assert.equal(findCalls, 1);
     assert.equal(insertedShows.length, 3);
     assert.deepEqual(insertedShows.map(show => show.seasonNumber || null), [1, 2, null]);
+    assert.equal(insertedShows[2].createdAt.toISOString(), '2025-01-02T03:04:05.000Z');
     assert.equal(response.body.successCount, 3);
-    assert.equal(response.body.skipCount, 5);
-    assert.equal(response.body.invalidCount, 1);
+    assert.equal(response.body.skipCount, 6);
+    assert.equal(response.body.duplicateCount, 4);
+    assert.equal(response.body.invalidCount, 2);
+    assert.equal(response.body.errors.length, 2);
   } finally {
     Show.find = originalFind;
     Show.insertMany = originalInsertMany;

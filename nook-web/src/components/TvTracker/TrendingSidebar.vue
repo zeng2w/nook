@@ -19,7 +19,8 @@
     <div v-else class="show-list">
       <div v-for="(show, index) in displayList" :key="show.id" class="show-item">
         <div class="rank" v-if="activeTab === 'popular'">{{ index + 1 }}</div>
-        <img :src="getPosterUrl(show.poster_path)" :alt="show.name" class="mini-poster" loading="lazy" decoding="async" />
+        <img v-if="show.poster_path" :src="getPosterUrl(show.poster_path)" :alt="show.name" class="mini-poster" loading="lazy" decoding="async" />
+        <div v-else class="mini-poster poster-placeholder" aria-hidden="true">{{ show.name?.charAt(0) || '?' }}</div>
         <div class="show-info">
           <span class="title">{{ show.name }}</span>
           <span class="meta">
@@ -48,7 +49,7 @@ const displayList = computed(() => {
 });
 
 const getPosterUrl = (path) => {
-  return path ? `https://image.tmdb.org/t/p/w92${path}` : '/placeholder.jpg';
+  return `https://image.tmdb.org/t/p/w92${path}`;
 };
 
 const loadTrending = async () => {
@@ -128,6 +129,7 @@ onMounted(loadTrending);
 .show-item:hover { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06); transform: translateY(-2px); border-color: #e2e8f0; }
 
 .mini-poster { width: 36px; height: 50px; border-radius: 6px; object-fit: cover; }
+.poster-placeholder { display: grid; place-items: center; flex-shrink: 0; background: #e2e8f0; color: #64748b; font-size: 1rem; font-weight: 800; }
 .show-info { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; justify-content: center; }
 .title { font-weight: 700; font-size: 0.85rem; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .meta { font-size: 0.7rem; color: #94a3b8; font-weight: 500; }

@@ -2,7 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const { randomUUID } = require('node:crypto');
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -15,6 +15,8 @@ const {
 } = require('./middleware/auth');
 const logger = require('./utils/logger');
 const { errorHandler, notFoundHandler } = require('./middleware/error');
+const { createRateLimit } = require('./middleware/rateLimit');
+const { isRegistrationAllowed } = require('./utils/runtimeConfig');
 
 // 中间件
 const allowedOrigins = (process.env.CORS_ORIGIN || '')
@@ -33,6 +35,11 @@ if (allowedOrigins.length > 0) {
 
 app.use(express.json({ limit: '1mb' }));
 app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+
   const startedAt = Date.now();
   const requestId = randomUUID();
   res.setHeader('X-Request-Id', requestId);
@@ -53,23 +60,30 @@ const uri = process.env.MONGO_URI;
 
 let connectPromise = null;
 
+const configuredPoolSize = Number.parseInt(process.env.MONGO_MAX_POOL_SIZE || '5', 10);
+const maxPoolSize = Number.isInteger(configuredPoolSize) && configuredPoolSize > 0
+  ? Math.min(configuredPoolSize, 20)
+  : 5;
+
 const connectDB = async () => {
   if (!uri) throw new Error('MONGO_URI is not configured');
   if (mongoose.connection.readyState === 1) return mongoose.connection;
 
   if (!connectPromise) {
-    connectPromise = mongoose.connect(uri, { serverSelectionTimeoutMS: 8000 })
+    connectPromise = mongoose.connect(uri, { serverSelectionTimeoutMS: 8000, maxPoolSize })
       .then(connection => {
         logger.info('database_connected', { database: connection.connection.name });
         return connection;
-      })
-      .catch(err => {
-        connectPromise = null;
-        throw err;
       });
   }
 
-  return connectPromise;
+  try {
+    return await connectPromise;
+  } finally {
+    // 只在实际连接中的请求之间共享 Promise。连接成功后依赖 readyState，
+    // 完全断线时则允许热实例重新调用 mongoose.connect()。
+    connectPromise = null;
+  }
 };
 
 const databaseRequired = async (req, res, next) => {
@@ -100,7 +114,16 @@ const authSessionConfigurationRequired = (req, res, next) => {
 };
 // =================================================
 
+const loginRateLimit = createRateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
+const registrationRateLimit = createRateLimit({ windowMs: 60 * 60 * 1000, max: 5 });
+const tmdbRateLimit = createRateLimit({ windowMs: 60 * 1000, max: 120 });
+
 // === 路由 ===
+app.get('/api/config', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ registrationEnabled: isRegistrationAllowed() });
+});
+
 app.get('/api/health', async (req, res) => {
   const sessionConfigured = isSessionConfigurationValid();
   try {
@@ -127,7 +150,9 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-app.use('/api/tmdb', requireSessionConfiguration, requireAuth, tmdbRoutes);
+app.use('/api/tmdb', tmdbRateLimit, requireSessionConfiguration, requireAuth, tmdbRoutes);
+app.use('/api/auth/login', loginRateLimit);
+app.use('/api/auth/register', registrationRateLimit);
 app.use('/api/auth', authSessionConfigurationRequired, authDatabaseRequired, require('./routes/auth'));
 app.use('/api/history', requireSessionConfiguration, requireAuth, databaseRequired, require('./routes/history'));
 app.use('/api/shows', requireSessionConfiguration, requireAuth, databaseRequired, require('./routes/shows'));

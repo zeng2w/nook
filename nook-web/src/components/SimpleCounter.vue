@@ -278,6 +278,7 @@ import axios from 'axios';
 import { updateTheme } from '../store'; 
 import { getApiErrorMessage } from '@/api/errors';
 import { authUser } from '@/auth';
+import { readJsonStorage, writeJsonStorage } from '@/utils/storage';
 
 const showModal = ref(false);
 const showResetModal = ref(false);
@@ -312,6 +313,7 @@ const history = ref([]);
 const historyError = ref('');
 const isHistoryLoading = ref(false);
 const historyPagination = reactive({ page: 0, limit: 50, total: 0, hasMore: false });
+const historyStats = reactive({ totalDuration: 0, totalCount: 0, avgEfficiency: 0 });
 const currentUser = authUser;
 
 const notify = (message, type = 'error') => {
@@ -382,21 +384,11 @@ const isLightMode = computed(() => {
 
 const availableCount = computed(() => settings.maxValue - settings.count);
 
-const last30DaysStats = computed(() => {
-  const cutoffTime = Date.now() - 30 * 24 * 60 * 60 * 1000;
-  let totalDuration = 0, totalCount = 0;
-  
-  history.value.forEach(item => {
-    const itemDate = new Date(item.createdAt).getTime();
-    if (itemDate >= cutoffTime) {
-      totalDuration += (item.data.duration || 0);
-      totalCount += (item.data.count || 0);
-    }
-  });
-  
-  const avgEfficiency = totalCount > 0 ? (totalDuration / totalCount).toFixed(2) : '0.00';
-  return { totalDuration, totalCount, avgEfficiency };
-});
+const last30DaysStats = computed(() => ({
+  totalDuration: historyStats.totalDuration,
+  totalCount: historyStats.totalCount,
+  avgEfficiency: Number(historyStats.avgEfficiency || 0).toFixed(2)
+}));
 
 const selectedStats = computed(() => {
   let totalDuration = 0, totalCount = 0;
@@ -455,6 +447,16 @@ const fetchHistory = async (reset = true) => {
   }
 };
 
+const fetchHistoryStats = async () => {
+  if (!currentUser.value) return;
+  try {
+    const res = await axios.get('/api/history/stats', { params: { days: 30 } });
+    Object.assign(historyStats, res.data);
+  } catch (err) {
+    console.error('Failed to fetch history stats:', err);
+  }
+};
+
 const confirmSaveAndReset = async () => {
   const h = Math.max(0, Number(resetInputs.hr) || 0);
   const m = Math.max(0, Number(resetInputs.min) || 0);
@@ -489,6 +491,7 @@ const confirmSaveAndReset = async () => {
     };
     history.value.unshift(newRecord);
     historyPagination.total += 1;
+    fetchHistoryStats();
 
     settings.count = 0;
     resetInputs.hr = ''; resetInputs.min = ''; resetInputs.sec = '';
@@ -550,12 +553,14 @@ const handleClear = async () => {
     if (deleteAll) {
       history.value = [];
       Object.assign(historyPagination, { page: 0, total: 0, hasMore: false });
+      fetchHistoryStats();
       return;
     }
     const idsSet = new Set(idsToDelete);
     history.value = history.value.filter(item => !idsSet.has(item._id));
     historyPagination.total = Math.max(0, historyPagination.total - idsToDelete.length);
     selectedIds.value.clear();
+    fetchHistoryStats();
   } catch (e) {
     console.error("Batch delete failed:", e);
     notify(getApiErrorMessage(e, '删除失败，请稍后重试'));
@@ -613,6 +618,7 @@ const saveHistoryForm = async () => {
       }
     }
     isHistoryEditing.value = false;
+    fetchHistoryStats();
   } catch (err) {
     console.error("Save failed:", err);
     notify(getApiErrorMessage(err, '操作失败，请稍后重试'));
@@ -622,6 +628,7 @@ const saveHistoryForm = async () => {
 const executeRealDelete = async (id) => {
   try {
     await axios.delete(`/api/history/${id}`);
+    fetchHistoryStats();
   } catch (err) {
     console.error("Delayed delete failed on backend", err);
     notify(getApiErrorMessage(err, '删除记录失败'));
@@ -752,24 +759,25 @@ onBeforeUnmount(() => {
 onMounted(() => {
   if (currentUser.value) {
     const userKey = `nook-settings-${currentUser.value.id}`;
-    const savedSettings = localStorage.getItem(userKey);
-
-    if (savedSettings) {
-      Object.assign(settings, JSON.parse(savedSettings));
-    } else {
-      Object.assign(settings, defaultSettings);
-    }
+    const savedSettings = readJsonStorage(
+      localStorage,
+      userKey,
+      defaultSettings,
+      value => value !== null && typeof value === 'object' && !Array.isArray(value)
+    );
+    Object.assign(settings, defaultSettings, savedSettings);
   }
 
   updateTheme(settings.bgColor);
   fetchHistory(true);
+  fetchHistoryStats();
 });
 
 // v-model 会实时更新 settings.bgColor，watch 监听到后全局同步
 watch(settings, (val) => {
   if (currentUser.value) {
     const userKey = `nook-settings-${currentUser.value.id}`;
-    localStorage.setItem(userKey, JSON.stringify(val));
+    writeJsonStorage(localStorage, userKey, val);
   }
   updateTheme(val.bgColor);
 }, { deep: true });

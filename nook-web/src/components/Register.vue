@@ -1,6 +1,6 @@
 <template>
   <div class="auth-wrapper">
-    <div class="auth-card">
+    <div v-if="registrationEnabled" class="auth-card">
       <h2 class="title">Create Account</h2>
       <p class="subtitle">Sign up to access all features</p>
 
@@ -40,6 +40,11 @@
         Already have an account? <button type="button" class="link-text" @click="goToLogin">Log in</button>
       </div>
     </div>
+    <div v-else class="auth-card">
+      <h2 class="title">Registration Disabled</h2>
+      <p class="subtitle">This personal deployment is not accepting new accounts.</p>
+      <button type="button" class="auth-btn primary" @click="goToLogin">Back to login</button>
+    </div>
 
     <Transition name="slide-fade">
       <div v-if="toast.show" class="toast-notification" :class="toast.type">
@@ -58,7 +63,7 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue';
+import { reactive, ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import { getApiErrorMessage } from '@/api/errors';
@@ -68,6 +73,16 @@ defineOptions({ name: 'RegisterPage' });
 
 const router = useRouter();
 const isLoading = ref(false); // 加载状态防止重复提交
+const registrationEnabled = ref(false);
+
+onMounted(async () => {
+  try {
+    const response = await axios.get('/api/config');
+    registrationEnabled.value = response.data.registrationEnabled === true;
+  } catch {
+    registrationEnabled.value = false;
+  }
+});
 
 const form = reactive({
   username: '',

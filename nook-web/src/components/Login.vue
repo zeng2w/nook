@@ -34,7 +34,7 @@
         {{ isLoading ? 'Logging in...' : 'Log In' }}
       </button>
 
-      <div class="footer-link">
+      <div v-if="registrationEnabled" class="footer-link">
         No account yet? <button type="button" class="link-text" @click="goToRegister">Sign up</button>
       </div>
     </div>
@@ -56,7 +56,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue';
+import { ref, reactive, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import { getApiErrorMessage } from '@/api/errors';
@@ -68,6 +68,16 @@ const router = useRouter();
 const email = ref('');
 const password = ref('');
 const isLoading = ref(false);
+const registrationEnabled = ref(false);
+
+onMounted(async () => {
+  try {
+    const response = await axios.get('/api/config');
+    registrationEnabled.value = response.data.registrationEnabled === true;
+  } catch {
+    registrationEnabled.value = false;
+  }
+});
 
 // Toast 状态
 const toast = reactive({

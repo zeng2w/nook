@@ -120,7 +120,7 @@
 
     </div>
 
-    <EditShowModal v-model:visible="showModal" :edit-data="editingShow" @save="saveShow" />
+    <EditShowModal v-model:visible="showModal" :edit-data="editingShow" :is-saving="isSavingShow" @save="saveShow" />
     <CalendarModal v-model:visible="showCalendar" :shows="calendarShows" />
     <input type="file" ref="fileInput" style="display: none" accept=".json" @change="handleFileUpload" />
   </div>
@@ -129,9 +129,10 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { updateTheme } from '../store';
-import { fetchShowsApi, fetchCalendarShowsApi, addShowApi, updateShowApi, deleteShowApi, syncShowsApi, importShowsApi, addTvLogApi } from '@/api/shows';
+import { fetchShowsApi, fetchCalendarShowsApi, addShowApi, updateShowApi, updateShowProgressApi, deleteShowApi, syncShowsApi, importShowsApi } from '@/api/shows';
 import { getApiErrorMessage } from '@/api/errors';
 import { getAuthUserId } from '@/auth';
+import { readJsonStorage, writeJsonStorage } from '@/utils/storage';
 
 import TvHeader from '@/components/TvTracker/TvHeader.vue';
 import FilterBar from '@/components/TvTracker/FilterBar.vue';
@@ -173,6 +174,7 @@ const showCalendar = ref(false);
 const isSyncing = ref(false);
 const isLoading = ref(false); 
 const isLoadingMore = ref(false);
+const isSavingShow = ref(false);
 const loadError = ref('');
 
 const shows = ref([]);
@@ -193,6 +195,7 @@ const notifications = ref([]);
 const hasNewNotis = ref(false);
 const fileInput = ref(null);
 const toast = reactive({ visible: false, message: '', type: 'success' });
+const MAX_STORED_NOTIFICATIONS = 100;
 let latestFetchId = 0;
 let searchTimer = null;
 
@@ -227,8 +230,12 @@ onMounted(() => {
   applyModernTheme(); 
   updateTheme('#F9FAFB');
   const notificationKey = getNotificationStorageKey();
-  const savedNotis = notificationKey ? localStorage.getItem(notificationKey) : null;
-  if (savedNotis) notifications.value = JSON.parse(savedNotis);
+  notifications.value = readJsonStorage(
+    localStorage,
+    notificationKey,
+    [],
+    value => Array.isArray(value)
+  ).slice(0, MAX_STORED_NOTIFICATIONS);
 });
 
 onUnmounted(() => {
@@ -240,8 +247,11 @@ onUnmounted(() => {
     clearTimeout(updateTimers[showId]); 
     const show = shows.value.find(s => s._id === showId);
     if (show && pendingDeltas[showId] !== 0) {
-      updateShowApi(show._id, { watchedEpisodes: show.watchedEpisodes, status: show.status }).catch(()=>{});
-      addTvLogApi({ showId, showTitle: show.title, count: pendingDeltas[showId], date: new Date() }).catch(()=>{});
+      updateShowProgressApi(show._id, {
+        watchedEpisodes: show.watchedEpisodes,
+        status: show.status,
+        date: new Date()
+      }).catch(()=>{});
     }
   });
 });
@@ -252,7 +262,7 @@ const getNotificationStorageKey = () => {
 };
 watch(notifications, (newVal) => {
   const notificationKey = getNotificationStorageKey();
-  if (notificationKey) localStorage.setItem(notificationKey, JSON.stringify(newVal));
+  writeJsonStorage(localStorage, notificationKey, newVal.slice(0, MAX_STORED_NOTIFICATIONS));
 }, { deep: true });
 const showToast = (msg, type = 'success') => { toast.message = msg; toast.type = type; toast.visible = true; setTimeout(() => { toast.visible = false; }, 3000); };
 
@@ -343,6 +353,8 @@ const calcStatus = (watched, aired, total) => {
 const saveShow = async (formData) => {
   const userId = getAuthUserId();
   if (!userId || !formData.title) return showToast("请输入作品名称", "error");
+  if (isSavingShow.value) return;
+  isSavingShow.value = true;
   try {
     if (editingShow.value && editingShow.value._id) {
       await updateShowApi(editingShow.value._id, formData);
@@ -357,6 +369,8 @@ const saveShow = async (formData) => {
   } catch (err) {
     console.error(err);
     showToast(getApiErrorMessage(err, '保存失败'), "error");
+  } finally {
+    isSavingShow.value = false;
   }
 };
 
@@ -381,35 +395,25 @@ const updateProgress = (show, delta) => {
       show.totalEpisodes
     );
     try {
-      const response = await updateShowApi(show._id, {
+      const response = await updateShowProgressApi(show._id, {
         watchedEpisodes: show.watchedEpisodes,
-        status: show.status
+        status: show.status,
+        date: new Date()
       });
+      const savedShow = response.data.show;
       const queuedDelta = pendingDeltas[show._id] || 0;
       const overrides = queuedDelta === 0 ? {} : {
-        watchedEpisodes: response.data.watchedEpisodes + queuedDelta,
+        watchedEpisodes: savedShow.watchedEpisodes + queuedDelta,
         status: calcStatus(
-          response.data.watchedEpisodes + queuedDelta,
-          response.data.airedEpisodes,
-          response.data.totalEpisodes
+          savedShow.watchedEpisodes + queuedDelta,
+          savedShow.airedEpisodes,
+          savedShow.totalEpisodes
         )
       };
-      patchShowCollections(response.data, overrides);
+      patchShowCollections(savedShow, overrides);
 
-      if (queuedDelta === 0 && (previousStatus !== response.data.status || sortBy.value === 'lag')) {
+      if (queuedDelta === 0 && (previousStatus !== savedShow.status || sortBy.value === 'lag')) {
         await fetchShows(true);
-      }
-
-      try {
-        await addTvLogApi({
-          showId: show._id,
-          showTitle: show.title,
-          count: finalDelta,
-          date: new Date()
-        });
-      } catch (logError) {
-        console.error('Activity log save failed:', logError);
-        showToast('观看进度已保存，但活跃度记录失败', 'error');
       }
     } catch (e) {
       console.error(e);
@@ -503,7 +507,10 @@ const syncData = async () => {
         const uniqueNewItems = res.data.logs
           .filter(log => !existingSignatures.has(`${log.title}|${log.newEp}|${log.date}`))
           .map(log => ({ ...log, updateDate: log.date, uniqueId: Date.now() + Math.random() }));
-        if (uniqueNewItems.length) { notifications.value = [...uniqueNewItems, ...notifications.value]; hasNewNotis.value = true; }
+        if (uniqueNewItems.length) {
+          notifications.value = [...uniqueNewItems, ...notifications.value].slice(0, MAX_STORED_NOTIFICATIONS);
+          hasNewNotis.value = true;
+        }
       }
       const failedSuffix = res.data.failedCount > 0 ? `，${res.data.failedCount} 部获取失败` : '';
       showToast(`同步完成！更新 ${res.data.updatedCount} 部${failedSuffix}`, res.data.failedCount > 0 ? "error" : "success");
