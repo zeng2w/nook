@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Show = require('../models/Show'); 
+const TvLog = require('../models/TvLog');
 const { getAiredEpisodeCount, getTmdbSchedule, getTmdbSeasonProgress } = require('../utils/tmdb');
 const { classifyTmdbError, sendTmdbError, tmdbGet } = require('../utils/tmdbClient');
 const { getSyncConcurrency, mapWithConcurrency } = require('../utils/concurrency');
@@ -222,7 +224,72 @@ router.post('/', async (req, res, next) => {
     const show = await newShow.save();
     res.json(show);
   } catch (err) {
+    if (err.code === 11000) {
+      return res.status(409).json({
+        code: 'DUPLICATE_SHOW',
+        error: '该剧集的这一季已经存在，请勿重复添加。'
+      });
+    }
     next(err);
+  }
+});
+
+// 在同一个 MongoDB 事务中更新观看进度并写入活动日志。
+// 目标进度是幂等的：客户端重试相同请求时不会重复产生 TvLog。
+router.patch('/:id/progress', validateObjectIdParam(), async (req, res, next) => {
+  const watchedEpisodes = Number(req.body?.watchedEpisodes);
+  const status = req.body?.status;
+  const date = req.body?.date;
+
+  if (!Number.isInteger(watchedEpisodes) || watchedEpisodes < 0) {
+    return res.status(400).json({
+      code: 'INVALID_PROGRESS',
+      error: 'watchedEpisodes must be a non-negative integer'
+    });
+  }
+
+  const session = await mongoose.startSession();
+  let updatedShow;
+  let loggedDelta = 0;
+
+  try {
+    await session.withTransaction(async () => {
+      const show = await Show.findOne(
+        { _id: req.params.id, userId: req.user.id },
+        null,
+        { session }
+      );
+      if (!show) {
+        const error = new Error('Show not found');
+        error.status = 404;
+        error.code = 'SHOW_NOT_FOUND';
+        throw error;
+      }
+
+      loggedDelta = watchedEpisodes - show.watchedEpisodes;
+      show.watchedEpisodes = watchedEpisodes;
+      if (status !== undefined) show.status = status;
+      show.updatedAt = Date.now();
+      await show.save({ session });
+
+      if (loggedDelta !== 0) {
+        await TvLog.create([{
+          userId: req.user.id,
+          showId: show._id,
+          showTitle: show.title,
+          count: loggedDelta,
+          date: date || Date.now()
+        }], { session });
+      }
+
+      updatedShow = show;
+    });
+
+    res.json({ show: updatedShow, loggedDelta });
+  } catch (err) {
+    next(err);
+  } finally {
+    await session.endSession();
   }
 });
 
@@ -263,10 +330,7 @@ router.post('/sync', async (req, res, next) => {
     const activeShows = await Show.find({
       userId: req.user.id,
       status: { $ne: 'dropped' },
-      $or: [
-        { updateFrequency: { $ne: 'ended' } },
-        { seasonNumber: { $exists: true, $ne: null } }
-      ]
+      updateFrequency: { $ne: 'ended' }
     });
 
     const syncCandidates = activeShows.filter(show => show.tmdbId && show.category !== 'movie');
@@ -445,7 +509,9 @@ router.post('/import', async (req, res, next) => {
 
   let skipCount = 0;
   let invalidCount = 0;
+  let duplicateCount = 0;
   const validShowsToInsert = [];
+  const errors = [];
   const seenKeys = new Set();
 
   try {
@@ -460,12 +526,29 @@ router.post('/import', async (req, res, next) => {
       existingShows.map(show => String(show.title || '').trim().toLowerCase())
     );
 
-    for (const item of shows) {
+    for (const [index, item] of shows.entries()) {
       const showData = pickShowFields(item);
+      const backupTimestamps = item && typeof item === 'object' && !Array.isArray(item)
+        ? {
+            ...(Object.prototype.hasOwnProperty.call(item, 'createdAt') ? { createdAt: item.createdAt } : {}),
+            ...(Object.prototype.hasOwnProperty.call(item, 'updatedAt') ? { updatedAt: item.updatedAt } : {})
+          }
+        : {};
       const normalizedTitle = String(showData.title || '').trim().toLowerCase();
-      if (!normalizedTitle || !showData.category) {
+      const candidate = new Show({ userId: req.user.id, ...showData, ...backupTimestamps });
+
+      try {
+        await candidate.validate();
+      } catch (validationError) {
         skipCount++;
         invalidCount++;
+        if (errors.length < 100) {
+          errors.push({
+            index,
+            title: showData.title || '',
+            error: Object.values(validationError.errors || {})[0]?.message || 'Invalid show data'
+          });
+        }
         continue;
       }
 
@@ -475,6 +558,7 @@ router.post('/import', async (req, res, next) => {
 
       if (seenKeys.has(duplicateKey)) {
         skipCount++;
+        duplicateCount++;
         continue;
       }
       seenKeys.add(duplicateKey);
@@ -485,8 +569,9 @@ router.post('/import', async (req, res, next) => {
 
       if (exists) {
         skipCount++;
+        duplicateCount++;
       } else {
-        validShowsToInsert.push({ userId: req.user.id, ...showData });
+        validShowsToInsert.push(candidate.toObject({ versionKey: false }));
       }
     }
 
@@ -496,10 +581,12 @@ router.post('/import', async (req, res, next) => {
 
     res.json({ 
       success: true, 
-      message: `导入完成：成功 ${validShowsToInsert.length} 部，跳过重复 ${skipCount} 部`,
+      message: `导入完成：成功 ${validShowsToInsert.length} 部，重复 ${duplicateCount} 部，无效 ${invalidCount} 部`,
       successCount: validShowsToInsert.length,
       skipCount,
-      invalidCount
+      duplicateCount,
+      invalidCount,
+      errors: errors.slice(0, 100)
     });
 
   } catch (err) {

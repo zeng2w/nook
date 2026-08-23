@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const { clearSession, issueSession } = require('../middleware/auth');
 const { buildEmailLookup, normalizeEmail } = require('../utils/email');
+const { isRegistrationAllowed } = require('../utils/runtimeConfig');
 
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
@@ -15,6 +16,13 @@ const serializeUser = (user) => ({
 
 // === 1. 注册接口 (修改版：注册即登录) ===
 router.post('/register', async (req, res, next) => {
+  if (!isRegistrationAllowed()) {
+    return res.status(403).json({
+      code: 'REGISTRATION_DISABLED',
+      error: 'Registration is disabled for this deployment'
+    });
+  }
+
   const body = req.body || {};
   const username = typeof body.username === 'string' ? body.username.trim() : '';
   const email = normalizeEmail(body.email);

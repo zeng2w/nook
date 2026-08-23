@@ -134,8 +134,8 @@
         </div>
         
         <div class="modal-footer">
-          <button type="button" class="btn text-btn" @click="close">取消</button>
-          <button type="button" class="btn primary-btn" @click="save" :disabled="isSeasonLoading">保存</button>
+          <button type="button" class="btn text-btn" @click="close" :disabled="isSaving">取消</button>
+          <button type="button" class="btn primary-btn" @click="save" :disabled="isSeasonLoading || isSaving">{{ isSaving ? '保存中…' : '保存' }}</button>
         </div>
       </div>
     </div>
@@ -150,7 +150,8 @@ import { toCalendarDateInput } from '@/utils/dateUtils';
 
 const props = defineProps({
   visible: Boolean,
-  editData: Object
+  editData: Object,
+  isSaving: Boolean
 });
 
 const emit = defineEmits(['update:visible', 'save']);
@@ -204,8 +205,12 @@ watch(
   }
 );
 
-const close = () => emit('update:visible', false);
-const save = () => emit('save', { ...form });
+const close = () => {
+  if (!props.isSaving) emit('update:visible', false);
+};
+const save = () => {
+  if (!props.isSaving && !isSeasonLoading.value) emit('save', { ...form });
+};
 
 const toggleDay = (idx) => {
   const i = form.updateDays.indexOf(idx);

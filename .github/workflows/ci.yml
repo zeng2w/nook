@@ -11,6 +11,19 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:8
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      TEST_MONGO_URI: mongodb://127.0.0.1:27017/nook_test
     defaults:
       run:
         working-directory: nook-server
@@ -40,7 +53,7 @@ jobs:
       - run: npm ci
       - run: npm audit --audit-level=high
       - run: npm run test:unit
-      - run: npm run lint
+      - run: npm run lint:check
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e -- --project=chromium

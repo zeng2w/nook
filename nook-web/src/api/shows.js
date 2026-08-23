@@ -19,6 +19,10 @@ export const updateShowApi = (id, data) => {
   return axios.put(`/api/shows/${id}`, data);
 };
 
+export const updateShowProgressApi = (id, data) => {
+  return axios.patch(`/api/shows/${id}/progress`, data);
+};
+
 // 4. 删除剧集
 export const deleteShowApi = (id) => {
   return axios.delete(`/api/shows/${id}`);
@@ -34,12 +38,7 @@ export const importShowsApi = (shows) => {
   return axios.post('/api/shows/import', { shows });
 };
 
-// 7. 记录观看历史 (TvLog 热力图使用)
-export const addTvLogApi = (data) => {
-  return axios.post('/api/tvlog', data);
-};
-
-// 8. 获取观看历史 (用于 Dashboard 热力图)
+// 7. 获取观看历史 (用于 Dashboard 热力图)
 export const fetchTvActivityApi = (timeZone) => axios.get('/api/tvlog/activity', {
   params: timeZone ? { timeZone } : undefined
 });

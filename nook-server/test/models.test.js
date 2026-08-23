@@ -96,9 +96,12 @@ test('history count and tv activity deltas must be whole numbers', async () => {
 test('user-owned collections define compound query indexes', () => {
   assert.ok(History.schema.indexes().some(([keys]) => keys.userId === 1 && keys.date === -1));
   assert.ok(Show.schema.indexes().some(([keys]) => keys.userId === 1 && keys.updatedAt === -1));
-  assert.ok(Show.schema.indexes().some(([keys]) => (
+  const seasonIndex = Show.schema.indexes().find(([keys]) => (
     keys.userId === 1 && keys.tmdbId === 1 && keys.seasonNumber === 1
-  )));
+  ));
+  assert.ok(seasonIndex);
+  assert.equal(seasonIndex[1].unique, true);
+  assert.deepEqual(seasonIndex[1].partialFilterExpression, { tmdbId: { $type: 'number' } });
   assert.ok(Show.schema.indexes().some(([keys]) => (
     keys.userId === 1 && keys.status === 1 && keys.category === 1 && keys.lastAirDate === -1
   )));

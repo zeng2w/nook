@@ -21,6 +21,43 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+// 统计由数据库基于完整历史计算，不受前端分页大小影响。
+router.get('/stats', async (req, res, next) => {
+  try {
+    const days = req.query.days === undefined ? 30 : Number(req.query.days);
+    if (!Number.isInteger(days) || days < 1 || days > 3650) {
+      return res.status(400).json({
+        code: 'INVALID_STATS_RANGE',
+        error: 'days must be an integer from 1 to 3650'
+      });
+    }
+
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const userId = new History.base.Types.ObjectId(req.user.id);
+    const [stats] = await History.aggregate([
+      { $match: { userId, date: { $gte: cutoff } } },
+      {
+        $group: {
+          _id: null,
+          totalDuration: { $sum: '$duration' },
+          totalCount: { $sum: '$count' }
+        }
+      }
+    ]);
+    const totalDuration = stats?.totalDuration || 0;
+    const totalCount = stats?.totalCount || 0;
+
+    res.json({
+      days,
+      totalDuration,
+      totalCount,
+      avgEfficiency: totalCount > 0 ? totalDuration / totalCount : 0
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // @route   POST /api/history
 // @desc    添加新记录 (已升级：支持手动指定日期)
 router.post('/', async (req, res, next) => {
