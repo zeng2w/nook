@@ -13,7 +13,7 @@
         :notifications="notifications"
         :has-new="hasNewNotis"
         :total-count="showFacets.allCount"
-        :is-syncing="isSyncing"
+        :is-syncing="isSyncing || isAutoSyncing"
         v-model:searchQuery="searchQuery"  @add="openAddModal"
         @sync="syncData"
         @export="exportData"
@@ -132,6 +132,7 @@ import { updateTheme } from '../store';
 import { fetchShowsApi, fetchCalendarShowsApi, addShowApi, updateShowApi, updateShowProgressApi, deleteShowApi, syncShowsApi, importShowsApi } from '@/api/shows';
 import { getApiErrorMessage } from '@/api/errors';
 import { getAuthUserId } from '@/auth';
+import { getCurrentTimeZone } from '@/utils/dateUtils';
 import { readJsonStorage, writeJsonStorage } from '@/utils/storage';
 
 import TvHeader from '@/components/TvTracker/TvHeader.vue';
@@ -172,6 +173,7 @@ const currentNetwork = ref('all');
 const showModal = ref(false);
 const showCalendar = ref(false);
 const isSyncing = ref(false);
+const isAutoSyncing = ref(false);
 const isLoading = ref(false); 
 const isLoadingMore = ref(false);
 const isSavingShow = ref(false);
@@ -196,8 +198,11 @@ const hasNewNotis = ref(false);
 const fileInput = ref(null);
 const toast = reactive({ visible: false, message: '', type: 'success' });
 const MAX_STORED_NOTIFICATIONS = 100;
+const AUTO_SYNC_FOCUS_DELAY_MS = 1500;
+const AUTO_SYNC_CLIENT_COOLDOWN_MS = 5 * 60 * 1000;
 let latestFetchId = 0;
 let searchTimer = null;
+let autoSyncTimer = null;
 
 const sortBy = ref('date');
 const sortDesc = ref(true);
@@ -236,10 +241,18 @@ onMounted(() => {
     [],
     value => Array.isArray(value)
   ).slice(0, MAX_STORED_NOTIFICATIONS);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  window.addEventListener('focus', scheduleAutoSync);
+  window.addEventListener('blur', clearAutoSyncTimer);
+  scheduleAutoSync();
 });
 
 onUnmounted(() => {
   clearTimeout(searchTimer);
+  clearAutoSyncTimer();
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
+  window.removeEventListener('focus', scheduleAutoSync);
+  window.removeEventListener('blur', clearAutoSyncTimer);
   removeModernTheme(); 
   updateTheme('#ffffff');
   Object.values(pendingDeletes).forEach(timer => clearTimeout(timer));
@@ -259,6 +272,10 @@ onUnmounted(() => {
 const getNotificationStorageKey = () => {
   const userId = getAuthUserId();
   return userId ? `nook-tv-notifications-${userId}` : null;
+};
+const getAutoSyncStorageKey = () => {
+  const userId = getAuthUserId();
+  return userId ? `nook-tv-auto-sync-${userId}` : null;
 };
 watch(notifications, (newVal) => {
   const notificationKey = getNotificationStorageKey();
@@ -495,29 +512,83 @@ const removeNotification = (index) => { notifications.value.splice(index, 1); };
 
 const syncData = async () => {
   const userId = getAuthUserId();
-  if (!userId) return;
+  if (!userId || isSyncing.value || isAutoSyncing.value) return;
   isSyncing.value = true;
   showToast("正在同步...", "success");
   try {
-    const res = await syncShowsApi();
+    const res = await syncShowsApi({ force: true, timeZone: getCurrentTimeZone() });
     await refreshShowData();
+    applySyncNotifications(res.data);
     if (res.data.updatedCount > 0) {
-      if (res.data.logs?.length) {
-        const existingSignatures = new Set(notifications.value.map(n => `${n.title}|${n.newEp}|${n.updateDate}`));
-        const uniqueNewItems = res.data.logs
-          .filter(log => !existingSignatures.has(`${log.title}|${log.newEp}|${log.date}`))
-          .map(log => ({ ...log, updateDate: log.date, uniqueId: Date.now() + Math.random() }));
-        if (uniqueNewItems.length) {
-          notifications.value = [...uniqueNewItems, ...notifications.value].slice(0, MAX_STORED_NOTIFICATIONS);
-          hasNewNotis.value = true;
-        }
-      }
       const failedSuffix = res.data.failedCount > 0 ? `，${res.data.failedCount} 部获取失败` : '';
       showToast(`同步完成！更新 ${res.data.updatedCount} 部${failedSuffix}`, res.data.failedCount > 0 ? "error" : "success");
     } else if (res.data.failedCount > 0) {
       showToast(`同步完成，但有 ${res.data.failedCount} 部获取失败`, "error");
     } else { showToast('暂无新内容', "success"); }
   } catch (err) { console.error(err); showToast(getApiErrorMessage(err, '同步失败'), "error"); } finally { isSyncing.value = false; }
+};
+
+const applySyncNotifications = (data = {}) => {
+  if (!data.logs?.length) return;
+  const existingSignatures = new Set(
+    notifications.value.map(notification => (
+      `${notification.title}|${notification.newEp}|${notification.updateDate}`
+    ))
+  );
+  const uniqueNewItems = data.logs
+    .filter(log => !existingSignatures.has(`${log.title}|${log.newEp}|${log.date}`))
+    .map(log => ({ ...log, updateDate: log.date, uniqueId: Date.now() + Math.random() }));
+  if (!uniqueNewItems.length) return;
+  notifications.value = [...uniqueNewItems, ...notifications.value].slice(0, MAX_STORED_NOTIFICATIONS);
+  hasNewNotis.value = true;
+};
+
+const clearAutoSyncTimer = () => {
+  if (autoSyncTimer) clearTimeout(autoSyncTimer);
+  autoSyncTimer = null;
+};
+
+const runAutoSync = async () => {
+  autoSyncTimer = null;
+  const storageKey = getAutoSyncStorageKey();
+  if (
+    !storageKey ||
+    isSyncing.value ||
+    isAutoSyncing.value ||
+    document.visibilityState !== 'visible' ||
+    !document.hasFocus()
+  ) return;
+
+  const lastAttemptAt = readJsonStorage(
+    localStorage,
+    storageKey,
+    0,
+    value => Number.isFinite(value) && value >= 0
+  );
+  if (Date.now() - lastAttemptAt < AUTO_SYNC_CLIENT_COOLDOWN_MS) return;
+
+  writeJsonStorage(localStorage, storageKey, Date.now());
+  isAutoSyncing.value = true;
+  try {
+    const response = await syncShowsApi({ force: false, timeZone: getCurrentTimeZone() });
+    applySyncNotifications(response.data);
+    if (response.data.changedCount > 0) await refreshShowData();
+  } catch (error) {
+    console.warn('Automatic TMDB sync failed:', getApiErrorMessage(error, '同步失败'));
+  } finally {
+    isAutoSyncing.value = false;
+  }
+};
+
+const scheduleAutoSync = () => {
+  clearAutoSyncTimer();
+  if (document.visibilityState !== 'visible') return;
+  autoSyncTimer = setTimeout(runAutoSync, AUTO_SYNC_FOCUS_DELAY_MS);
+};
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState === 'visible') scheduleAutoSync();
+  else clearAutoSyncTimer();
 };
 
 const triggerImport = () => { fileInput.value.click(); };

@@ -5,8 +5,8 @@
     </div>
     
     <div class="tabs">
-      <button :class="{ active: activeTab === 'popular' }" @click="activeTab = 'popular'">排行榜</button>
-      <button :class="{ active: activeTab === 'new' }" @click="activeTab = 'new'">刚上映</button>
+      <button :class="{ active: activeTab === 'popular' }" @click="selectTab('popular')">排行榜</button>
+      <button :class="{ active: activeTab === 'new' }" @click="selectTab('new')">刚上映</button>
     </div>
 
     <div v-if="isLoading" class="loading-state">数据加载中...</div>
@@ -15,6 +15,15 @@
       <span>{{ loadError }}</span>
       <button @click="loadTrending">重试</button>
     </div>
+
+    <div v-else-if="!hasLoaded" class="explore-empty">
+      <span>需要时再从 TMDB 获取，减少不必要的请求。</span>
+      <button @click="loadTrending">
+        {{ activeTab === 'popular' ? '加载排行榜' : '加载刚上映' }}
+      </button>
+    </div>
+
+    <div v-else-if="displayList.length === 0" class="loading-state">暂无内容</div>
 
     <div v-else class="show-list">
       <div v-for="(show, index) in displayList" :key="show.id" class="show-item">
@@ -34,34 +43,37 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed } from 'vue';
 import { fetchTrendingShows, fetchNewReleases } from '@/api/tmdb';
 import { getApiErrorMessage } from '@/api/errors';
 
 const activeTab = ref('popular');
 const popularShows = ref([]);
 const newShows = ref([]);
-const isLoading = ref(true);
+const loadedTabs = ref({ popular: false, new: false });
+const isLoading = ref(false);
 const loadError = ref('');
 
 const displayList = computed(() => {
   return activeTab.value === 'popular' ? popularShows.value : newShows.value;
 });
+const hasLoaded = computed(() => loadedTabs.value[activeTab.value]);
 
 const getPosterUrl = (path) => {
   return `https://image.tmdb.org/t/p/w92${path}`;
 };
 
 const loadTrending = async () => {
+  const requestedTab = activeTab.value;
   try {
     isLoading.value = true;
     loadError.value = '';
-    const [popRes, newRes] = await Promise.all([
-      fetchTrendingShows(),
-      fetchNewReleases()
-    ]);
-    popularShows.value = popRes.data;
-    newShows.value = newRes.data;
+    const response = requestedTab === 'popular'
+      ? await fetchTrendingShows()
+      : await fetchNewReleases();
+    if (requestedTab === 'popular') popularShows.value = response.data;
+    else newShows.value = response.data;
+    loadedTabs.value = { ...loadedTabs.value, [requestedTab]: true };
   } catch (error) {
     console.error("加载侧边栏失败", error);
     loadError.value = getApiErrorMessage(error, '探索内容加载失败');
@@ -70,7 +82,10 @@ const loadTrending = async () => {
   }
 };
 
-onMounted(loadTrending);
+const selectTab = (tab) => {
+  activeTab.value = tab;
+  loadError.value = '';
+};
 </script>
 
 <style scoped>
@@ -137,4 +152,7 @@ onMounted(loadTrending);
 .loading-state { text-align: center; color: #94a3b8; margin-top: 40px; font-size: 0.85rem; }
 .error-state { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .error-state button { border: 1px solid #cbd5e1; background: #fff; color: #475569; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+.explore-empty { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 14px; padding: 16px; text-align: center; color: #94a3b8; font-size: 0.78rem; line-height: 1.5; }
+.explore-empty button { border: none; background: var(--theme-primary, #6366f1); color: #fff; border-radius: 9px; padding: 8px 14px; font-weight: 600; cursor: pointer; }
+.explore-empty button:hover { background: var(--theme-primary-hover, #4f46e5); }
 </style>

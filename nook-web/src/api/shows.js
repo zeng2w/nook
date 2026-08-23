@@ -28,9 +28,9 @@ export const deleteShowApi = (id) => {
   return axios.delete(`/api/shows/${id}`);
 };
 
-// 5. 同步数据
-export const syncShowsApi = () => {
-  return axios.post('/api/shows/sync');
+// 5. 同步数据。自动同步传 force: false，手动按钮传 force: true。
+export const syncShowsApi = ({ force = true, timeZone } = {}) => {
+  return axios.post('/api/shows/sync', { force, timeZone });
 };
 
 // 6. 导入数据

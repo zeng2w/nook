@@ -7,10 +7,12 @@ const { getAiredEpisodeCount, getTmdbSchedule, getTmdbSeasonProgress } = require
 const { classifyTmdbError, sendTmdbError, tmdbGet } = require('../utils/tmdbClient');
 const { getSyncConcurrency, mapWithConcurrency } = require('../utils/concurrency');
 const { buildShowListPipeline, parseShowQuery, SHOW_CATEGORIES, SHOW_STATUSES } = require('../utils/showQuery');
+const { getShowSyncDecision } = require('../utils/showSyncPolicy');
+const { getCalendarDateKeyInTimeZone, isValidTimeZone } = require('../utils/timeZone');
 const logger = require('../utils/logger');
 const { validateObjectIdParam } = require('../middleware/validate');
 
-const SHOW_LIST_FIELDS = '-userId -__v';
+const SHOW_LIST_FIELDS = '-userId -__v -lastTmdbCheckedAt -lastTmdbSyncStatus';
 
 const ALLOWED_SHOW_FIELDS = [
   'title',
@@ -323,17 +325,35 @@ router.delete('/:id', validateObjectIdParam(), async (req, res, next) => {
 });
 
 // ==========================================
-// 5. 🔄 手动同步接口（受控并发 + 短期缓存）
+// 5. 🔄 智能/手动同步接口（受控并发 + 短期缓存）
 // ==========================================
 router.post('/sync', async (req, res, next) => {
   try {
+    // 未传 force 时保留原有手动接口的全量行为；页面自动同步会明确传 false。
+    const force = req.body?.force !== false;
+    const requestedTimeZone = req.body?.timeZone;
+    if (requestedTimeZone !== undefined && !isValidTimeZone(requestedTimeZone)) {
+      return res.status(400).json({
+        code: 'INVALID_TIME_ZONE',
+        error: 'timeZone must be a valid IANA time zone'
+      });
+    }
+    const timeZone = requestedTimeZone?.trim() || 'UTC';
+    const checkedAt = new Date();
+    const today = getCalendarDateKeyInTimeZone(checkedAt, timeZone);
+
     const activeShows = await Show.find({
       userId: req.user.id,
       status: { $ne: 'dropped' },
       updateFrequency: { $ne: 'ended' }
-    });
+    }).select('+lastTmdbCheckedAt +lastTmdbSyncStatus');
 
-    const syncCandidates = activeShows.filter(show => show.tmdbId && show.category !== 'movie');
+    const eligibleShows = activeShows.filter(show => show.tmdbId && show.category !== 'movie');
+    const syncCandidates = eligibleShows.filter(show => getShowSyncDecision(show, {
+      force,
+      now: checkedAt,
+      timeZone
+    }).shouldCheck);
     const syncResults = await mapWithConcurrency(
       syncCandidates,
       getSyncConcurrency(),
@@ -352,7 +372,8 @@ router.post('/sync', async (req, res, next) => {
               params: { language: 'zh-CN' }
             });
             seasonProgress = getTmdbSeasonProgress(seasonRes.data, remoteData, {
-              seasonNumber: show.seasonNumber
+              seasonNumber: show.seasonNumber,
+              today
             });
           }
           const remoteSchedule = seasonProgress || getTmdbSchedule(remoteData);
@@ -374,7 +395,7 @@ router.post('/sync', async (req, res, next) => {
               title: show.title,
               oldEp: show.airedEpisodes,
               newEp: remoteEpisodeCount,
-              date: remoteAirDate || new Date().toISOString().split('T')[0],
+              date: remoteAirDate || today,
               posterUrl: show.posterUrl
             };
           }
@@ -447,11 +468,25 @@ router.post('/sync', async (req, res, next) => {
             needsSave = true;
           }
 
-          if (needsSave) await show.save();
-          return { updateLog };
+          const contentChanged = needsSave;
+          show.lastTmdbCheckedAt = checkedAt;
+          show.lastTmdbSyncStatus = 'success';
+          await show.save();
+          return { contentChanged, updateLog };
         } catch (err) {
           const failure = classifyTmdbError(err);
           logger.warn('show_sync_item_failed', { code: failure.code, showId: String(show._id) });
+          try {
+            await Show.updateOne(
+              { _id: show._id, userId: req.user.id },
+              { $set: { lastTmdbCheckedAt: checkedAt, lastTmdbSyncStatus: 'error' } }
+            );
+          } catch (markerError) {
+            logger.warn('show_sync_marker_failed', {
+              showId: String(show._id),
+              message: markerError.message
+            });
+          }
           return { error: err };
         }
       }
@@ -461,6 +496,7 @@ router.post('/sync', async (req, res, next) => {
     const updateLogs = syncResults.flatMap(result => result.updateLog ? [result.updateLog] : []);
     const attemptedCount = syncCandidates.length;
     const failedCount = failures.length;
+    const changedCount = syncResults.filter(result => result.contentChanged).length;
 
     if (attemptedCount > 0 && failedCount === attemptedCount) {
       return sendTmdbError(res, failures[0].error, 'sync');
@@ -468,6 +504,9 @@ router.post('/sync', async (req, res, next) => {
 
     res.json({ 
       success: true, 
+      checkedCount: attemptedCount,
+      skippedCount: eligibleShows.length - attemptedCount,
+      changedCount,
       updatedCount: updateLogs.length, 
       failedCount,
       logs: updateLogs 
