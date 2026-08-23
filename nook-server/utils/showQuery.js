@@ -101,7 +101,16 @@ const buildShowListPipeline = (userId, options) => {
           { $sort: sortStage },
           { $skip: options.skip },
           { $limit: options.limit },
-          { $project: { userId: 0, __v: 0, sortLag: 0, statusRank: 0 } }
+          {
+            $project: {
+              userId: 0,
+              __v: 0,
+              sortLag: 0,
+              statusRank: 0,
+              lastTmdbCheckedAt: 0,
+              lastTmdbSyncStatus: 0
+            }
+          }
         ],
         total: [
           { $match: fullFilter },

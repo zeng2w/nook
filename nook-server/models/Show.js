@@ -61,6 +61,13 @@ const ShowSchema = new mongoose.Schema({
   seriesTitle: { type: String, trim: true, maxlength: 200 },
   seasonNumber: { type: Number, min: 1, validate: Number.isInteger },
   seasonName: { type: String, trim: true, maxlength: 200 },
+  lastTmdbCheckedAt: { type: Date, default: null, select: false },
+  lastTmdbSyncStatus: {
+    type: String,
+    enum: ['success', 'error'],
+    default: null,
+    select: false
+  },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

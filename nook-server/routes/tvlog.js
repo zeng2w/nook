@@ -4,20 +4,14 @@ const router = express.Router();
 const TvLog = require('../models/TvLog');
 const Show = require('../models/Show');
 const { findPage } = require('../utils/pagination');
+const { isValidTimeZone } = require('../utils/timeZone');
 const mongoose = require('mongoose');
 
 const DEFAULT_ACTIVITY_TIME_ZONE = 'UTC';
 
 const getActivityTimeZone = (value) => {
   if (value === undefined || value === '') return DEFAULT_ACTIVITY_TIME_ZONE;
-  if (typeof value !== 'string' || value.length > 100) return null;
-
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: value }).format();
-    return value;
-  } catch {
-    return null;
-  }
+  return isValidTimeZone(value) ? value.trim() : null;
 };
 
 // @route   GET /api/tvlog

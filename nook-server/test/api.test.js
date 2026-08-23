@@ -229,6 +229,57 @@ test('show list rejects unsupported filters through the shared error format', as
   });
 });
 
+test('smart show sync validates time zones before querying data', async () => {
+  const originalFind = Show.find;
+  let queryCalled = false;
+  Show.find = () => {
+    queryCalled = true;
+    return [];
+  };
+
+  try {
+    const response = await request(createTestApp())
+      .post('/api/shows/sync')
+      .set('Cookie', `nook_session=${createSessionToken(USER_A)}`)
+      .send({ force: false, timeZone: 'not-a-time-zone' });
+
+    assert.equal(response.status, 400);
+    assert.equal(response.body.code, 'INVALID_TIME_ZONE');
+    assert.equal(queryCalled, false);
+  } finally {
+    Show.find = originalFind;
+  }
+});
+
+test('smart show sync skips future episodes without calling TMDB', async () => {
+  const originalFind = Show.find;
+  Show.find = () => ({
+    async select() {
+      return [{
+        _id: '507f1f77bcf86cd799439021',
+        tmdbId: 100,
+        category: 'tv',
+        nextAirDate: new Date('2999-01-01T00:00:00.000Z'),
+        lastTmdbCheckedAt: null
+      }];
+    }
+  });
+
+  try {
+    const response = await request(createTestApp())
+      .post('/api/shows/sync')
+      .set('Cookie', `nook_session=${createSessionToken(USER_A)}`)
+      .send({ force: false, timeZone: 'Asia/Shanghai' });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.checkedCount, 0);
+    assert.equal(response.body.skippedCount, 1);
+    assert.equal(response.body.changedCount, 0);
+  } finally {
+    Show.find = originalFind;
+  }
+});
+
 test('show mutations reject malformed ids before querying MongoDB', async () => {
   const originalFindOne = Show.findOne;
   let queryCalled = false;

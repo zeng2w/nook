@@ -24,7 +24,7 @@ const mockSignedOut = async (page) => {
   }, 401))
 }
 
-const mockSignedIn = async (page, { onActivityRequest } = {}) => {
+const mockSignedIn = async (page, { onActivityRequest, onSyncRequest } = {}) => {
   await mockRuntimeConfig(page)
   await page.route('**/api/auth/me', route => fulfillJson(route, { user: TEST_USER }))
   await page.route('**/api/shows/stats', route => fulfillJson(route, {
@@ -35,6 +35,18 @@ const mockSignedIn = async (page, { onActivityRequest } = {}) => {
   await page.route(/\/api\/tvlog\/activity(?:\?.*)?$/, route => {
     onActivityRequest?.(new URL(route.request().url()))
     return fulfillJson(route, [])
+  })
+  await page.route('**/api/shows/sync', route => {
+    onSyncRequest?.(route.request())
+    return fulfillJson(route, {
+      success: true,
+      checkedCount: 0,
+      skippedCount: 0,
+      changedCount: 0,
+      updatedCount: 0,
+      failedCount: 0,
+      logs: [],
+    })
   })
 }
 
@@ -181,6 +193,53 @@ test('adds and tracks a specific TMDB season', async ({ page }) => {
     nextAirDate: '2026-08-30',
     updateFrequency: 'weekly',
   })
+})
+
+test('syncs only on the visible tracker and loads discovery on demand', async ({ page }) => {
+  const syncRequests = []
+  let trendingRequests = 0
+  let newReleaseRequests = 0
+  await mockSignedIn(page, { onSyncRequest: request => syncRequests.push(request) })
+
+  await page.route('**/api/shows/calendar', route => fulfillJson(route, []))
+  await page.route(/\/api\/shows(?:\?.*)?$/, route => fulfillJson(route, {
+    items: [],
+    pagination: { page: 1, limit: 24, total: 0, totalPages: 0, hasMore: false },
+    facets: {
+      allCount: 0,
+      statusCounts: { watching: 0, watched: 0, wish: 0, dropped: 0 },
+      categoryCounts: { tv: 0, anime: 0, movie: 0, variety: 0 },
+      networkTotal: 0,
+      networks: [],
+    },
+  }))
+  await page.route('**/api/tmdb/trending', route => {
+    trendingRequests += 1
+    return fulfillJson(route, [])
+  })
+  await page.route('**/api/tmdb/new-releases', route => {
+    newReleaseRequests += 1
+    return fulfillJson(route, [])
+  })
+
+  await page.goto('/home/dashboard')
+  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
+  expect(syncRequests).toHaveLength(0)
+
+  await page.goto('/home/tv-shows')
+  await expect.poll(() => syncRequests.length).toBe(1)
+  expect(syncRequests[0].postDataJSON()).toMatchObject({ force: false })
+  expect(syncRequests[0].postDataJSON().timeZone).toMatch(/\S/)
+  expect(trendingRequests).toBe(0)
+  expect(newReleaseRequests).toBe(0)
+
+  await page.getByRole('button', { name: '加载排行榜' }).click()
+  await expect.poll(() => trendingRequests).toBe(1)
+  expect(newReleaseRequests).toBe(0)
+
+  await page.getByRole('button', { name: '刚上映' }).click()
+  await page.getByRole('button', { name: '加载刚上映' }).click()
+  await expect.poll(() => newReleaseRequests).toBe(1)
 })
 
 test('loads, filters, adds, and edits shows through the paginated API', async ({ page }) => {
