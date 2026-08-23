@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getAiredEpisodeCount, getTmdbSchedule } = require('../utils/tmdb');
+const { getAiredEpisodeCount, getTmdbSchedule, getTmdbSeasonProgress } = require('../utils/tmdb');
 const { getCacheTtl, sendTmdbError, tmdbGet } = require('../utils/tmdbClient');
 
 const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w342';
@@ -132,6 +132,37 @@ router.get('/details/:type/:id', async (req, res) => {
     res.json(details);
   } catch (err) {
     return sendTmdbError(res, err, 'details');
+  }
+});
+
+// 查询单季的已播集数、下一集日期和完结状态。
+router.get('/season/:id/:seasonNumber', async (req, res) => {
+  const { id, seasonNumber } = req.params;
+  if (!/^\d+$/.test(id) || !/^\d+$/.test(seasonNumber) || Number(seasonNumber) < 1) {
+    return res.status(400).json({ code: 'INVALID_TMDB_SEASON', error: 'Invalid TMDB show or season id' });
+  }
+
+  try {
+    const [seriesResponse, seasonResponse] = await Promise.all([
+      tmdbGet(`/tv/${id}`, {
+        cacheTtlMs: getCacheTtl(),
+        params: { language: 'zh-CN' }
+      }),
+      tmdbGet(`/tv/${id}/season/${seasonNumber}`, {
+        cacheTtlMs: getCacheTtl(),
+        params: { language: 'zh-CN' }
+      })
+    ]);
+    const progress = getTmdbSeasonProgress(seasonResponse.data, seriesResponse.data, {
+      seasonNumber: Number(seasonNumber)
+    });
+
+    res.json({
+      ...progress,
+      posterUrl: getPosterUrl(seasonResponse.data.poster_path || seriesResponse.data.poster_path)
+    });
+  } catch (err) {
+    return sendTmdbError(res, err, 'season-details');
   }
 });
 

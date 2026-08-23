@@ -30,6 +30,17 @@ test('show update days must be valid weekdays', async () => {
   await assert.rejects(show.validate(), error => Boolean(error.errors.updateDays));
 });
 
+test('tracked seasons require a positive whole-number season', async () => {
+  const show = new Show({
+    userId: USER_ID,
+    title: 'Example',
+    category: 'tv',
+    seasonNumber: 1.5
+  });
+
+  await assert.rejects(show.validate(), error => Boolean(error.errors.seasonNumber));
+});
+
 test('show episode counts are integers and cannot exceed a known total', async () => {
   const fractional = new Show({
     userId: USER_ID,
@@ -85,7 +96,9 @@ test('history count and tv activity deltas must be whole numbers', async () => {
 test('user-owned collections define compound query indexes', () => {
   assert.ok(History.schema.indexes().some(([keys]) => keys.userId === 1 && keys.date === -1));
   assert.ok(Show.schema.indexes().some(([keys]) => keys.userId === 1 && keys.updatedAt === -1));
-  assert.ok(Show.schema.indexes().some(([keys]) => keys.userId === 1 && keys.tmdbId === 1));
+  assert.ok(Show.schema.indexes().some(([keys]) => (
+    keys.userId === 1 && keys.tmdbId === 1 && keys.seasonNumber === 1
+  )));
   assert.ok(Show.schema.indexes().some(([keys]) => (
     keys.userId === 1 && keys.status === 1 && keys.category === 1 && keys.lastAirDate === -1
   )));
