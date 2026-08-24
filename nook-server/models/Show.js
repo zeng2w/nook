@@ -26,6 +26,8 @@ const ShowSchema = new mongoose.Schema({
     }
   },
   updateCount: { type: Number, default: 1, min: 1 },
+  totalEpisodesLocked: { type: Boolean, default: false },
+  scheduleLocked: { type: Boolean, default: false },
   
   lastAirDate: { type: Date, default: null },
   nextAirDate: { type: Date, default: null },

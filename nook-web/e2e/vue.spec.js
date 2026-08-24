@@ -265,6 +265,23 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
     title: 'Second Show',
     watchedEpisodes: 4,
   }
+  const today = new Date()
+  const todayKey = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, '0'),
+    String(today.getDate()).padStart(2, '0'),
+  ].join('-')
+  const completedOngoingShow = {
+    ...firstShow,
+    _id: '507f1f77bcf86cd799439024',
+    title: 'Caught Up Weekly Show',
+    status: 'watched',
+    watchedEpisodes: 5,
+    airedEpisodes: 5,
+    totalEpisodes: 5,
+    updateDays: [today.getDay()],
+    lastAirDate: todayKey,
+  }
   const listRequests = []
   let calendarRequests = 0
   let progressRequests = 0
@@ -274,7 +291,7 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
 
   await page.route('**/api/shows/calendar', route => {
     calendarRequests += 1
-    return fulfillJson(route, [firstShow, secondShow])
+    return fulfillJson(route, [firstShow, secondShow, completedOngoingShow])
   })
   await page.route('**/api/tmdb/trending', route => fulfillJson(route, []))
   await page.route('**/api/tmdb/new-releases', route => fulfillJson(route, []))
@@ -330,7 +347,7 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
 
   await page.goto('/home/tv-shows')
 
-  await expect(page.getByRole('heading', { name: 'First Show' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'First Show', level: 3 })).toBeVisible()
   await expect.poll(() => listRequests.some(url => (
     url.searchParams.get('status') === 'watching' &&
     url.searchParams.get('sort') === 'date' &&
@@ -350,15 +367,16 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
   await page.getByRole('button', { name: '打开完整追剧日历' }).click()
   const calendarDialog = page.getByRole('dialog', { name: '追剧日历' })
   await expect(calendarDialog).toBeVisible()
+  await expect(calendarDialog.getByText('Caught Up Weekly Show')).toBeVisible()
   await expect(calendarDialog.locator('.timezone-label')).not.toBeEmpty()
   await calendarDialog.getByRole('button', { name: '关闭追剧日历' }).click()
   await expect(calendarDialog).toHaveCount(0)
 
   await page.getByRole('button', { name: /加载更多/ }).click()
-  await expect(page.getByRole('heading', { name: 'Second Show' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Second Show', level: 3 })).toBeVisible()
 
   await page.getByLabel('搜索剧集名称').fill('Second')
-  await expect(page.getByRole('heading', { name: 'First Show' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'First Show', level: 3 })).toHaveCount(0)
   await expect.poll(() => listRequests.some(url => url.searchParams.get('search') === 'Second')).toBe(true)
 
   await page.getByRole('button', { name: '+ 添加' }).click()
@@ -371,7 +389,15 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
   await page.getByRole('button', { name: '编辑 Second Show' }).click()
   const editDialog = page.getByRole('dialog')
   await editDialog.getByLabel('作品名称').fill('Second Show Edited')
+  await editDialog.getByRole('button', { name: '周三', exact: true }).click()
+  await editDialog.locator('.stat-input-wrap').filter({ hasText: '总集' }).locator('input').fill('12')
   await editDialog.getByRole('button', { name: '保存' }).click()
   await expect(page.getByText('编辑成功', { exact: true })).toBeVisible()
   await expect.poll(() => updatedPayload?.title).toBe('Second Show Edited')
+  expect(updatedPayload).toMatchObject({
+    scheduleLocked: true,
+    totalEpisodesLocked: true,
+    nextAirDate: '',
+    totalEpisodes: 12,
+  })
 })

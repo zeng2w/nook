@@ -8,6 +8,7 @@ const { classifyTmdbError, sendTmdbError, tmdbGet } = require('../utils/tmdbClie
 const { getSyncConcurrency, mapWithConcurrency } = require('../utils/concurrency');
 const { buildShowListPipeline, parseShowQuery, SHOW_CATEGORIES, SHOW_STATUSES } = require('../utils/showQuery');
 const { getShowSyncDecision } = require('../utils/showSyncPolicy');
+const { applyDerivedShowStatus, getSyncedEpisodeCount } = require('../utils/showStatus');
 const { getCalendarDateKeyInTimeZone, isValidTimeZone } = require('../utils/timeZone');
 const logger = require('../utils/logger');
 const { validateObjectIdParam } = require('../middleware/validate');
@@ -26,6 +27,8 @@ const ALLOWED_SHOW_FIELDS = [
   'updateFrequency',
   'updateDays',
   'updateCount',
+  'totalEpisodesLocked',
+  'scheduleLocked',
   'lastAirDate',
   'nextAirDate',
   'estimatedFinishDate',
@@ -192,7 +195,7 @@ router.get('/stats', async (req, res, next) => {
 router.get('/calendar', async (req, res, next) => {
   try {
     const shows = await Show.find({ userId: req.user.id })
-      .select('title posterUrl network networkLogo status totalEpisodes airedEpisodes updateFrequency updateDays updateCount lastAirDate nextAirDate estimatedFinishDate seriesTitle seasonNumber seasonName')
+      .select('title posterUrl network networkLogo status totalEpisodes airedEpisodes updateFrequency updateDays updateCount scheduleLocked lastAirDate nextAirDate estimatedFinishDate seriesTitle seasonNumber seasonName')
       .sort({ lastAirDate: -1, title: 1 })
       .lean();
     res.json(shows);
@@ -222,6 +225,7 @@ router.post('/', async (req, res, next) => {
     }
 
     const newShow = new Show({ userId: req.user.id, ...showData });
+    applyDerivedShowStatus(newShow);
 
     const show = await newShow.save();
     res.json(show);
@@ -240,7 +244,6 @@ router.post('/', async (req, res, next) => {
 // 目标进度是幂等的：客户端重试相同请求时不会重复产生 TvLog。
 router.patch('/:id/progress', validateObjectIdParam(), async (req, res, next) => {
   const watchedEpisodes = Number(req.body?.watchedEpisodes);
-  const status = req.body?.status;
   const date = req.body?.date;
 
   if (!Number.isInteger(watchedEpisodes) || watchedEpisodes < 0) {
@@ -270,7 +273,7 @@ router.patch('/:id/progress', validateObjectIdParam(), async (req, res, next) =>
 
       loggedDelta = watchedEpisodes - show.watchedEpisodes;
       show.watchedEpisodes = watchedEpisodes;
-      if (status !== undefined) show.status = status;
+      applyDerivedShowStatus(show);
       show.updatedAt = Date.now();
       await show.save({ session });
 
@@ -304,6 +307,7 @@ router.put('/:id', validateObjectIdParam(), async (req, res, next) => {
     if (!show) return res.status(404).json({ code: 'SHOW_NOT_FOUND', error: 'Show not found' });
 
     Object.assign(show, pickShowFields(req.body), { updatedAt: Date.now() });
+    applyDerivedShowStatus(show);
     await show.save();
     res.json(show);
   } catch (err) {
@@ -386,37 +390,46 @@ router.post('/sync', async (req, res, next) => {
           const remoteTotalEpisodes = seasonProgress
             ? seasonProgress.totalEpisodes
             : remoteData.number_of_episodes;
+          // 用户锁定总集数后，以本地确认过的总集数作为进度上限。
+          // 这样 TMDB 的临时错数不会让已更新集数越界并导致保存失败。
+          const syncedEpisodeCount = getSyncedEpisodeCount(show, remoteEpisodeCount);
           let needsSave = false;
           let updateLog = null;
 
-          if (remoteEpisodeCount > show.airedEpisodes) {
+          if (syncedEpisodeCount > show.airedEpisodes) {
             updateLog = {
               id: show._id,
               title: show.title,
               oldEp: show.airedEpisodes,
-              newEp: remoteEpisodeCount,
+              newEp: syncedEpisodeCount,
               date: remoteAirDate || today,
               posterUrl: show.posterUrl
             };
           }
           if (
             seasonProgress
-              ? remoteEpisodeCount !== show.airedEpisodes
-              : remoteEpisodeCount > show.airedEpisodes
+              ? syncedEpisodeCount !== show.airedEpisodes
+              : syncedEpisodeCount > show.airedEpisodes
           ) {
-            show.airedEpisodes = remoteEpisodeCount;
+            show.airedEpisodes = syncedEpisodeCount;
             needsSave = true;
           }
-          if (remoteAirDate && toCalendarDateKey(show.lastAirDate) !== remoteAirDate) {
+          if (
+            !show.scheduleLocked &&
+            remoteAirDate &&
+            syncedEpisodeCount === remoteEpisodeCount &&
+            toCalendarDateKey(show.lastAirDate) !== remoteAirDate
+          ) {
             show.lastAirDate = remoteAirDate;
             needsSave = true;
           }
 
           const canUseExactSeasonTotal = seasonProgress && remoteTotalEpisodes >= Math.max(
             show.watchedEpisodes,
-            remoteEpisodeCount
+            syncedEpisodeCount
           );
           if (
+            !show.totalEpisodesLocked &&
             remoteTotalEpisodes &&
             (remoteTotalEpisodes > show.totalEpisodes || (
               canUseExactSeasonTotal && remoteTotalEpisodes !== show.totalEpisodes
@@ -425,39 +438,41 @@ router.post('/sync', async (req, res, next) => {
             show.totalEpisodes = remoteTotalEpisodes;
             needsSave = true;
           }
-          const managedFrequencies = seasonProgress
-            ? ['weekly', 'unknown', 'ended']
-            : ['weekly', 'unknown'];
-          const scheduleIsManagedByTmdb = managedFrequencies.includes(show.updateFrequency);
-          if (remoteSchedule.updateFrequency === 'ended') {
-            if (show.updateFrequency !== 'ended') {
-              show.updateFrequency = 'ended';
-              needsSave = true;
-            }
-            if (show.nextAirDate) {
-              show.nextAirDate = null;
-              needsSave = true;
-            }
-            if (Array.isArray(show.updateDays) && show.updateDays.length > 0) {
-              show.updateDays = [];
-              needsSave = true;
-            }
-          } else if (scheduleIsManagedByTmdb) {
-            if (show.updateFrequency !== remoteSchedule.updateFrequency) {
-              show.updateFrequency = remoteSchedule.updateFrequency;
-              needsSave = true;
-            }
-            if (!hasSameUpdateDays(show.updateDays, remoteSchedule.updateDays)) {
-              show.updateDays = remoteSchedule.updateDays;
-              needsSave = true;
-            }
-            if (toCalendarDateKey(show.nextAirDate) !== remoteSchedule.nextAirDate) {
-              show.nextAirDate = remoteSchedule.nextAirDate;
-              needsSave = true;
-            }
-            if (seasonProgress && show.updateCount !== remoteSchedule.updateCount) {
-              show.updateCount = remoteSchedule.updateCount;
-              needsSave = true;
+          if (!show.scheduleLocked) {
+            const managedFrequencies = seasonProgress
+              ? ['weekly', 'unknown', 'ended']
+              : ['weekly', 'unknown'];
+            const scheduleIsManagedByTmdb = managedFrequencies.includes(show.updateFrequency);
+            if (remoteSchedule.updateFrequency === 'ended') {
+              if (show.updateFrequency !== 'ended') {
+                show.updateFrequency = 'ended';
+                needsSave = true;
+              }
+              if (show.nextAirDate) {
+                show.nextAirDate = null;
+                needsSave = true;
+              }
+              if (Array.isArray(show.updateDays) && show.updateDays.length > 0) {
+                show.updateDays = [];
+                needsSave = true;
+              }
+            } else if (scheduleIsManagedByTmdb) {
+              if (show.updateFrequency !== remoteSchedule.updateFrequency) {
+                show.updateFrequency = remoteSchedule.updateFrequency;
+                needsSave = true;
+              }
+              if (!hasSameUpdateDays(show.updateDays, remoteSchedule.updateDays)) {
+                show.updateDays = remoteSchedule.updateDays;
+                needsSave = true;
+              }
+              if (toCalendarDateKey(show.nextAirDate) !== remoteSchedule.nextAirDate) {
+                show.nextAirDate = remoteSchedule.nextAirDate;
+                needsSave = true;
+              }
+              if (seasonProgress && show.updateCount !== remoteSchedule.updateCount) {
+                show.updateCount = remoteSchedule.updateCount;
+                needsSave = true;
+              }
             }
           }
           if (!show.network && remoteData.networks && remoteData.networks.length > 0) {
@@ -468,6 +483,7 @@ router.post('/sync', async (req, res, next) => {
             needsSave = true;
           }
 
+          if (applyDerivedShowStatus(show)) needsSave = true;
           const contentChanged = needsSave;
           show.lastTmdbCheckedAt = checkedAt;
           show.lastTmdbSyncStatus = 'success';
@@ -575,6 +591,7 @@ router.post('/import', async (req, res, next) => {
         : {};
       const normalizedTitle = String(showData.title || '').trim().toLowerCase();
       const candidate = new Show({ userId: req.user.id, ...showData, ...backupTimestamps });
+      applyDerivedShowStatus(candidate);
 
       try {
         await candidate.validate();

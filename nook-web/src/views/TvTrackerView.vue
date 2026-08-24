@@ -131,6 +131,7 @@ import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { updateTheme } from '../store';
 import { fetchShowsApi, fetchCalendarShowsApi, addShowApi, updateShowApi, updateShowProgressApi, deleteShowApi, syncShowsApi, importShowsApi } from '@/api/shows';
 import { getApiErrorMessage } from '@/api/errors';
+import { deriveShowStatus } from '@/utils/showStatus';
 import { getAuthUserId } from '@/auth';
 import { getCurrentTimeZone } from '@/utils/dateUtils';
 import { readJsonStorage, writeJsonStorage } from '@/utils/storage';
@@ -360,12 +361,11 @@ watch(searchQuery, () => {
   searchTimer = setTimeout(() => fetchShows(true), 300);
 });
 
-const calcStatus = (watched, aired, total) => { 
-  if (watched === 0) return 'wish'; 
-  const target = (total > 0) ? total : aired; 
-  if (target > 0 && watched >= target) return 'watched'; 
-  return 'watching'; 
-};
+const calcStatus = (watchedEpisodes, airedEpisodes, totalEpisodes) => deriveShowStatus({
+  watchedEpisodes,
+  airedEpisodes,
+  totalEpisodes
+});
 
 const saveShow = async (formData) => {
   const userId = getAuthUserId();

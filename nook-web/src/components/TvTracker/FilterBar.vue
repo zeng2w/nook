@@ -164,7 +164,7 @@ const statuses = [
   { label: '全部', value: 'all' },
   { label: '想看', value: 'wish' },
   { label: '在看', value: 'watching' },
-  { label: '已看', value: 'watched' },
+  { label: '已看完', value: 'watched' },
   { label: '弃剧', value: 'dropped' }
 ];
 

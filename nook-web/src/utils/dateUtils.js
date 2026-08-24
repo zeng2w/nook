@@ -103,7 +103,8 @@ export const isShowUpdateDay = (show, targetDate) => {
   }
 
   const lastUpdate = toLocalCalendarDate(show.lastAirDate);
-  const nextUpdate = toLocalCalendarDate(show.nextAirDate);
+  // 手动排期以用户设置的重复规则为准，不再让旧的 TMDB 下一集日期压住周更日期。
+  const nextUpdate = show.scheduleLocked ? null : toLocalCalendarDate(show.nextAirDate);
   const targetDay = getCalendarDayNumber(target);
   const lastUpdateDay = getCalendarDayNumber(lastUpdate);
   const nextUpdateDay = getCalendarDayNumber(nextUpdate);
@@ -145,7 +146,7 @@ export const formatDateCN = (dateValue) => {
 };
 
 export const getEstimatedDateText = (show) => {
-  if (show.status === 'watched') return '已完结';
+  if (show.status === 'watched') return '已看完';
   if (show.status === 'dropped') return '已弃剧';
 
   const aired = show.airedEpisodes || 0;
