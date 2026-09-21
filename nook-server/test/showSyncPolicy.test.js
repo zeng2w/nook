@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  DORMANT_SHOW_COOLDOWN_MS,
   DUE_SHOW_COOLDOWN_MS,
   UNKNOWN_SCHEDULE_COOLDOWN_MS,
   getShowSyncDecision
@@ -49,6 +50,23 @@ test('checks an unknown schedule at most once every 24 hours', () => {
   }, { now: NOW, timeZone: 'Asia/Shanghai' }), {
     shouldCheck: true,
     reason: 'unknown-schedule'
+  });
+});
+
+test('rechecks ended shows at most once every seven days', () => {
+  assert.deepEqual(getShowSyncDecision({
+    updateFrequency: 'ended',
+    lastTmdbCheckedAt: new Date(NOW.getTime() - DORMANT_SHOW_COOLDOWN_MS + 1)
+  }, { now: NOW, timeZone: 'Asia/Shanghai' }), {
+    shouldCheck: false,
+    reason: 'dormant-cooldown'
+  });
+  assert.deepEqual(getShowSyncDecision({
+    updateFrequency: 'ended',
+    lastTmdbCheckedAt: new Date(NOW.getTime() - DORMANT_SHOW_COOLDOWN_MS)
+  }, { now: NOW, timeZone: 'Asia/Shanghai' }), {
+    shouldCheck: true,
+    reason: 'dormant-recheck'
   });
 });
 

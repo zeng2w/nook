@@ -2,6 +2,7 @@ const { getCalendarDateKeyInTimeZone } = require('./timeZone');
 
 const DUE_SHOW_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const UNKNOWN_SCHEDULE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const DORMANT_SHOW_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 
 const toCalendarDateKey = (value) => {
   if (!value) return null;
@@ -18,6 +19,17 @@ const getShowSyncDecision = (show, options = {}) => {
 
   if (options.force) return { shouldCheck: true, reason: 'forced' };
 
+  const lastCheckedAt = new Date(show?.lastTmdbCheckedAt || 0);
+  if (show?.updateFrequency === 'ended') {
+    if (
+      !Number.isNaN(lastCheckedAt.getTime()) &&
+      now.getTime() - lastCheckedAt.getTime() < DORMANT_SHOW_COOLDOWN_MS
+    ) {
+      return { shouldCheck: false, reason: 'dormant-cooldown' };
+    }
+    return { shouldCheck: true, reason: 'dormant-recheck' };
+  }
+
   const today = getCalendarDateKeyInTimeZone(now, timeZone);
   const nextAirDate = toCalendarDateKey(show?.nextAirDate);
   if (nextAirDate && nextAirDate > today) {
@@ -27,7 +39,6 @@ const getShowSyncDecision = (show, options = {}) => {
   const cooldownMs = nextAirDate
     ? DUE_SHOW_COOLDOWN_MS
     : UNKNOWN_SCHEDULE_COOLDOWN_MS;
-  const lastCheckedAt = new Date(show?.lastTmdbCheckedAt || 0);
   if (
     !Number.isNaN(lastCheckedAt.getTime()) &&
     now.getTime() - lastCheckedAt.getTime() < cooldownMs
@@ -42,6 +53,7 @@ const getShowSyncDecision = (show, options = {}) => {
 };
 
 module.exports = {
+  DORMANT_SHOW_COOLDOWN_MS,
   DUE_SHOW_COOLDOWN_MS,
   UNKNOWN_SCHEDULE_COOLDOWN_MS,
   getShowSyncDecision,

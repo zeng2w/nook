@@ -24,7 +24,7 @@ const mockSignedOut = async (page) => {
   }, 401))
 }
 
-const mockSignedIn = async (page, { onActivityRequest, onSyncRequest } = {}) => {
+const mockSignedIn = async (page, { onActivityRequest, onSyncRequest, syncResponse } = {}) => {
   await mockRuntimeConfig(page)
   await page.route('**/api/auth/me', route => fulfillJson(route, { user: TEST_USER }))
   await page.route('**/api/shows/stats', route => fulfillJson(route, {
@@ -46,6 +46,8 @@ const mockSignedIn = async (page, { onActivityRequest, onSyncRequest } = {}) => 
       updatedCount: 0,
       failedCount: 0,
       logs: [],
+      seasonDiscoveries: [],
+      ...syncResponse,
     })
   })
 }
@@ -133,6 +135,7 @@ test('adds and tracks a specific TMDB season', async ({ page }) => {
     airedEpisodes: 12,
     updateFrequency: 'unknown',
     updateDays: [],
+    recommendedSeasonNumber: 2,
     seasons: [
       { seasonNumber: 1, name: 'Season 1', episodeCount: 10 },
       { seasonNumber: 2, name: 'Season 2', episodeCount: 3 },
@@ -176,8 +179,8 @@ test('adds and tracks a specific TMDB season', async ({ page }) => {
   await dialog.getByLabel('搜索 TMDB 剧名').fill('Example')
   await dialog.getByRole('button', { name: '搜索 TMDB' }).click()
   await dialog.getByText('Example Show', { exact: true }).click()
-  await dialog.getByLabel('追踪范围').selectOption({ label: '第 2 季（共 3 集）' })
 
+  await expect(dialog.getByLabel('追踪范围')).toHaveValue('2')
   await expect(dialog.getByText('已更新至第 2 集 / 共 3 集')).toBeVisible()
   await expect(dialog.getByText('下集：2026-08-30')).toBeVisible()
   await dialog.getByRole('button', { name: '保存' }).click()
@@ -193,6 +196,83 @@ test('adds and tracks a specific TMDB season', async ({ page }) => {
     nextAirDate: '2026-08-30',
     updateFrequency: 'weekly',
   })
+})
+
+test('opens a discovered single season without asking for a season choice', async ({ page }) => {
+  let createdPayload = null
+  await mockSignedIn(page, {
+    syncResponse: {
+      checkedCount: 1,
+      seasonDiscoveries: [{
+        type: 'new-season',
+        tmdbId: 200,
+        seasonNumber: 1,
+        seasonName: 'Season 1',
+        title: 'Single Season Anime',
+        category: 'anime',
+        tmdbType: 'anime',
+        posterUrl: '',
+      }],
+    },
+  })
+
+  await page.route('**/api/shows/calendar', route => fulfillJson(route, []))
+  await page.route('**/api/tmdb/trending', route => fulfillJson(route, []))
+  await page.route('**/api/tmdb/new-releases', route => fulfillJson(route, []))
+  await page.route('**/api/tmdb/details/anime/200', route => fulfillJson(route, {
+    tmdbId: 200,
+    title: 'Single Season Anime',
+    totalEpisodes: 12,
+    airedEpisodes: 12,
+    updateFrequency: 'ended',
+    updateDays: [],
+    recommendedSeasonNumber: 1,
+    seasons: [{ seasonNumber: 1, name: 'Season 1', episodeCount: 12 }],
+    networks: [],
+  }))
+  await page.route('**/api/tmdb/season/200/1', route => fulfillJson(route, {
+    seriesTitle: 'Single Season Anime',
+    seasonNumber: 1,
+    seasonName: 'Season 1',
+    totalEpisodes: 12,
+    airedEpisodes: 12,
+    lastAirDate: '2026-09-01',
+    nextAirDate: null,
+    updateFrequency: 'ended',
+    updateDays: [],
+    updateCount: 1,
+    isEnded: true,
+  }))
+  await page.route(/\/api\/shows(?:\?.*)?$/, route => {
+    if (route.request().method() === 'POST') {
+      createdPayload = route.request().postDataJSON()
+      return fulfillJson(route, { ...createdPayload, _id: '507f1f77bcf86cd799439025' })
+    }
+    return fulfillJson(route, {
+      items: [],
+      pagination: { page: 1, limit: 24, total: 0, totalPages: 0, hasMore: false },
+      facets: {
+        allCount: 0,
+        statusCounts: { watching: 0, watched: 0, wish: 0, dropped: 0 },
+        categoryCounts: { tv: 0, anime: 0, movie: 0, variety: 0 },
+        networkTotal: 0,
+        networks: [],
+      },
+    })
+  })
+
+  await page.goto('/home/tv-shows')
+  await page.getByRole('button', { name: '消息通知' }).click()
+  await expect(page.getByText('发现可追踪的 第 1 季')).toBeVisible()
+  await page.getByRole('button', { name: '添加这一季' }).click()
+
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText('已自动选择第 1 季')).toBeVisible()
+  await expect(dialog.getByLabel('追踪范围')).toHaveCount(0)
+  await dialog.getByRole('button', { name: '保存' }).click()
+
+  await expect.poll(() => createdPayload?.seasonNumber).toBe(1)
+  expect(createdPayload.title).toBe('Single Season Anime · 第 1 季')
 })
 
 test('syncs only on the visible tracker and loads discovery on demand', async ({ page }) => {

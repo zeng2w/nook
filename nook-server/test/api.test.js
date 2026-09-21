@@ -253,8 +253,10 @@ test('smart show sync validates time zones before querying data', async () => {
 
 test('smart show sync skips future episodes without calling TMDB', async () => {
   const originalFind = Show.find;
-  Show.find = () => ({
+  let receivedFilter;
+  Show.find = filter => ({
     async select() {
+      receivedFilter = filter;
       return [{
         _id: '507f1f77bcf86cd799439021',
         tmdbId: 100,
@@ -275,6 +277,11 @@ test('smart show sync skips future episodes without calling TMDB', async () => {
     assert.equal(response.body.checkedCount, 0);
     assert.equal(response.body.skippedCount, 1);
     assert.equal(response.body.changedCount, 0);
+    assert.equal(response.body.seasonDiscoveries.length, 0);
+    assert.deepEqual(receivedFilter, {
+      userId: USER_A,
+      status: { $ne: 'dropped' }
+    });
   } finally {
     Show.find = originalFind;
   }

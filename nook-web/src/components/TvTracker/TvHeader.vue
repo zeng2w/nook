@@ -76,7 +76,11 @@
                   </div>
                   <div class="noti-info">
                     <div class="noti-top-line"><span class="noti-title">{{ item.title }}</span></div>
-                    <div class="noti-desc">更新至 <span class="highlight-ep">第 {{ item.newEp }} 集</span></div>
+                    <template v-if="item.type === 'new-season'">
+                      <div class="noti-desc">发现可追踪的 <span class="highlight-ep">第 {{ item.seasonNumber }} 季</span></div>
+                      <button class="noti-action-btn" @click.stop="addSeason(item)">添加这一季</button>
+                    </template>
+                    <div v-else class="noti-desc">更新至 <span class="highlight-ep">第 {{ item.newEp }} 集</span></div>
                   </div>
                   <button class="noti-delete-btn" :aria-label="`删除 ${item.title} 通知`" @click.stop="$emit('remove-noti', index)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                 </div>
@@ -108,12 +112,16 @@ defineProps({
   searchQuery: { type: String, default: '' } // 接收搜索词
 });
 
-const emit = defineEmits(['add', 'remove-noti', 'clear-notis', 'noti-read', 'sync', 'export', 'import', 'open-calendar', 'update:searchQuery']);
+const emit = defineEmits(['add', 'add-season', 'remove-noti', 'clear-notis', 'noti-read', 'sync', 'export', 'import', 'open-calendar', 'update:searchQuery']);
 
 const showNotiPanel = ref(false);
 const toggleNoti = () => {
   showNotiPanel.value = !showNotiPanel.value;
   if (showNotiPanel.value) emit('noti-read');
+};
+const addSeason = (item) => {
+  showNotiPanel.value = false;
+  emit('add-season', item);
 };
 </script>
 
@@ -184,6 +192,8 @@ const toggleNoti = () => {
 .noti-title { font-size: 0.95rem; font-weight: 600; color: #1d1d1f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px; }
 .noti-desc { font-size: 0.85rem; color: #424245; line-height: 1.4; }
 .highlight-ep { color: #007aff; font-weight: 600; }
+.noti-action-btn { align-self: flex-start; border: 0; border-radius: 6px; padding: 4px 8px; background: #eef2ff; color: #4f46e5; font-size: 0.75rem; font-weight: 700; cursor: pointer; }
+.noti-action-btn:hover { background: #e0e7ff; }
 .noti-delete-btn { background: none; border: none; padding: 6px; color: #c7c7cc; cursor: pointer; border-radius: 50%; transition: all 0.2s; opacity: 0; }
 .noti-item:hover .noti-delete-btn { opacity: 1; }
 .noti-delete-btn:hover { color: #ff3b30; background: rgba(255, 59, 48, 0.1); }

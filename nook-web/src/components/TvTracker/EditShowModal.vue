@@ -69,20 +69,21 @@
             </div>
           </div>
 
-          <div v-if="!isEditing && availableSeasons.length > 0" class="form-group compact-group season-picker">
+          <div v-if="!isEditing && availableSeasons.length > 1" class="form-group compact-group season-picker">
             <label for="show-season">追踪范围</label>
             <select id="show-season" v-model="selectedSeasonNumber" @change="onSeasonSelect" class="modern-input" :disabled="isSeasonLoading">
               <option :value="null">整部剧</option>
               <option v-for="s in availableSeasons" :key="s.seasonNumber" :value="s.seasonNumber">第 {{ s.seasonNumber }} 季（共 {{ s.episodeCount }} 集）</option>
             </select>
-            <div v-if="isSeasonLoading" class="season-summary loading">正在读取这一季的更新进度…</div>
-            <div v-else-if="seasonSummary" class="season-summary" :class="{ ended: seasonSummary.isEnded }">
-              <strong>第 {{ seasonSummary.seasonNumber }} 季</strong>
-              <span>已更新至第 {{ seasonSummary.airedEpisodes }} 集 / 共 {{ seasonSummary.totalEpisodes }} 集</span>
-              <span v-if="seasonSummary.isEnded" class="season-state">已完结</span>
-              <span v-else-if="seasonSummary.nextAirDate" class="season-state">下集：{{ seasonSummary.nextAirDate }}</span>
-              <span v-else class="season-state paused">暂无下一集日期</span>
-            </div>
+          </div>
+
+          <div v-if="!isEditing && isSeasonLoading" class="season-summary loading">正在读取推荐季度的更新进度…</div>
+          <div v-else-if="!isEditing && seasonSummary" class="season-summary" :class="{ ended: seasonSummary.isEnded }">
+            <strong>{{ availableSeasons.length === 1 ? '已自动选择' : '当前选择' }}第 {{ seasonSummary.seasonNumber }} 季</strong>
+            <span>已更新至第 {{ seasonSummary.airedEpisodes }} 集 / 共 {{ seasonSummary.totalEpisodes }} 集</span>
+            <span v-if="seasonSummary.isEnded" class="season-state">已完结</span>
+            <span v-else-if="seasonSummary.nextAirDate" class="season-state">下集：{{ seasonSummary.nextAirDate }}</span>
+            <span v-else class="season-state paused">暂无下一集日期</span>
           </div>
 
           <div v-if="isEditing && form.seasonNumber" class="season-summary editing-summary">
@@ -160,11 +161,13 @@ import { ref, reactive, watch, computed } from 'vue';
 import axios from 'axios';
 import { getApiErrorMessage } from '@/api/errors';
 import { toCalendarDateInput } from '@/utils/dateUtils';
+import { getDefaultSeasonNumber } from '@/utils/seasons';
 import { deriveShowStatus } from '@/utils/showStatus';
 
 const props = defineProps({
   visible: Boolean,
   editData: Object,
+  initialSelection: Object,
   isSaving: Boolean
 });
 
@@ -230,8 +233,8 @@ const replaceForm = (data = {}) => {
 };
 
 watch(
-  [() => props.visible, () => props.editData], 
-  ([isOpen, newData]) => {
+  [() => props.visible, () => props.editData, () => props.initialSelection],
+  ([isOpen, newData, initialSelection]) => {
     if (isOpen) {
       if (newData) {
         // --- 编辑模式：填充数据 ---
@@ -247,6 +250,9 @@ watch(
         seasonSummary.value = null;
         isSeasonLoading.value = false;
         searchError.value = '';
+        if (initialSelection) {
+          void selectTMDBResult(initialSelection, initialSelection.seasonNumber);
+        }
       }
     }
   }
@@ -332,7 +338,7 @@ const searchTMDB = async () => {
   }
 };
 
-const selectTMDBResult = async (item) => {
+const selectTMDBResult = async (item, preferredSeasonNumber = null) => {
   searchError.value = '';
   form.tmdbId = item.tmdbId;
   form.title = item.title;
@@ -344,7 +350,7 @@ const selectTMDBResult = async (item) => {
   seasonSummary.value = null;
   
   try {
-    const type = item.category;
+    const type = item.tmdbType || item.category;
     const res = await axios.get(`/api/tmdb/details/${type}/${item.tmdbId}`);
     const details = res.data;
     
@@ -360,7 +366,17 @@ const selectTMDBResult = async (item) => {
       form.network = ''; form.networkLogo = '';
     }
     
-    if (details.seasons && details.seasons.length > 0) availableSeasons.value = details.seasons;
+    if (details.seasons && details.seasons.length > 0) {
+      availableSeasons.value = details.seasons;
+      const preferred = Number(preferredSeasonNumber);
+      const preferredExists = details.seasons.some(
+        season => season.seasonNumber === preferred
+      );
+      selectedSeasonNumber.value = preferredExists
+        ? preferred
+        : getDefaultSeasonNumber(details);
+      if (selectedSeasonNumber.value) await onSeasonSelect();
+    }
     
     // 清空搜索状态
     tmdbResults.value = [];
