@@ -117,7 +117,7 @@ defineEmits(['edit', 'update-progress', 'delete', 'restore', 'drop', 'pause-dele
 
 const getCategoryLabel = (cat) => ({ tv: '电视剧', anime: '动漫', movie: '电影', variety: '综艺' }[cat] || cat);
 const getCategoryColor = (cat) => ({ tv: '#e5e7eb', anime: '#f3e8ff', movie: '#e0f2fe', variety: '#ffedd5' }[cat] || '#eee');
-const getStatusLabel = (st) => ({ wish: '想看', watching: '在看', watched: '已看', dropped: '弃剧' }[st] || st);
+const getStatusLabel = (st) => ({ wish: '想看', watching: '在看', watched: '已看完', dropped: '弃剧' }[st] || st);
 const calcPercent = (n, d) => (!d || d === 0) ? 0 : Math.round((n / d) * 100);
 
 const progressBars = computed(() => [

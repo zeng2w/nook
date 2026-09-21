@@ -3,11 +3,18 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const Show = require('../models/Show'); 
 const TvLog = require('../models/TvLog');
-const { getAiredEpisodeCount, getTmdbSchedule, getTmdbSeasonProgress } = require('../utils/tmdb');
+const {
+  getAiredEpisodeCount,
+  getRecommendedSeasonNumber,
+  getTmdbSchedule,
+  getTmdbSeasonProgress,
+  hasTmdbSeasonActivity
+} = require('../utils/tmdb');
 const { classifyTmdbError, sendTmdbError, tmdbGet } = require('../utils/tmdbClient');
 const { getSyncConcurrency, mapWithConcurrency } = require('../utils/concurrency');
 const { buildShowListPipeline, parseShowQuery, SHOW_CATEGORIES, SHOW_STATUSES } = require('../utils/showQuery');
 const { getShowSyncDecision } = require('../utils/showSyncPolicy');
+const { applyDerivedShowStatus, getSyncedEpisodeCount } = require('../utils/showStatus');
 const { getCalendarDateKeyInTimeZone, isValidTimeZone } = require('../utils/timeZone');
 const logger = require('../utils/logger');
 const { validateObjectIdParam } = require('../middleware/validate');
@@ -26,6 +33,8 @@ const ALLOWED_SHOW_FIELDS = [
   'updateFrequency',
   'updateDays',
   'updateCount',
+  'totalEpisodesLocked',
+  'scheduleLocked',
   'lastAirDate',
   'nextAirDate',
   'estimatedFinishDate',
@@ -192,7 +201,7 @@ router.get('/stats', async (req, res, next) => {
 router.get('/calendar', async (req, res, next) => {
   try {
     const shows = await Show.find({ userId: req.user.id })
-      .select('title posterUrl network networkLogo status totalEpisodes airedEpisodes updateFrequency updateDays updateCount lastAirDate nextAirDate estimatedFinishDate seriesTitle seasonNumber seasonName')
+      .select('title posterUrl network networkLogo status totalEpisodes airedEpisodes updateFrequency updateDays updateCount scheduleLocked lastAirDate nextAirDate estimatedFinishDate seriesTitle seasonNumber seasonName')
       .sort({ lastAirDate: -1, title: 1 })
       .lean();
     res.json(shows);
@@ -222,6 +231,7 @@ router.post('/', async (req, res, next) => {
     }
 
     const newShow = new Show({ userId: req.user.id, ...showData });
+    applyDerivedShowStatus(newShow);
 
     const show = await newShow.save();
     res.json(show);
@@ -240,7 +250,6 @@ router.post('/', async (req, res, next) => {
 // 目标进度是幂等的：客户端重试相同请求时不会重复产生 TvLog。
 router.patch('/:id/progress', validateObjectIdParam(), async (req, res, next) => {
   const watchedEpisodes = Number(req.body?.watchedEpisodes);
-  const status = req.body?.status;
   const date = req.body?.date;
 
   if (!Number.isInteger(watchedEpisodes) || watchedEpisodes < 0) {
@@ -270,7 +279,7 @@ router.patch('/:id/progress', validateObjectIdParam(), async (req, res, next) =>
 
       loggedDelta = watchedEpisodes - show.watchedEpisodes;
       show.watchedEpisodes = watchedEpisodes;
-      if (status !== undefined) show.status = status;
+      applyDerivedShowStatus(show);
       show.updatedAt = Date.now();
       await show.save({ session });
 
@@ -304,6 +313,7 @@ router.put('/:id', validateObjectIdParam(), async (req, res, next) => {
     if (!show) return res.status(404).json({ code: 'SHOW_NOT_FOUND', error: 'Show not found' });
 
     Object.assign(show, pickShowFields(req.body), { updatedAt: Date.now() });
+    applyDerivedShowStatus(show);
     await show.save();
     res.json(show);
   } catch (err) {
@@ -342,13 +352,24 @@ router.post('/sync', async (req, res, next) => {
     const checkedAt = new Date();
     const today = getCalendarDateKeyInTimeZone(checkedAt, timeZone);
 
-    const activeShows = await Show.find({
+    const syncableShows = await Show.find({
       userId: req.user.id,
-      status: { $ne: 'dropped' },
-      updateFrequency: { $ne: 'ended' }
+      status: { $ne: 'dropped' }
     }).select('+lastTmdbCheckedAt +lastTmdbSyncStatus');
 
-    const eligibleShows = activeShows.filter(show => show.tmdbId && show.category !== 'movie');
+    const eligibleShows = syncableShows.filter(show => show.tmdbId && show.category !== 'movie');
+    const trackedSeasonKeys = new Set();
+    const highestTrackedSeasonByTmdb = new Map();
+    eligibleShows.forEach(show => {
+      const seasonNumber = normalizeSeasonNumber(show.seasonNumber);
+      if (!seasonNumber) return;
+      const tmdbId = Number(show.tmdbId);
+      trackedSeasonKeys.add(`${tmdbId}:${seasonNumber}`);
+      highestTrackedSeasonByTmdb.set(
+        tmdbId,
+        Math.max(highestTrackedSeasonByTmdb.get(tmdbId) || 0, seasonNumber)
+      );
+    });
     const syncCandidates = eligibleShows.filter(show => getShowSyncDecision(show, {
       force,
       now: checkedAt,
@@ -365,17 +386,67 @@ router.post('/sync', async (req, res, next) => {
           });
 
           const remoteData = tmdbRes.data;
+          const tmdbId = Number(show.tmdbId);
+          const trackedSeasonNumber = normalizeSeasonNumber(show.seasonNumber);
+          const highestTrackedSeason = highestTrackedSeasonByTmdb.get(tmdbId) || 0;
+          const recommendedSeasonNumber = getRecommendedSeasonNumber(remoteData, { today });
+          let seasonDiscovery = null;
+          if (
+            trackedSeasonNumber &&
+            trackedSeasonNumber === highestTrackedSeason &&
+            recommendedSeasonNumber > highestTrackedSeason &&
+            !trackedSeasonKeys.has(`${tmdbId}:${recommendedSeasonNumber}`)
+          ) {
+            const remoteSeason = (remoteData.seasons || []).find(
+              season => Number(season.season_number) === recommendedSeasonNumber
+            );
+            seasonDiscovery = {
+              type: 'new-season',
+              tmdbId,
+              seasonNumber: recommendedSeasonNumber,
+              seasonName: remoteSeason?.name || `第 ${recommendedSeasonNumber} 季`,
+              title: remoteData.name || show.seriesTitle || show.title,
+              category: show.category,
+              tmdbType: show.category === 'anime' ? 'anime' : 'tv',
+              posterUrl: remoteSeason?.poster_path
+                ? `https://image.tmdb.org/t/p/w342${remoteSeason.poster_path}`
+                : show.posterUrl
+            };
+          }
+
           let seasonProgress = null;
-          if (show.seasonNumber) {
-            const seasonRes = await tmdbGet(`/tv/${show.tmdbId}/season/${show.seasonNumber}`, {
+          const shouldLoadSeason = trackedSeasonNumber && (
+            show.updateFrequency !== 'ended' ||
+            force ||
+            hasTmdbSeasonActivity(remoteData, trackedSeasonNumber, show.airedEpisodes)
+          );
+          if (shouldLoadSeason) {
+            const seasonRes = await tmdbGet(`/tv/${show.tmdbId}/season/${trackedSeasonNumber}`, {
               cacheTtlMs: 60 * 1000,
               params: { language: 'zh-CN' }
             });
             seasonProgress = getTmdbSeasonProgress(seasonRes.data, remoteData, {
-              seasonNumber: show.seasonNumber,
+              seasonNumber: trackedSeasonNumber,
               today
             });
           }
+
+          // 休眠季度没有出现同季新集时，只记录检查时间和新季提示，避免额外季度请求。
+          if (trackedSeasonNumber && !seasonProgress) {
+            let contentChanged = false;
+            if (!show.network && remoteData.networks && remoteData.networks.length > 0) {
+              show.network = remoteData.networks[0].name;
+              if (remoteData.networks[0].logo_path) {
+                show.networkLogo = `https://image.tmdb.org/t/p/h60${remoteData.networks[0].logo_path}`;
+              }
+              contentChanged = true;
+            }
+            show.lastTmdbCheckedAt = checkedAt;
+            show.lastTmdbSyncStatus = 'success';
+            await show.save();
+            return { contentChanged, updateLog: null, seasonDiscovery };
+          }
+
           const remoteSchedule = seasonProgress || getTmdbSchedule(remoteData);
           const remoteEpisodeCount = seasonProgress
             ? seasonProgress.airedEpisodes
@@ -386,37 +457,46 @@ router.post('/sync', async (req, res, next) => {
           const remoteTotalEpisodes = seasonProgress
             ? seasonProgress.totalEpisodes
             : remoteData.number_of_episodes;
+          // 用户锁定总集数后，以本地确认过的总集数作为进度上限。
+          // 这样 TMDB 的临时错数不会让已更新集数越界并导致保存失败。
+          const syncedEpisodeCount = getSyncedEpisodeCount(show, remoteEpisodeCount);
           let needsSave = false;
           let updateLog = null;
 
-          if (remoteEpisodeCount > show.airedEpisodes) {
+          if (syncedEpisodeCount > show.airedEpisodes) {
             updateLog = {
               id: show._id,
               title: show.title,
               oldEp: show.airedEpisodes,
-              newEp: remoteEpisodeCount,
+              newEp: syncedEpisodeCount,
               date: remoteAirDate || today,
               posterUrl: show.posterUrl
             };
           }
           if (
             seasonProgress
-              ? remoteEpisodeCount !== show.airedEpisodes
-              : remoteEpisodeCount > show.airedEpisodes
+              ? syncedEpisodeCount !== show.airedEpisodes
+              : syncedEpisodeCount > show.airedEpisodes
           ) {
-            show.airedEpisodes = remoteEpisodeCount;
+            show.airedEpisodes = syncedEpisodeCount;
             needsSave = true;
           }
-          if (remoteAirDate && toCalendarDateKey(show.lastAirDate) !== remoteAirDate) {
+          if (
+            !show.scheduleLocked &&
+            remoteAirDate &&
+            syncedEpisodeCount === remoteEpisodeCount &&
+            toCalendarDateKey(show.lastAirDate) !== remoteAirDate
+          ) {
             show.lastAirDate = remoteAirDate;
             needsSave = true;
           }
 
           const canUseExactSeasonTotal = seasonProgress && remoteTotalEpisodes >= Math.max(
             show.watchedEpisodes,
-            remoteEpisodeCount
+            syncedEpisodeCount
           );
           if (
+            !show.totalEpisodesLocked &&
             remoteTotalEpisodes &&
             (remoteTotalEpisodes > show.totalEpisodes || (
               canUseExactSeasonTotal && remoteTotalEpisodes !== show.totalEpisodes
@@ -425,39 +505,41 @@ router.post('/sync', async (req, res, next) => {
             show.totalEpisodes = remoteTotalEpisodes;
             needsSave = true;
           }
-          const managedFrequencies = seasonProgress
-            ? ['weekly', 'unknown', 'ended']
-            : ['weekly', 'unknown'];
-          const scheduleIsManagedByTmdb = managedFrequencies.includes(show.updateFrequency);
-          if (remoteSchedule.updateFrequency === 'ended') {
-            if (show.updateFrequency !== 'ended') {
-              show.updateFrequency = 'ended';
-              needsSave = true;
-            }
-            if (show.nextAirDate) {
-              show.nextAirDate = null;
-              needsSave = true;
-            }
-            if (Array.isArray(show.updateDays) && show.updateDays.length > 0) {
-              show.updateDays = [];
-              needsSave = true;
-            }
-          } else if (scheduleIsManagedByTmdb) {
-            if (show.updateFrequency !== remoteSchedule.updateFrequency) {
-              show.updateFrequency = remoteSchedule.updateFrequency;
-              needsSave = true;
-            }
-            if (!hasSameUpdateDays(show.updateDays, remoteSchedule.updateDays)) {
-              show.updateDays = remoteSchedule.updateDays;
-              needsSave = true;
-            }
-            if (toCalendarDateKey(show.nextAirDate) !== remoteSchedule.nextAirDate) {
-              show.nextAirDate = remoteSchedule.nextAirDate;
-              needsSave = true;
-            }
-            if (seasonProgress && show.updateCount !== remoteSchedule.updateCount) {
-              show.updateCount = remoteSchedule.updateCount;
-              needsSave = true;
+          if (!show.scheduleLocked) {
+            const managedFrequencies = seasonProgress
+              ? ['weekly', 'unknown', 'ended']
+              : ['weekly', 'unknown'];
+            const scheduleIsManagedByTmdb = managedFrequencies.includes(show.updateFrequency);
+            if (remoteSchedule.updateFrequency === 'ended') {
+              if (show.updateFrequency !== 'ended') {
+                show.updateFrequency = 'ended';
+                needsSave = true;
+              }
+              if (show.nextAirDate) {
+                show.nextAirDate = null;
+                needsSave = true;
+              }
+              if (Array.isArray(show.updateDays) && show.updateDays.length > 0) {
+                show.updateDays = [];
+                needsSave = true;
+              }
+            } else if (scheduleIsManagedByTmdb) {
+              if (show.updateFrequency !== remoteSchedule.updateFrequency) {
+                show.updateFrequency = remoteSchedule.updateFrequency;
+                needsSave = true;
+              }
+              if (!hasSameUpdateDays(show.updateDays, remoteSchedule.updateDays)) {
+                show.updateDays = remoteSchedule.updateDays;
+                needsSave = true;
+              }
+              if (toCalendarDateKey(show.nextAirDate) !== remoteSchedule.nextAirDate) {
+                show.nextAirDate = remoteSchedule.nextAirDate;
+                needsSave = true;
+              }
+              if (seasonProgress && show.updateCount !== remoteSchedule.updateCount) {
+                show.updateCount = remoteSchedule.updateCount;
+                needsSave = true;
+              }
             }
           }
           if (!show.network && remoteData.networks && remoteData.networks.length > 0) {
@@ -468,11 +550,12 @@ router.post('/sync', async (req, res, next) => {
             needsSave = true;
           }
 
+          if (applyDerivedShowStatus(show)) needsSave = true;
           const contentChanged = needsSave;
           show.lastTmdbCheckedAt = checkedAt;
           show.lastTmdbSyncStatus = 'success';
           await show.save();
-          return { contentChanged, updateLog };
+          return { contentChanged, updateLog, seasonDiscovery };
         } catch (err) {
           const failure = classifyTmdbError(err);
           logger.warn('show_sync_item_failed', { code: failure.code, showId: String(show._id) });
@@ -494,6 +577,11 @@ router.post('/sync', async (req, res, next) => {
 
     const failures = syncResults.filter(result => result.error);
     const updateLogs = syncResults.flatMap(result => result.updateLog ? [result.updateLog] : []);
+    const seasonDiscoveries = Array.from(new Map(
+      syncResults
+        .flatMap(result => result.seasonDiscovery ? [result.seasonDiscovery] : [])
+        .map(discovery => [`${discovery.tmdbId}:${discovery.seasonNumber}`, discovery])
+    ).values());
     const attemptedCount = syncCandidates.length;
     const failedCount = failures.length;
     const changedCount = syncResults.filter(result => result.contentChanged).length;
@@ -509,7 +597,8 @@ router.post('/sync', async (req, res, next) => {
       changedCount,
       updatedCount: updateLogs.length, 
       failedCount,
-      logs: updateLogs 
+      logs: updateLogs,
+      seasonDiscoveries
     });
 
   } catch (err) {
@@ -575,6 +664,7 @@ router.post('/import', async (req, res, next) => {
         : {};
       const normalizedTitle = String(showData.title || '').trim().toLowerCase();
       const candidate = new Show({ userId: req.user.id, ...showData, ...backupTimestamps });
+      applyDerivedShowStatus(candidate);
 
       try {
         await candidate.validate();

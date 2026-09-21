@@ -1,7 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { getAiredEpisodeCount, getTmdbSchedule, getTmdbSeasonProgress } = require('../utils/tmdb');
+const {
+  getAiredEpisodeCount,
+  getRecommendedSeasonNumber,
+  getTmdbSchedule,
+  getTmdbSeasonProgress,
+  hasTmdbSeasonActivity
+} = require('../utils/tmdb');
 
 test('counts aired episodes across completed seasons', () => {
   const count = getAiredEpisodeCount({
@@ -30,9 +36,48 @@ test('falls back to the total when no last episode is available', () => {
   assert.equal(getAiredEpisodeCount({ number_of_episodes: 20 }), 20);
 });
 
+test('recommends the currently updating or most recently updated season', () => {
+  const seasons = [
+    { season_number: 0, air_date: '2026-01-01' },
+    { season_number: 1, air_date: '2024-01-01' },
+    { season_number: 2, air_date: '2025-01-01' },
+    { season_number: 3, air_date: '2027-01-01' }
+  ];
+
+  assert.equal(getRecommendedSeasonNumber({
+    seasons,
+    next_episode_to_air: { season_number: 3 }
+  }, { today: '2026-09-21' }), 3);
+  assert.equal(getRecommendedSeasonNumber({
+    seasons,
+    last_episode_to_air: { season_number: 2 }
+  }, { today: '2026-09-21' }), 2);
+  assert.equal(getRecommendedSeasonNumber({ seasons }, { today: '2026-09-21' }), 2);
+});
+
+test('detects activity only when it belongs to the tracked season', () => {
+  assert.equal(hasTmdbSeasonActivity({
+    next_episode_to_air: { season_number: 2, episode_number: 5 }
+  }, 2, 4), true);
+  assert.equal(hasTmdbSeasonActivity({
+    last_episode_to_air: { season_number: 2, episode_number: 5 }
+  }, 2, 4), true);
+  assert.equal(hasTmdbSeasonActivity({
+    last_episode_to_air: { season_number: 3, episode_number: 1 }
+  }, 2, 4), false);
+});
+
 test('uses the next TMDB episode as the calendar schedule anchor', () => {
   assert.deepEqual(getTmdbSchedule({
     status: 'Returning Series',
+    next_episode_to_air: { air_date: '2026-09-07' }
+  }), {
+    updateFrequency: 'weekly',
+    updateDays: [1],
+    nextAirDate: '2026-09-07'
+  });
+  assert.deepEqual(getTmdbSchedule({
+    status: 'Ended',
     next_episode_to_air: { air_date: '2026-09-07' }
   }), {
     updateFrequency: 'weekly',
@@ -130,4 +175,23 @@ test('uses a TMDB finale marker to end the latest season', () => {
   assert.equal(progress.airedEpisodes, 2);
   assert.equal(progress.updateFrequency, 'ended');
   assert.equal(progress.isEnded, true);
+});
+
+test('an explicit future episode reactivates a season despite a stale ended status', () => {
+  const progress = getTmdbSeasonProgress({
+    season_number: 1,
+    episodes: [
+      { episode_number: 12, air_date: '2026-09-01' },
+      { episode_number: 13, air_date: '2026-10-01' }
+    ]
+  }, {
+    name: 'Returning Example',
+    status: 'Ended',
+    next_episode_to_air: { season_number: 1, episode_number: 13, air_date: '2026-10-01' },
+    seasons: [{ season_number: 1, air_date: '2026-01-01', episode_count: 13 }]
+  }, { today: '2026-09-21' });
+
+  assert.equal(progress.updateFrequency, 'weekly');
+  assert.equal(progress.nextAirDate, '2026-10-01');
+  assert.equal(progress.isEnded, false);
 });

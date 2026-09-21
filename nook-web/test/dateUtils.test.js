@@ -59,6 +59,21 @@ test('a known next episode prevents updates from appearing during a hiatus', () 
   assert.equal(calculateEpisodeForDate(show, '2026-09-07'), 'Ep 238')
 })
 
+test('a manually locked weekly schedule takes priority over the TMDB next date', () => {
+  const show = {
+    updateFrequency: 'weekly',
+    updateDays: [1],
+    scheduleLocked: true,
+    lastAirDate: '2026-08-23',
+    nextAirDate: '2026-09-28',
+    airedEpisodes: 4,
+    totalEpisodes: 16,
+  }
+
+  assert.equal(isShowUpdateDay(show, '2026-08-24'), true)
+  assert.equal(calculateEpisodeForDate(show, '2026-08-24'), 'Ep 5')
+})
+
 test('episode calculation counts every scheduled update day', () => {
   const show = {
     lastAirDate: '2026-08-03T00:00:00.000Z',

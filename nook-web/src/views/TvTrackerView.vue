@@ -19,6 +19,7 @@
         @export="exportData"
         @import="triggerImport"
         @open-calendar="showCalendar = true"
+        @add-season="openDiscoveredSeason"
         @remove-noti="removeNotification"
         @clear-notis="clearNotifications"
         @noti-read="hasNewNotis = false"
@@ -120,7 +121,7 @@
 
     </div>
 
-    <EditShowModal v-model:visible="showModal" :edit-data="editingShow" :is-saving="isSavingShow" @save="saveShow" />
+    <EditShowModal v-model:visible="showModal" :edit-data="editingShow" :initial-selection="newShowPreset" :is-saving="isSavingShow" @save="saveShow" />
     <CalendarModal v-model:visible="showCalendar" :shows="calendarShows" />
     <input type="file" ref="fileInput" style="display: none" accept=".json" @change="handleFileUpload" />
   </div>
@@ -131,6 +132,7 @@ import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { updateTheme } from '../store';
 import { fetchShowsApi, fetchCalendarShowsApi, addShowApi, updateShowApi, updateShowProgressApi, deleteShowApi, syncShowsApi, importShowsApi } from '@/api/shows';
 import { getApiErrorMessage } from '@/api/errors';
+import { deriveShowStatus } from '@/utils/showStatus';
 import { getAuthUserId } from '@/auth';
 import { getCurrentTimeZone } from '@/utils/dateUtils';
 import { readJsonStorage, writeJsonStorage } from '@/utils/storage';
@@ -190,6 +192,8 @@ const showFacets = reactive({
   networks: []
 });
 const editingShow = ref(null);
+const newShowPreset = ref(null);
+const pendingDiscoverySignature = ref(null);
 const pendingDeletes = reactive({});
 const updateTimers = {};
 const pendingDeltas = {}; 
@@ -360,12 +364,17 @@ watch(searchQuery, () => {
   searchTimer = setTimeout(() => fetchShows(true), 300);
 });
 
-const calcStatus = (watched, aired, total) => { 
-  if (watched === 0) return 'wish'; 
-  const target = (total > 0) ? total : aired; 
-  if (target > 0 && watched >= target) return 'watched'; 
-  return 'watching'; 
-};
+const calcStatus = (watchedEpisodes, airedEpisodes, totalEpisodes) => deriveShowStatus({
+  watchedEpisodes,
+  airedEpisodes,
+  totalEpisodes
+});
+
+const getNotificationSignature = (notification = {}) => (
+  notification.type === 'new-season'
+    ? `season|${notification.tmdbId}|${notification.seasonNumber}`
+    : `episode|${notification.title}|${notification.newEp}|${notification.updateDate || notification.date}`
+);
 
 const saveShow = async (formData) => {
   const userId = getAuthUserId();
@@ -379,9 +388,16 @@ const saveShow = async (formData) => {
     } else {
       const initialStatus = calcStatus(formData.watchedEpisodes, formData.airedEpisodes, formData.totalEpisodes);
       await addShowApi({ ...formData, status: initialStatus });
+      if (pendingDiscoverySignature.value) {
+        notifications.value = notifications.value.filter(
+          notification => getNotificationSignature(notification) !== pendingDiscoverySignature.value
+        );
+      }
       showToast("添加成功", "success");
     }
     showModal.value = false;
+    newShowPreset.value = null;
+    pendingDiscoverySignature.value = null;
     await refreshShowData();
   } catch (err) {
     console.error(err);
@@ -457,8 +473,31 @@ const toggleFavorite = async (show) => {
   }
 };
 
-const openAddModal = () => { editingShow.value = null; showModal.value = true; };
-const openEditModal = (show) => { editingShow.value = { ...show }; showModal.value = true; };
+const openAddModal = () => {
+  editingShow.value = null;
+  newShowPreset.value = null;
+  pendingDiscoverySignature.value = null;
+  showModal.value = true;
+};
+const openDiscoveredSeason = (notification) => {
+  editingShow.value = null;
+  newShowPreset.value = {
+    tmdbId: notification.tmdbId,
+    title: notification.title,
+    category: notification.category,
+    tmdbType: notification.tmdbType,
+    posterUrl: notification.posterUrl,
+    seasonNumber: notification.seasonNumber
+  };
+  pendingDiscoverySignature.value = getNotificationSignature(notification);
+  showModal.value = true;
+};
+const openEditModal = (show) => {
+  newShowPreset.value = null;
+  pendingDiscoverySignature.value = null;
+  editingShow.value = { ...show };
+  showModal.value = true;
+};
 const dropShow = async (show) => {
   const originalStatus = show.status;
   show.status = 'dropped';
@@ -519,9 +558,13 @@ const syncData = async () => {
     const res = await syncShowsApi({ force: true, timeZone: getCurrentTimeZone() });
     await refreshShowData();
     applySyncNotifications(res.data);
-    if (res.data.updatedCount > 0) {
+    const discoveryCount = res.data.seasonDiscoveries?.length || 0;
+    if (res.data.updatedCount > 0 || discoveryCount > 0) {
       const failedSuffix = res.data.failedCount > 0 ? `，${res.data.failedCount} 部获取失败` : '';
-      showToast(`同步完成！更新 ${res.data.updatedCount} 部${failedSuffix}`, res.data.failedCount > 0 ? "error" : "success");
+      const resultParts = [];
+      if (res.data.updatedCount > 0) resultParts.push(`更新 ${res.data.updatedCount} 部`);
+      if (discoveryCount > 0) resultParts.push(`发现 ${discoveryCount} 个新季度`);
+      showToast(`同步完成！${resultParts.join('，')}${failedSuffix}`, res.data.failedCount > 0 ? "error" : "success");
     } else if (res.data.failedCount > 0) {
       showToast(`同步完成，但有 ${res.data.failedCount} 部获取失败`, "error");
     } else { showToast('暂无新内容', "success"); }
@@ -529,15 +572,17 @@ const syncData = async () => {
 };
 
 const applySyncNotifications = (data = {}) => {
-  if (!data.logs?.length) return;
+  const incomingItems = [
+    ...(data.logs || []).map(log => ({ ...log, type: 'episode-update', updateDate: log.date })),
+    ...(data.seasonDiscoveries || [])
+  ];
+  if (!incomingItems.length) return;
   const existingSignatures = new Set(
-    notifications.value.map(notification => (
-      `${notification.title}|${notification.newEp}|${notification.updateDate}`
-    ))
+    notifications.value.map(getNotificationSignature)
   );
-  const uniqueNewItems = data.logs
-    .filter(log => !existingSignatures.has(`${log.title}|${log.newEp}|${log.date}`))
-    .map(log => ({ ...log, updateDate: log.date, uniqueId: Date.now() + Math.random() }));
+  const uniqueNewItems = incomingItems
+    .filter(item => !existingSignatures.has(getNotificationSignature(item)))
+    .map(item => ({ ...item, uniqueId: Date.now() + Math.random() }));
   if (!uniqueNewItems.length) return;
   notifications.value = [...uniqueNewItems, ...notifications.value].slice(0, MAX_STORED_NOTIFICATIONS);
   hasNewNotis.value = true;

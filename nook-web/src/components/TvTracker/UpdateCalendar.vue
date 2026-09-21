@@ -58,7 +58,6 @@ import { ref, computed } from 'vue';
 import {
   calculateEpisodeForDate,
   getCurrentTimeZoneLabel,
-  isAfterCalendarDay,
   isSameCalendarDay,
   isShowUpdateDay,
   toLocalCalendarDate
@@ -126,8 +125,7 @@ const showsList = computed(() => {
   const results = [];
 
   props.shows.forEach(s => {
-    if (s.status === 'dropped' || s.status === 'watched' || s.updateFrequency === 'ended') return;
-    if (s.estimatedFinishDate && isAfterCalendarDay(targetDate, s.estimatedFinishDate)) return;
+    if (s.status === 'dropped' || s.updateFrequency === 'ended') return;
 
     if (isShowUpdateDay(s, targetDate)) {
       const epText = calculateEpisodeForDate(s, targetDate);

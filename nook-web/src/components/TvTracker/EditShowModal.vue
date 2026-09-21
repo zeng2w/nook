@@ -65,29 +65,25 @@
             </div>
             <div class="form-group" v-if="isEditing">
               <label for="show-status">状态</label>
-              <select id="show-status" v-model="form.status" class="modern-input">
-                <option value="wish">想看</option>
-                <option value="watching">在追</option>
-                <option value="watched">已看</option>
-                <option value="dropped">弃剧</option>
-              </select>
+              <div id="show-status" class="modern-input status-preview">{{ derivedStatusLabel }}</div>
             </div>
           </div>
 
-          <div v-if="!isEditing && availableSeasons.length > 0" class="form-group compact-group season-picker">
+          <div v-if="!isEditing && availableSeasons.length > 1" class="form-group compact-group season-picker">
             <label for="show-season">追踪范围</label>
             <select id="show-season" v-model="selectedSeasonNumber" @change="onSeasonSelect" class="modern-input" :disabled="isSeasonLoading">
               <option :value="null">整部剧</option>
               <option v-for="s in availableSeasons" :key="s.seasonNumber" :value="s.seasonNumber">第 {{ s.seasonNumber }} 季（共 {{ s.episodeCount }} 集）</option>
             </select>
-            <div v-if="isSeasonLoading" class="season-summary loading">正在读取这一季的更新进度…</div>
-            <div v-else-if="seasonSummary" class="season-summary" :class="{ ended: seasonSummary.isEnded }">
-              <strong>第 {{ seasonSummary.seasonNumber }} 季</strong>
-              <span>已更新至第 {{ seasonSummary.airedEpisodes }} 集 / 共 {{ seasonSummary.totalEpisodes }} 集</span>
-              <span v-if="seasonSummary.isEnded" class="season-state">已完结</span>
-              <span v-else-if="seasonSummary.nextAirDate" class="season-state">下集：{{ seasonSummary.nextAirDate }}</span>
-              <span v-else class="season-state paused">暂无下一集日期</span>
-            </div>
+          </div>
+
+          <div v-if="!isEditing && isSeasonLoading" class="season-summary loading">正在读取推荐季度的更新进度…</div>
+          <div v-else-if="!isEditing && seasonSummary" class="season-summary" :class="{ ended: seasonSummary.isEnded }">
+            <strong>{{ availableSeasons.length === 1 ? '已自动选择' : '当前选择' }}第 {{ seasonSummary.seasonNumber }} 季</strong>
+            <span>已更新至第 {{ seasonSummary.airedEpisodes }} 集 / 共 {{ seasonSummary.totalEpisodes }} 集</span>
+            <span v-if="seasonSummary.isEnded" class="season-state">已完结</span>
+            <span v-else-if="seasonSummary.nextAirDate" class="season-state">下集：{{ seasonSummary.nextAirDate }}</span>
+            <span v-else class="season-state paused">暂无下一集日期</span>
           </div>
 
           <div v-if="isEditing && form.seasonNumber" class="season-summary editing-summary">
@@ -99,8 +95,15 @@
             <div class="compact-header">
               <label>更新频率</label>
               <div class="segmented-control mini">
-                <button v-for="opt in freqOptions" :key="opt.val" type="button" class="segment-option" :class="{ active: form.updateFrequency === opt.val }" :aria-pressed="form.updateFrequency === opt.val" @click="form.updateFrequency = opt.val">{{ opt.label }}</button>
+                <button v-for="opt in freqOptions" :key="opt.val" type="button" class="segment-option" :class="{ active: form.updateFrequency === opt.val }" :aria-pressed="form.updateFrequency === opt.val" @click="selectFrequency(opt.val)">{{ opt.label }}</button>
               </div>
+            </div>
+
+            <div v-if="form.tmdbId" class="source-control">
+              <span>{{ form.scheduleLocked ? '本地排期已锁定' : '排期由 TMDB 自动维护' }}</span>
+              <button type="button" @click="toggleScheduleLock">
+                {{ form.scheduleLocked ? '恢复 TMDB 排期' : '锁定当前排期' }}
+              </button>
             </div>
             
             <div v-if="form.updateFrequency === 'weekly'" class="week-selector-mini">
@@ -109,25 +112,36 @@
             
             <div v-if="form.updateFrequency !== 'ended' && form.updateFrequency !== 'unknown'" class="inline-row">
               <span class="sub-label">每次更新:</span>
-              <input v-model.number="form.updateCount" type="number" min="1" class="modern-input inline-input" />
+              <input v-model.number="form.updateCount" type="number" min="1" class="modern-input inline-input" @change="lockSchedule" />
               <span class="unit">集</span>
               <span class="spacer">|</span>
               <span class="sub-label">最近:</span>
-              <input v-model="form.lastAirDate" type="date" class="modern-input inline-date" />
+              <input v-model="form.lastAirDate" type="date" class="modern-input inline-date" @change="lockSchedule" />
             </div>
-            <div v-if="form.updateFrequency !== 'ended' && form.updateFrequency !== 'unknown'" class="inline-row next-air-row">
+            <div v-if="form.updateFrequency !== 'ended' && form.updateFrequency !== 'unknown' && !form.scheduleLocked" class="inline-row next-air-row">
               <span class="sub-label">下次更新:</span>
               <input v-model="form.nextAirDate" type="date" class="modern-input inline-date" />
               <span class="schedule-hint">TMDB 没有明确日期时可留空</span>
             </div>
+            <div v-else-if="form.scheduleLocked && form.updateFrequency !== 'ended' && form.updateFrequency !== 'unknown'" class="manual-schedule-hint">
+              将按上方本地频率和星期重复显示，不使用 TMDB 下次更新日期。
+            </div>
           </div>
 
           <div class="form-section-compact">
-            <label>当前进度</label>
+            <div class="compact-header progress-header">
+              <label>当前进度</label>
+              <div v-if="form.tmdbId" class="source-control compact-source">
+                <span>{{ form.totalEpisodesLocked ? '本地总集数已锁定' : '总集数由 TMDB 自动维护' }}</span>
+                <button type="button" @click="form.totalEpisodesLocked = !form.totalEpisodesLocked">
+                  {{ form.totalEpisodesLocked ? '恢复 TMDB 总集数' : '锁定当前总集数' }}
+                </button>
+              </div>
+            </div>
             <div class="stats-row-compact">
               <div class="stat-input-wrap"><span>已看</span><input v-model.number="form.watchedEpisodes" type="number" min="0" :max="form.totalEpisodes || undefined" class="modern-input" /></div>
               <div class="stat-input-wrap"><span>已更</span><input v-model.number="form.airedEpisodes" type="number" min="0" :max="form.totalEpisodes || undefined" class="modern-input" /></div>
-              <div class="stat-input-wrap"><span>总集</span><input v-model.number="form.totalEpisodes" type="number" min="0" class="modern-input" /></div>
+              <div class="stat-input-wrap"><span>总集</span><input v-model.number="form.totalEpisodes" type="number" :min="minimumTotalEpisodes" class="modern-input" @input="form.totalEpisodesLocked = true" /></div>
             </div>
           </div>
 
@@ -147,10 +161,13 @@ import { ref, reactive, watch, computed } from 'vue';
 import axios from 'axios';
 import { getApiErrorMessage } from '@/api/errors';
 import { toCalendarDateInput } from '@/utils/dateUtils';
+import { getDefaultSeasonNumber } from '@/utils/seasons';
+import { deriveShowStatus } from '@/utils/showStatus';
 
 const props = defineProps({
   visible: Boolean,
   editData: Object,
+  initialSelection: Object,
   isSaving: Boolean
 });
 
@@ -167,31 +184,64 @@ const selectedSeriesDetails = ref(null);
 const seasonSummary = ref(null);
 const searchError = ref('');
 
-const initialForm = { title: '', category: 'tv', status: 'watching', updateFrequency: 'weekly', updateDays: [], updateCount: 1, watchedEpisodes: 0, airedEpisodes: 0, totalEpisodes: 0, lastAirDate: toCalendarDateInput(new Date()), nextAirDate: '', posterUrl: '', network: '', networkLogo: '', tmdbId: null, seriesTitle: '', seasonNumber: null, seasonName: '' };
-const form = reactive({ ...initialForm });
+const createInitialForm = () => ({
+  title: '',
+  category: 'tv',
+  status: 'watching',
+  updateFrequency: 'weekly',
+  updateDays: [],
+  updateCount: 1,
+  watchedEpisodes: 0,
+  airedEpisodes: 0,
+  totalEpisodes: 0,
+  totalEpisodesLocked: false,
+  scheduleLocked: false,
+  lastAirDate: toCalendarDateInput(new Date()),
+  nextAirDate: '',
+  posterUrl: '',
+  network: '',
+  networkLogo: '',
+  tmdbId: null,
+  seriesTitle: '',
+  seasonNumber: null,
+  seasonName: ''
+});
+const form = reactive(createInitialForm());
 
 const freqOptions = [ { label: '周更', val: 'weekly' }, { label: '日更', val: 'daily' }, { label: '月更', val: 'monthly' }, { label: '待定', val: 'unknown' }, { label: '完结', val: 'ended' } ];
 const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+const derivedStatus = computed(() => deriveShowStatus(form));
+const derivedStatusLabel = computed(() => ({
+  wish: '想看',
+  watching: '在追',
+  watched: '已看完',
+  dropped: '弃剧'
+}[derivedStatus.value]));
+const minimumTotalEpisodes = computed(() => Math.max(
+  Number(form.watchedEpisodes) || 0,
+  Number(form.airedEpisodes) || 0
+));
+
+const replaceForm = (data = {}) => {
+  const hasLastAirDate = Object.prototype.hasOwnProperty.call(data, 'lastAirDate');
+  Object.keys(form).forEach(key => delete form[key]);
+  Object.assign(form, createInitialForm(), data, {
+    updateDays: Array.isArray(data.updateDays) ? [...data.updateDays] : [],
+    lastAirDate: hasLastAirDate ? toCalendarDateInput(data.lastAirDate) : toCalendarDateInput(new Date()),
+    nextAirDate: toCalendarDateInput(data.nextAirDate)
+  });
+};
 
 watch(
-  [() => props.visible, () => props.editData], 
-  ([isOpen, newData]) => {
+  [() => props.visible, () => props.editData, () => props.initialSelection],
+  ([isOpen, newData, initialSelection]) => {
     if (isOpen) {
       if (newData) {
         // --- 编辑模式：填充数据 ---
-        Object.assign(form, newData);
-        // 特殊处理日期格式
-        if (newData.lastAirDate) {
-          form.lastAirDate = toCalendarDateInput(newData.lastAirDate);
-        }
-        form.nextAirDate = toCalendarDateInput(newData.nextAirDate);
+        replaceForm(newData);
       } else {
         // --- 添加模式：彻底重置表单 ---
-        // 1. 重置基础字段
-        Object.assign(form, { ...initialForm, lastAirDate: toCalendarDateInput(new Date()) });
-        // 2. 重置引用类型字段 (确保数组清空)
-        form.updateDays = [];
-        // 3. 重置搜索状态
+        replaceForm();
         tmdbQuery.value = '';
         tmdbResults.value = [];
         availableSeasons.value = [];
@@ -200,6 +250,9 @@ watch(
         seasonSummary.value = null;
         isSeasonLoading.value = false;
         searchError.value = '';
+        if (initialSelection) {
+          void selectTMDBResult(initialSelection, initialSelection.seasonNumber);
+        }
       }
     }
   }
@@ -209,7 +262,25 @@ const close = () => {
   if (!props.isSaving) emit('update:visible', false);
 };
 const save = () => {
-  if (!props.isSaving && !isSeasonLoading.value) emit('save', { ...form });
+  if (!props.isSaving && !isSeasonLoading.value) {
+    emit('save', { ...form, status: derivedStatus.value });
+  }
+};
+
+const lockSchedule = () => {
+  form.scheduleLocked = true;
+  form.nextAirDate = '';
+};
+
+const toggleScheduleLock = () => {
+  form.scheduleLocked = !form.scheduleLocked;
+  if (form.scheduleLocked) form.nextAirDate = '';
+};
+
+const selectFrequency = (frequency) => {
+  if (form.updateFrequency === frequency) return;
+  form.updateFrequency = frequency;
+  lockSchedule();
 };
 
 const toggleDay = (idx) => {
@@ -217,6 +288,7 @@ const toggleDay = (idx) => {
   if (i > -1) form.updateDays.splice(i, 1);
   else form.updateDays.push(idx);
   form.updateDays.sort();
+  lockSchedule();
 };
 
 const getCategoryLabel = (cat) => ({ tv: '电视剧', anime: '动漫', movie: '电影', variety: '综艺' }[cat] || cat);
@@ -227,9 +299,11 @@ const applySeriesDetails = (details) => {
   form.seasonNumber = null;
   form.seasonName = '';
   form.totalEpisodes = details.totalEpisodes || 0;
+  form.totalEpisodesLocked = false;
   form.airedEpisodes = details.airedEpisodes || 0;
   form.watchedEpisodes = 0;
   form.updateFrequency = details.updateFrequency || 'unknown';
+  form.scheduleLocked = false;
   form.updateDays = Array.isArray(details.updateDays) ? [...details.updateDays] : [];
   form.updateCount = details.updateCount || 1;
   form.lastAirDate = toCalendarDateInput(details.lastAirDate);
@@ -264,7 +338,7 @@ const searchTMDB = async () => {
   }
 };
 
-const selectTMDBResult = async (item) => {
+const selectTMDBResult = async (item, preferredSeasonNumber = null) => {
   searchError.value = '';
   form.tmdbId = item.tmdbId;
   form.title = item.title;
@@ -276,7 +350,7 @@ const selectTMDBResult = async (item) => {
   seasonSummary.value = null;
   
   try {
-    const type = item.category;
+    const type = item.tmdbType || item.category;
     const res = await axios.get(`/api/tmdb/details/${type}/${item.tmdbId}`);
     const details = res.data;
     
@@ -292,7 +366,17 @@ const selectTMDBResult = async (item) => {
       form.network = ''; form.networkLogo = '';
     }
     
-    if (details.seasons && details.seasons.length > 0) availableSeasons.value = details.seasons;
+    if (details.seasons && details.seasons.length > 0) {
+      availableSeasons.value = details.seasons;
+      const preferred = Number(preferredSeasonNumber);
+      const preferredExists = details.seasons.some(
+        season => season.seasonNumber === preferred
+      );
+      selectedSeasonNumber.value = preferredExists
+        ? preferred
+        : getDefaultSeasonNumber(details);
+      if (selectedSeasonNumber.value) await onSeasonSelect();
+    }
     
     // 清空搜索状态
     tmdbResults.value = [];
@@ -322,9 +406,11 @@ const onSeasonSelect = async () => {
     form.seasonNumber = details.seasonNumber;
     form.seasonName = details.seasonName || '';
     form.totalEpisodes = details.totalEpisodes || 0;
+    form.totalEpisodesLocked = false;
     form.airedEpisodes = details.airedEpisodes || 0;
     form.watchedEpisodes = 0;
     form.updateFrequency = details.updateFrequency || 'unknown';
+    form.scheduleLocked = false;
     form.updateDays = Array.isArray(details.updateDays) ? [...details.updateDays] : [];
     form.updateCount = details.updateCount || 1;
     form.lastAirDate = toCalendarDateInput(details.lastAirDate);
@@ -368,6 +454,7 @@ const onSeasonSelect = async () => {
 .form-group label { font-size: 0.75rem; margin-bottom: 6px; color: #86868b; height: 14px; line-height: 14px; white-space: nowrap; }
 .modern-input { padding: 8px 12px; font-size: 0.95rem; border-radius: 8px; border: none; background: #f2f2f7; height: 38px; width: 100%; box-sizing: border-box; }
 .modern-input:focus { background: #fff; box-shadow: 0 0 0 2px #007aff; outline: none; }
+.status-preview { display: flex; align-items: center; color: #475569; cursor: default; }
 .category-group select.modern-input { appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 8px center; background-size: 14px; padding-right: 24px; }
 
 /* 平台 Input */
@@ -380,6 +467,11 @@ const onSeasonSelect = async () => {
 .form-section-compact { background: #f9f9fb; border-radius: 10px; padding: 10px 12px; border: 1px solid #f0f0f0; }
 .compact-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .compact-header label { margin: 0; }
+.progress-header { align-items: flex-start; gap: 8px; }
+.source-control { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: -2px 0 8px; color: #64748b; font-size: 0.7rem; }
+.source-control button { border: 0; padding: 3px 7px; border-radius: 6px; background: #eef2ff; color: #4f46e5; font-size: 0.68rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.source-control button:hover { background: #e0e7ff; }
+.compact-source { margin: 0; justify-content: flex-end; }
 .segmented-control.mini { margin: 0; padding: 2px; background: #e5e5ea; height: 28px; display: flex; border-radius: 8px; }
 .segmented-control.mini .segment-option { padding: 0 10px; font-size: 0.8rem; line-height: 24px; flex: 1; text-align: center; cursor: pointer; border: 0; background: transparent; border-radius: 6px; transition: all 0.2s; }
 .segment-option.active { background: #fff; color: #000; box-shadow: 0 2px 5px rgba(0,0,0,0.05); font-weight: 600; }
@@ -389,6 +481,7 @@ const onSeasonSelect = async () => {
 .inline-row { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #666; }
 .next-air-row { margin-top: 8px; }
 .schedule-hint { color: #a1a1aa; font-size: 0.7rem; }
+.manual-schedule-hint { color: #6366f1; font-size: 0.7rem; line-height: 1.4; padding-top: 2px; }
 .season-picker { gap: 6px; }
 .season-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 9px 11px; border-radius: 9px; background: #eef6ff; color: #334155; font-size: 0.78rem; }
 .season-summary strong { color: #0f172a; }

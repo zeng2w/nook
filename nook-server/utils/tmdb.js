@@ -32,18 +32,57 @@ const getValidAirDate = (value) => {
 };
 
 const getTmdbSchedule = (data = {}) => {
+  const nextAirDate = getValidAirDate(data.next_episode_to_air?.air_date);
+  if (nextAirDate) {
+    const [year, month, day] = nextAirDate.split('-').map(Number);
+    const updateDay = new Date(Date.UTC(year, month - 1, day, 12)).getUTCDay();
+    return { updateFrequency: 'weekly', updateDays: [updateDay], nextAirDate };
+  }
+
   if (data.status === 'Ended' || data.status === 'Canceled') {
     return { updateFrequency: 'ended', updateDays: [], nextAirDate: null };
   }
 
-  const nextAirDate = getValidAirDate(data.next_episode_to_air?.air_date);
-  if (!nextAirDate) {
-    return { updateFrequency: 'unknown', updateDays: [], nextAirDate: null };
+  return { updateFrequency: 'unknown', updateDays: [], nextAirDate: null };
+};
+
+const getRecommendedSeasonNumber = (data = {}, options = {}) => {
+  const today = getValidAirDate(options.today) || new Date().toISOString().slice(0, 10);
+  const validSeasons = (data.seasons || [])
+    .map(season => ({
+      seasonNumber: Number(season.season_number) || 0,
+      airDate: getValidAirDate(season.air_date)
+    }))
+    .filter(season => season.seasonNumber > 0);
+  if (validSeasons.length === 0) return null;
+
+  const knownSeasonNumbers = new Set(validSeasons.map(season => season.seasonNumber));
+  const nextSeason = Number(data.next_episode_to_air?.season_number) || 0;
+  if (knownSeasonNumbers.has(nextSeason)) return nextSeason;
+
+  const lastSeason = Number(data.last_episode_to_air?.season_number) || 0;
+  if (knownSeasonNumbers.has(lastSeason)) return lastSeason;
+
+  const startedSeasons = validSeasons.filter(season => season.airDate && season.airDate <= today);
+  if (startedSeasons.length > 0) {
+    return Math.max(...startedSeasons.map(season => season.seasonNumber));
   }
 
-  const [year, month, day] = nextAirDate.split('-').map(Number);
-  const updateDay = new Date(Date.UTC(year, month - 1, day, 12)).getUTCDay();
-  return { updateFrequency: 'weekly', updateDays: [updateDay], nextAirDate };
+  return Math.min(...validSeasons.map(season => season.seasonNumber));
+};
+
+const hasTmdbSeasonActivity = (data = {}, seasonNumber, airedEpisodes = 0) => {
+  const normalizedSeasonNumber = Number(seasonNumber) || 0;
+  if (normalizedSeasonNumber < 1) return false;
+
+  const nextEpisode = data.next_episode_to_air;
+  if (Number(nextEpisode?.season_number) === normalizedSeasonNumber) return true;
+
+  const lastEpisode = data.last_episode_to_air;
+  return (
+    Number(lastEpisode?.season_number) === normalizedSeasonNumber &&
+    Number(lastEpisode?.episode_number) > (Number(airedEpisodes) || 0)
+  );
 };
 
 const getTmdbSeasonProgress = (seasonData = {}, seriesData = {}, options = {}) => {
@@ -105,7 +144,11 @@ const getTmdbSeasonProgress = (seasonData = {}, seriesData = {}, options = {}) =
     )
   );
   const candidateNextAirDate = seriesNextAirDate || future[0]?.airDate || null;
-  const isEnded = seriesEnded || seasonFinaleAired || (hasLaterSeason && !candidateNextAirDate);
+  const isEnded = (
+    seasonFinaleAired ||
+    (seriesEnded && !candidateNextAirDate) ||
+    (hasLaterSeason && !candidateNextAirDate)
+  );
   const nextAirDate = isEnded ? null : candidateNextAirDate;
   const updateCount = nextAirDate
     ? Math.max(1, future.filter(episode => episode.airDate === nextAirDate).length)
@@ -129,4 +172,10 @@ const getTmdbSeasonProgress = (seasonData = {}, seriesData = {}, options = {}) =
   };
 };
 
-module.exports = { getAiredEpisodeCount, getTmdbSchedule, getTmdbSeasonProgress };
+module.exports = {
+  getAiredEpisodeCount,
+  getRecommendedSeasonNumber,
+  getTmdbSchedule,
+  getTmdbSeasonProgress,
+  hasTmdbSeasonActivity
+};

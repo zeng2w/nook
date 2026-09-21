@@ -65,7 +65,6 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import {
   calculateEpisodeForDate,
   getCurrentTimeZoneLabel,
-  isAfterCalendarDay,
   isSameCalendarDay,
   isShowUpdateDay,
   toLocalCalendarDate
@@ -141,10 +140,8 @@ const getShowsForDate = (dateObj) => {
   const results = [];
   
   props.shows.forEach(s => {
-    // 过滤掉弃剧、已看完、或状态明确为已完结的
-    if (s.status === 'dropped' || s.status === 'watched' || s.updateFrequency === 'ended') return;
-    
-    if (s.estimatedFinishDate && isAfterCalendarDay(dateObj, s.estimatedFinishDate)) return;
+    // 个人已经看完不代表作品不再更新；日历只过滤弃剧和明确停止更新的作品。
+    if (s.status === 'dropped' || s.updateFrequency === 'ended') return;
     
     if (isShowUpdateDay(s, dateObj)) {
       const epText = calculateEpisodeForDate(s, dateObj);

@@ -1,6 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const { getAiredEpisodeCount, getTmdbSchedule, getTmdbSeasonProgress } = require('../utils/tmdb');
+const {
+  getAiredEpisodeCount,
+  getRecommendedSeasonNumber,
+  getTmdbSchedule,
+  getTmdbSeasonProgress
+} = require('../utils/tmdb');
 const { getCacheTtl, sendTmdbError, tmdbGet } = require('../utils/tmdbClient');
 
 const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w342';
@@ -124,6 +129,11 @@ router.get('/details/:type/:id', async (req, res) => {
       
       // 分季列表
       seasons: validSeasons,
+
+      // 添加时优先追踪正在更新或最近更新的季度。
+      recommendedSeasonNumber: queryType === 'tv'
+        ? getRecommendedSeasonNumber(data)
+        : null,
 
       // 只有 TMDB 明确提供下一集日期时才推断周更，避免停播期无限外推。
       ...getTmdbSchedule(data)
