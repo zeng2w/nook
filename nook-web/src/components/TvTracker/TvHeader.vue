@@ -27,12 +27,21 @@
       
       <div class="header-right">
         <div class="action-group">
-          <button class="icon-action-btn" aria-label="同步 TMDB 数据" :disabled="isSyncing" @click="$emit('sync')" title="同步 TMDB 数据">
-            <svg class="icon" :class="{ 'spin': isSyncing }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-            </svg>
-            <span>同步</span>
-          </button>
+          <div class="sync-control">
+            <button class="icon-action-btn" aria-label="智能同步 TMDB 数据" :disabled="isSyncing" @click="$emit('sync')" title="仅检查当前需要更新的作品">
+              <svg class="icon" :class="{ 'spin': isSyncing }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+              </svg>
+              <span>同步</span>
+            </button>
+            <span
+              v-if="syncStatusText"
+              class="sync-status"
+              :class="syncStatusTone"
+              :title="syncStatusTitle"
+              aria-live="polite"
+            >{{ syncStatusText }}</span>
+          </div>
           
           <button class="icon-action-btn" aria-label="打开追剧日历" @click="$emit('open-calendar')" title="追剧日历">
             <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -102,19 +111,55 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 
-defineProps({
+const props = defineProps({
   notifications: { type: Array, default: () => [] },
   hasNew: { type: Boolean, default: false },
   totalCount: { type: Number, default: 0 },
   isSyncing: { type: Boolean, default: false },
+  syncStatus: { type: Object, default: () => ({}) },
   searchQuery: { type: String, default: '' } // 接收搜索词
 });
 
 const emit = defineEmits(['add', 'add-season', 'remove-noti', 'clear-notis', 'noti-read', 'sync', 'export', 'import', 'open-calendar', 'update:searchQuery']);
 
 const showNotiPanel = ref(false);
+const formatSyncTime = value => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date);
+};
+const syncStatusText = computed(() => {
+  if (props.isSyncing) return '同步中…';
+  if (props.syncStatus?.state === 'error') return '上次同步失败';
+  if (props.syncStatus?.state === 'partial') return `${props.syncStatus.failedCount || 0} 部失败`;
+  const time = formatSyncTime(props.syncStatus?.lastSuccessAt);
+  return time ? `已同步 ${time}` : '';
+});
+const syncStatusTone = computed(() => ({
+  error: props.syncStatus?.state === 'error',
+  partial: props.syncStatus?.state === 'partial',
+  success: props.syncStatus?.state === 'success'
+}));
+const syncStatusTitle = computed(() => {
+  const parts = [];
+  const lastSuccess = formatSyncTime(props.syncStatus?.lastSuccessAt);
+  if (lastSuccess) parts.push(`最近成功：${lastSuccess}`);
+  if (props.syncStatus?.checkedCount || props.syncStatus?.skippedCount) {
+    parts.push(`检查 ${props.syncStatus.checkedCount || 0} 部，跳过 ${props.syncStatus.skippedCount || 0} 部`);
+  }
+  if (props.syncStatus?.cacheHitCount) {
+    parts.push(`${props.syncStatus.cacheHitCount} 次请求使用缓存或合并`);
+  }
+  if (props.syncStatus?.message) parts.push(props.syncStatus.message);
+  return parts.join('；');
+});
 const toggleNoti = () => {
   showNotiPanel.value = !showNotiPanel.value;
   if (showNotiPanel.value) emit('noti-read');
@@ -149,6 +194,12 @@ const addSeason = (item) => {
 /* ✨ 修复点 3：右侧按钮组不缩小，并强制按钮内文字不换行 */
 .header-right { flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
 .action-group { display: flex; gap: 6px; }
+.sync-control { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 96px; }
+.sync-control .icon-action-btn { height: 28px; padding-top: 4px; padding-bottom: 4px; }
+.sync-status { max-width: 120px; color: #64748b; font-size: 0.62rem; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sync-status.success { color: #059669; }
+.sync-status.partial { color: #d97706; }
+.sync-status.error { color: #dc2626; }
 
 /* 加上 white-space: nowrap 和 flex-shrink: 0 彻底防止按钮文字溢出挤压 */
 .icon-action-btn { 
@@ -218,6 +269,8 @@ const addSeason = (item) => {
   .action-group { gap: 2px; }
   .icon-action-btn { width: 38px; padding: 8px; justify-content: center; }
   .icon-action-btn span { display: none; }
+  .sync-control { min-width: 38px; }
+  .sync-status { display: none; }
   .divider { display: none; }
   .add-btn { padding: 0 14px; }
   .noti-dropdown { position: fixed; top: 64px; right: 12px; left: 12px; width: auto; }

@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const {
+  classifyTmdbCategory,
   getAiredEpisodeCount,
+  getTmdbMediaType,
   getRecommendedSeasonNumber,
   getTmdbSchedule,
   getTmdbSeasonProgress
@@ -39,8 +41,9 @@ router.get('/search', async (req, res) => {
         tmdbId: item.id,
         // 电影用 title, 剧集用 name
         title: item.title || item.name, 
-        // 简单判断分类：如果是 TV 且产地包含日本，标记为 anime，否则为 tv
-        category: item.media_type === 'tv' ? (item.origin_country?.includes('JP') ? 'anime' : 'tv') : 'movie',
+        // 使用 TMDB genre 区分动漫、综艺和普通电视剧，避免把日本真人剧误判为动漫。
+        category: classifyTmdbCategory(item),
+        tmdbType: item.media_type,
         posterUrl: getPosterUrl(item.poster_path),
         // 发行年份 (用于前端显示)
         releaseDate: item.release_date || item.first_air_date,
@@ -62,9 +65,8 @@ router.get('/details/:type/:id', async (req, res) => {
   try {
     const { type, id } = req.params; 
     
-    // TMDB API 只有 'tv' 和 'movie' 两个端点
-    // 如果前端传的是 'anime'，我们需要把它转回 'tv' 来查询
-    const queryType = type === 'anime' ? 'tv' : type;
+    // TMDB API 只有 'tv' 和 'movie' 两个端点，动漫和综艺都查询 TV。
+    const queryType = getTmdbMediaType(type);
     if (!['tv', 'movie'].includes(queryType) || !/^\d+$/.test(id)) {
       return res.status(400).json({ code: 'INVALID_TMDB_ID', error: 'Invalid TMDB type or id' });
     }

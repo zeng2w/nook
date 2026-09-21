@@ -51,7 +51,9 @@ test('TMDB cache reuses successful responses until expiry', async () => {
     const cached = await get('/tv/1', { cacheTtlMs: 100, params: { language: 'zh-CN' } });
 
     assert.equal(first.data.requestCount, 1);
+    assert.equal(first.tmdbCache, 'miss');
     assert.equal(cached.data.requestCount, 1);
+    assert.equal(cached.tmdbCache, 'hit');
     assert.equal(requestCount, 1);
 
     currentTime += 101;

@@ -310,6 +310,11 @@ test('syncs only on the visible tracker and loads discovery on demand', async ({
   await expect.poll(() => syncRequests.length).toBe(1)
   expect(syncRequests[0].postDataJSON()).toMatchObject({ force: false })
   expect(syncRequests[0].postDataJSON().timeZone).toMatch(/\S/)
+  await expect(page.getByText(/已同步/)).toBeVisible()
+
+  await page.getByRole('button', { name: '智能同步 TMDB 数据' }).click()
+  await expect.poll(() => syncRequests.length).toBe(2)
+  expect(syncRequests[1].postDataJSON()).toMatchObject({ force: false })
   expect(trendingRequests).toBe(0)
   expect(newReleaseRequests).toBe(0)
 

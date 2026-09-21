@@ -14,6 +14,7 @@
         :has-new="hasNewNotis"
         :total-count="showFacets.allCount"
         :is-syncing="isSyncing || isAutoSyncing"
+        :sync-status="syncStatus"
         v-model:searchQuery="searchQuery"  @add="openAddModal"
         @sync="syncData"
         @export="exportData"
@@ -201,6 +202,16 @@ const notifications = ref([]);
 const hasNewNotis = ref(false);
 const fileInput = ref(null);
 const toast = reactive({ visible: false, message: '', type: 'success' });
+const syncStatus = reactive({
+  state: 'idle',
+  lastAttemptAt: null,
+  lastSuccessAt: null,
+  checkedCount: 0,
+  skippedCount: 0,
+  failedCount: 0,
+  cacheHitCount: 0,
+  message: ''
+});
 const MAX_STORED_NOTIFICATIONS = 100;
 const AUTO_SYNC_FOCUS_DELAY_MS = 1500;
 const AUTO_SYNC_CLIENT_COOLDOWN_MS = 5 * 60 * 1000;
@@ -245,6 +256,13 @@ onMounted(() => {
     [],
     value => Array.isArray(value)
   ).slice(0, MAX_STORED_NOTIFICATIONS);
+  const storedSyncStatus = readJsonStorage(
+    localStorage,
+    getSyncStatusStorageKey(),
+    null,
+    value => value && typeof value === 'object' && !Array.isArray(value)
+  );
+  if (storedSyncStatus) Object.assign(syncStatus, storedSyncStatus);
   document.addEventListener('visibilitychange', handleVisibilityChange);
   window.addEventListener('focus', scheduleAutoSync);
   window.addEventListener('blur', clearAutoSyncTimer);
@@ -281,6 +299,38 @@ const getAutoSyncStorageKey = () => {
   const userId = getAuthUserId();
   return userId ? `nook-tv-auto-sync-${userId}` : null;
 };
+const getSyncStatusStorageKey = () => {
+  const userId = getAuthUserId();
+  return userId ? `nook-tv-sync-status-${userId}` : null;
+};
+const persistSyncStatus = () => {
+  writeJsonStorage(localStorage, getSyncStatusStorageKey(), { ...syncStatus });
+};
+const recordSyncResult = (data = {}) => {
+  const completedAt = new Date().toISOString();
+  const failedCount = Number(data.failedCount) || 0;
+  Object.assign(syncStatus, {
+    state: failedCount > 0 ? 'partial' : 'success',
+    lastAttemptAt: completedAt,
+    lastSuccessAt: failedCount === 0 ? completedAt : syncStatus.lastSuccessAt,
+    checkedCount: Number(data.checkedCount) || 0,
+    skippedCount: Number(data.skippedCount) || 0,
+    failedCount,
+    cacheHitCount: Number(data.cacheHitCount) || 0,
+    message: failedCount > 0 ? `${failedCount} 部作品同步失败` : ''
+  });
+  persistSyncStatus();
+};
+const recordSyncFailure = (error) => {
+  Object.assign(syncStatus, {
+    state: 'error',
+    lastAttemptAt: new Date().toISOString(),
+    failedCount: 0,
+    message: getApiErrorMessage(error, '同步失败')
+  });
+  persistSyncStatus();
+};
+const isSyncInProgressError = error => error.response?.data?.code === 'SYNC_IN_PROGRESS';
 watch(notifications, (newVal) => {
   const notificationKey = getNotificationStorageKey();
   writeJsonStorage(localStorage, notificationKey, newVal.slice(0, MAX_STORED_NOTIFICATIONS));
@@ -555,9 +605,10 @@ const syncData = async () => {
   isSyncing.value = true;
   showToast("正在同步...", "success");
   try {
-    const res = await syncShowsApi({ force: true, timeZone: getCurrentTimeZone() });
+    const res = await syncShowsApi({ force: false, timeZone: getCurrentTimeZone() });
     await refreshShowData();
     applySyncNotifications(res.data);
+    recordSyncResult(res.data);
     const discoveryCount = res.data.seasonDiscoveries?.length || 0;
     if (res.data.updatedCount > 0 || discoveryCount > 0) {
       const failedSuffix = res.data.failedCount > 0 ? `，${res.data.failedCount} 部获取失败` : '';
@@ -568,7 +619,15 @@ const syncData = async () => {
     } else if (res.data.failedCount > 0) {
       showToast(`同步完成，但有 ${res.data.failedCount} 部获取失败`, "error");
     } else { showToast('暂无新内容', "success"); }
-  } catch (err) { console.error(err); showToast(getApiErrorMessage(err, '同步失败'), "error"); } finally { isSyncing.value = false; }
+  } catch (err) {
+    console.error(err);
+    if (isSyncInProgressError(err)) {
+      showToast('同步已在另一个窗口进行', 'success');
+    } else {
+      recordSyncFailure(err);
+      showToast(getApiErrorMessage(err, '同步失败'), "error");
+    }
+  } finally { isSyncing.value = false; }
 };
 
 const applySyncNotifications = (data = {}) => {
@@ -617,8 +676,10 @@ const runAutoSync = async () => {
   try {
     const response = await syncShowsApi({ force: false, timeZone: getCurrentTimeZone() });
     applySyncNotifications(response.data);
+    recordSyncResult(response.data);
     if (response.data.changedCount > 0) await refreshShowData();
   } catch (error) {
+    if (!isSyncInProgressError(error)) recordSyncFailure(error);
     console.warn('Automatic TMDB sync failed:', getApiErrorMessage(error, '同步失败'));
   } finally {
     isAutoSyncing.value = false;

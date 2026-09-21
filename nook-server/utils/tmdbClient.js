@@ -56,8 +56,15 @@ const createTmdbGet = (client, options = {}) => {
     const cacheKey = cacheTtlMs > 0 ? getCacheKey(path, params) : null;
     const cached = cacheKey ? cache.get(cacheKey) : null;
 
-    if (cached && cached.expiresAt > now()) return cached.response;
-    if (cacheKey && inFlight.has(cacheKey)) return inFlight.get(cacheKey);
+    if (cached && cached.expiresAt > now()) {
+      return { ...cached.response, tmdbCache: 'hit' };
+    }
+    if (cacheKey && inFlight.has(cacheKey)) {
+      return inFlight.get(cacheKey).then(response => ({
+        ...response,
+        tmdbCache: 'coalesced'
+      }));
+    }
 
     const request = client.get(path, {
       ...requestConfig,
@@ -74,6 +81,7 @@ const createTmdbGet = (client, options = {}) => {
           }
         });
       }
+      response.tmdbCache = 'miss';
       return response;
     }).finally(() => {
       if (cacheKey) inFlight.delete(cacheKey);

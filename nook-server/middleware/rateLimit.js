@@ -4,12 +4,12 @@ const getClientKey = (req) => {
   return forwardedIp || req.ip || req.socket?.remoteAddress || 'unknown';
 };
 
-const createRateLimit = ({ windowMs, max, code = 'RATE_LIMITED' }) => {
+const createRateLimit = ({ windowMs, max, code = 'RATE_LIMITED', keyGenerator = getClientKey }) => {
   const buckets = new Map();
 
   return (req, res, next) => {
     const now = Date.now();
-    const key = getClientKey(req);
+    const key = String(keyGenerator(req) || getClientKey(req));
     let bucket = buckets.get(key);
 
     if (!bucket || bucket.resetAt <= now) {

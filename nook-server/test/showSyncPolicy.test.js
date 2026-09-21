@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   DORMANT_SHOW_COOLDOWN_MS,
   DUE_SHOW_COOLDOWN_MS,
+  FAILED_SYNC_RETRY_MS,
   UNKNOWN_SCHEDULE_COOLDOWN_MS,
   getShowSyncDecision
 } = require('../utils/showSyncPolicy');
@@ -67,6 +68,36 @@ test('rechecks ended shows at most once every seven days', () => {
   }, { now: NOW, timeZone: 'Asia/Shanghai' }), {
     shouldCheck: true,
     reason: 'dormant-recheck'
+  });
+});
+
+test('retries eligible failed checks after a short cooldown', () => {
+  assert.deepEqual(getShowSyncDecision({
+    updateFrequency: 'ended',
+    lastTmdbSyncStatus: 'error',
+    lastTmdbCheckedAt: new Date(NOW.getTime() - FAILED_SYNC_RETRY_MS + 1)
+  }, { now: NOW, timeZone: 'Asia/Shanghai' }), {
+    shouldCheck: false,
+    reason: 'failed-retry-cooldown'
+  });
+  assert.deepEqual(getShowSyncDecision({
+    updateFrequency: 'ended',
+    lastTmdbSyncStatus: 'error',
+    lastTmdbCheckedAt: new Date(NOW.getTime() - FAILED_SYNC_RETRY_MS)
+  }, { now: NOW, timeZone: 'Asia/Shanghai' }), {
+    shouldCheck: true,
+    reason: 'failed-retry'
+  });
+});
+
+test('does not retry a failed forced check before a future episode is due', () => {
+  assert.deepEqual(getShowSyncDecision({
+    nextAirDate: '2026-08-24',
+    lastTmdbSyncStatus: 'error',
+    lastTmdbCheckedAt: new Date(NOW.getTime() - FAILED_SYNC_RETRY_MS)
+  }, { now: NOW, timeZone: 'Asia/Shanghai' }), {
+    shouldCheck: false,
+    reason: 'future-air-date'
   });
 });
 
