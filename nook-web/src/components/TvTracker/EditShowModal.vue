@@ -401,7 +401,9 @@ const onSeasonSelect = async () => {
     const res = await axios.get(`/api/tmdb/season/${form.tmdbId}/${selectedSeasonNumber.value}`);
     const details = res.data;
     const seriesTitle = details.seriesTitle || selectedSeriesDetails.value?.title || form.title;
-    form.title = `${seriesTitle} · 第 ${details.seasonNumber} 季`;
+    form.title = availableSeasons.value.length === 1
+      ? seriesTitle
+      : `${seriesTitle} · 第 ${details.seasonNumber} 季`;
     form.seriesTitle = seriesTitle;
     form.seasonNumber = details.seasonNumber;
     form.seasonName = details.seasonName || '';

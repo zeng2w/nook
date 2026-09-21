@@ -198,6 +198,65 @@ test('adds and tracks a specific TMDB season', async ({ page }) => {
   })
 })
 
+test('adds a TMDB movie without requiring a season number', async ({ page }) => {
+  await mockSignedIn(page)
+  let createdPayload = null
+
+  await page.route('**/api/shows/calendar', route => fulfillJson(route, []))
+  await page.route('**/api/tmdb/trending', route => fulfillJson(route, []))
+  await page.route('**/api/tmdb/new-releases', route => fulfillJson(route, []))
+  await page.route(/\/api\/tmdb\/search(?:\?.*)?$/, route => fulfillJson(route, [{
+    tmdbId: 200,
+    title: 'Example Movie',
+    category: 'movie',
+    tmdbType: 'movie',
+    posterUrl: '',
+    releaseDate: '2026-01-01',
+  }]))
+  await page.route('**/api/tmdb/details/movie/200', route => fulfillJson(route, {
+    tmdbId: 200,
+    title: 'Example Movie',
+    totalEpisodes: 1,
+    airedEpisodes: 1,
+    updateFrequency: 'ended',
+    updateDays: [],
+    nextAirDate: null,
+    seasons: [],
+    networks: [],
+  }))
+  await page.route(/\/api\/shows(?:\?.*)?$/, route => {
+    if (route.request().method() === 'POST') {
+      createdPayload = route.request().postDataJSON()
+      return fulfillJson(route, { ...createdPayload, _id: '507f1f77bcf86cd799439024' })
+    }
+    return fulfillJson(route, {
+      items: [],
+      pagination: { page: 1, limit: 24, total: 0, totalPages: 0, hasMore: false },
+      facets: {
+        allCount: 0,
+        statusCounts: { watching: 0, watched: 0, wish: 0, dropped: 0 },
+        categoryCounts: { tv: 0, anime: 0, movie: 0, variety: 0 },
+        networkTotal: 0,
+        networks: [],
+      },
+    })
+  })
+
+  await page.goto('/home/tv-shows')
+  await page.getByRole('button', { name: '+ 添加' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('搜索 TMDB 剧名').fill('Example Movie')
+  await dialog.getByRole('button', { name: '搜索 TMDB' }).click()
+  await dialog.getByText('Example Movie', { exact: true }).click()
+
+  await expect(dialog.getByLabel('追踪范围')).toHaveCount(0)
+  await dialog.getByRole('button', { name: '保存' }).click()
+
+  await expect.poll(() => createdPayload?.category).toBe('movie')
+  expect(createdPayload.seasonNumber).toBeNull()
+  expect(createdPayload.updateFrequency).toBe('ended')
+})
+
 test('opens a discovered single season without asking for a season choice', async ({ page }) => {
   let createdPayload = null
   await mockSignedIn(page, {
@@ -272,7 +331,7 @@ test('opens a discovered single season without asking for a season choice', asyn
   await dialog.getByRole('button', { name: '保存' }).click()
 
   await expect.poll(() => createdPayload?.seasonNumber).toBe(1)
-  expect(createdPayload.title).toBe('Single Season Anime · 第 1 季')
+  expect(createdPayload.title).toBe('Single Season Anime')
 })
 
 test('syncs only on the visible tracker and loads discovery on demand', async ({ page }) => {

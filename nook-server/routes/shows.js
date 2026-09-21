@@ -261,6 +261,12 @@ router.post('/', async (req, res, next) => {
       const seasonNumber = normalizeSeasonNumber(showData.seasonNumber);
       const existingShow = await Show.findOne({ userId: req.user.id, tmdbId, seasonNumber });
       if (existingShow) {
+        if (showData.category === 'movie') {
+          return res.status(409).json({
+            code: 'DUPLICATE_SHOW',
+            error: `电影《${existingShow.title}》已存在，请勿重复添加。`
+          });
+        }
         const seasonLabel = seasonNumber ? `第 ${seasonNumber} 季` : '整部剧';
         return res.status(409).json({
           code: 'DUPLICATE_SHOW',

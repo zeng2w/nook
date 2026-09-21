@@ -108,6 +108,9 @@ router.get('/details/:type/:id', async (req, res) => {
     const networksData = data.networks || data.production_companies || [];
 
     // --- D. 构造返回给前端的最终对象 ---
+    const schedule = queryType === 'movie'
+      ? { updateFrequency: 'ended', updateDays: [], nextAirDate: null }
+      : getTmdbSchedule(data);
     const details = {
       tmdbId: data.id,
       title: data.title || data.name,
@@ -137,8 +140,8 @@ router.get('/details/:type/:id', async (req, res) => {
         ? getRecommendedSeasonNumber(data)
         : null,
 
-      // 只有 TMDB 明确提供下一集日期时才推断周更，避免停播期无限外推。
-      ...getTmdbSchedule(data)
+      // 电影没有季度或后续集数；剧集则只在 TMDB 提供下一集日期时推断周更。
+      ...schedule
     };
 
     res.json(details);
