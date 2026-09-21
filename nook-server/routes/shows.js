@@ -18,8 +18,47 @@ const { applyDerivedShowStatus, getSyncedEpisodeCount } = require('../utils/show
 const { getCalendarDateKeyInTimeZone, isValidTimeZone } = require('../utils/timeZone');
 const logger = require('../utils/logger');
 const { validateObjectIdParam } = require('../middleware/validate');
+const { createRateLimit } = require('../middleware/rateLimit');
 
 const SHOW_LIST_FIELDS = '-userId -__v -lastTmdbCheckedAt -lastTmdbSyncStatus';
+const activeSyncUsers = new Set();
+const syncRateLimit = createRateLimit({
+  windowMs: 60 * 1000,
+  max: 3,
+  code: 'SYNC_RATE_LIMITED',
+  keyGenerator: req => req.user?.id
+});
+const forcedSyncRateLimit = createRateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 1,
+  code: 'FORCED_SYNC_RATE_LIMITED',
+  keyGenerator: req => req.user?.id
+});
+
+const limitForcedSync = (req, res, next) => (
+  req.body?.force === true ? forcedSyncRateLimit(req, res, next) : next()
+);
+
+const preventConcurrentSync = (req, res, next) => {
+  const userId = String(req.user.id);
+  if (activeSyncUsers.has(userId)) {
+    return res.status(409).json({
+      code: 'SYNC_IN_PROGRESS',
+      error: 'A synchronization is already in progress'
+    });
+  }
+
+  activeSyncUsers.add(userId);
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    activeSyncUsers.delete(userId);
+  };
+  res.once('finish', release);
+  res.once('close', release);
+  next();
+};
 
 const ALLOWED_SHOW_FIELDS = [
   'title',
@@ -337,10 +376,10 @@ router.delete('/:id', validateObjectIdParam(), async (req, res, next) => {
 // ==========================================
 // 5. 🔄 智能/手动同步接口（受控并发 + 短期缓存）
 // ==========================================
-router.post('/sync', async (req, res, next) => {
+router.post('/sync', syncRateLimit, limitForcedSync, preventConcurrentSync, async (req, res, next) => {
   try {
-    // 未传 force 时保留原有手动接口的全量行为；页面自动同步会明确传 false。
-    const force = req.body?.force !== false;
+    // 智能同步是默认行为。强制全量同步必须明确传 true，且有更严格的频率限制。
+    const force = req.body?.force === true;
     const requestedTimeZone = req.body?.timeZone;
     if (requestedTimeZone !== undefined && !isValidTimeZone(requestedTimeZone)) {
       return res.status(400).json({
@@ -379,11 +418,13 @@ router.post('/sync', async (req, res, next) => {
       syncCandidates,
       getSyncConcurrency(),
       async show => {
+        let cacheHitCount = 0;
         try {
           const tmdbRes = await tmdbGet(`/tv/${show.tmdbId}`, {
             cacheTtlMs: 60 * 1000,
             params: { language: 'zh-CN' }
           });
+          if (tmdbRes.tmdbCache !== 'miss') cacheHitCount++;
 
           const remoteData = tmdbRes.data;
           const tmdbId = Number(show.tmdbId);
@@ -425,6 +466,7 @@ router.post('/sync', async (req, res, next) => {
               cacheTtlMs: 60 * 1000,
               params: { language: 'zh-CN' }
             });
+            if (seasonRes.tmdbCache !== 'miss') cacheHitCount++;
             seasonProgress = getTmdbSeasonProgress(seasonRes.data, remoteData, {
               seasonNumber: trackedSeasonNumber,
               today
@@ -444,7 +486,7 @@ router.post('/sync', async (req, res, next) => {
             show.lastTmdbCheckedAt = checkedAt;
             show.lastTmdbSyncStatus = 'success';
             await show.save();
-            return { contentChanged, updateLog: null, seasonDiscovery };
+            return { contentChanged, updateLog: null, seasonDiscovery, cacheHitCount };
           }
 
           const remoteSchedule = seasonProgress || getTmdbSchedule(remoteData);
@@ -555,7 +597,7 @@ router.post('/sync', async (req, res, next) => {
           show.lastTmdbCheckedAt = checkedAt;
           show.lastTmdbSyncStatus = 'success';
           await show.save();
-          return { contentChanged, updateLog, seasonDiscovery };
+          return { contentChanged, updateLog, seasonDiscovery, cacheHitCount };
         } catch (err) {
           const failure = classifyTmdbError(err);
           logger.warn('show_sync_item_failed', { code: failure.code, showId: String(show._id) });
@@ -570,7 +612,7 @@ router.post('/sync', async (req, res, next) => {
               message: markerError.message
             });
           }
-          return { error: err };
+          return { error: err, cacheHitCount };
         }
       }
     );
@@ -585,6 +627,10 @@ router.post('/sync', async (req, res, next) => {
     const attemptedCount = syncCandidates.length;
     const failedCount = failures.length;
     const changedCount = syncResults.filter(result => result.contentChanged).length;
+    const cacheHitCount = syncResults.reduce(
+      (total, result) => total + (Number(result.cacheHitCount) || 0),
+      0
+    );
 
     if (attemptedCount > 0 && failedCount === attemptedCount) {
       return sendTmdbError(res, failures[0].error, 'sync');
@@ -597,6 +643,8 @@ router.post('/sync', async (req, res, next) => {
       changedCount,
       updatedCount: updateLogs.length, 
       failedCount,
+      cacheHitCount,
+      usedCache: cacheHitCount > 0,
       logs: updateLogs,
       seasonDiscoveries
     });

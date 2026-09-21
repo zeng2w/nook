@@ -251,7 +251,7 @@ test('smart show sync validates time zones before querying data', async () => {
   }
 });
 
-test('smart show sync skips future episodes without calling TMDB', async () => {
+test('show sync defaults to smart mode and skips future episodes without calling TMDB', async () => {
   const originalFind = Show.find;
   let receivedFilter;
   Show.find = filter => ({
@@ -271,7 +271,7 @@ test('smart show sync skips future episodes without calling TMDB', async () => {
     const response = await request(createTestApp())
       .post('/api/shows/sync')
       .set('Cookie', `nook_session=${createSessionToken(USER_A)}`)
-      .send({ force: false, timeZone: 'Asia/Shanghai' });
+      .send({ timeZone: 'Asia/Shanghai' });
 
     assert.equal(response.status, 200);
     assert.equal(response.body.checkedCount, 0);

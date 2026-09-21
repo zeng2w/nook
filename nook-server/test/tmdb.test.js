@@ -2,12 +2,25 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  classifyTmdbCategory,
   getAiredEpisodeCount,
+  getTmdbMediaType,
   getRecommendedSeasonNumber,
   getTmdbSchedule,
   getTmdbSeasonProgress,
   hasTmdbSeasonActivity
 } = require('../utils/tmdb');
+
+test('classifies TMDB search results by media type and genre', () => {
+  assert.equal(classifyTmdbCategory({ media_type: 'movie', genre_ids: [16] }), 'movie');
+  assert.equal(classifyTmdbCategory({ media_type: 'tv', origin_country: ['JP'], genre_ids: [18] }), 'tv');
+  assert.equal(classifyTmdbCategory({ media_type: 'tv', genre_ids: [16, 10759] }), 'anime');
+  assert.equal(classifyTmdbCategory({ media_type: 'tv', genre_ids: [10764] }), 'variety');
+  assert.equal(classifyTmdbCategory({ media_type: 'tv', genre_ids: [10767] }), 'variety');
+  assert.equal(getTmdbMediaType('anime'), 'tv');
+  assert.equal(getTmdbMediaType('variety'), 'tv');
+  assert.equal(getTmdbMediaType('movie'), 'movie');
+});
 
 test('counts aired episodes across completed seasons', () => {
   const count = getAiredEpisodeCount({

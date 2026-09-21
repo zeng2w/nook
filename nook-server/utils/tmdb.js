@@ -1,3 +1,21 @@
+const TMDB_ANIMATION_GENRE_ID = 16;
+const TMDB_VARIETY_GENRE_IDS = new Set([10763, 10764, 10767]);
+
+const classifyTmdbCategory = (item = {}) => {
+  if (item.media_type === 'movie') return 'movie';
+
+  const genreIds = Array.isArray(item.genre_ids)
+    ? item.genre_ids.map(Number).filter(Number.isInteger)
+    : [];
+  if (genreIds.includes(TMDB_ANIMATION_GENRE_ID)) return 'anime';
+  if (genreIds.some(genreId => TMDB_VARIETY_GENRE_IDS.has(genreId))) return 'variety';
+  return 'tv';
+};
+
+const getTmdbMediaType = type => (
+  ['anime', 'variety'].includes(type) ? 'tv' : type
+);
+
 const getAiredEpisodeCount = (data) => {
   const lastEpisode = data?.last_episode_to_air;
   if (!lastEpisode) return Number(data?.number_of_episodes) || 0;
@@ -173,7 +191,9 @@ const getTmdbSeasonProgress = (seasonData = {}, seriesData = {}, options = {}) =
 };
 
 module.exports = {
+  classifyTmdbCategory,
   getAiredEpisodeCount,
+  getTmdbMediaType,
   getRecommendedSeasonNumber,
   getTmdbSchedule,
   getTmdbSeasonProgress,
