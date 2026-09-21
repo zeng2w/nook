@@ -55,6 +55,41 @@
             </div>
           </div>
         </div>
+
+        <div class="mobile-agenda-view">
+          <div v-if="mobileAgendaDays.length === 0" class="mobile-agenda-empty">
+            这一周暂时没有更新安排
+          </div>
+          <template v-else>
+          <section
+            v-for="day in mobileAgendaDays"
+            :key="`agenda-${day.key}`"
+            class="agenda-day"
+          >
+            <div class="agenda-day-header">
+              <div>
+                <strong>{{ formatAgendaDate(day.date) }}</strong>
+                <span v-if="isSameCalendarDay(day.date, new Date())" class="today-tag">今天</span>
+              </div>
+              <span>{{ day.items.length }} 部更新</span>
+            </div>
+
+            <div v-if="day.items.length" class="agenda-items">
+              <div v-for="(item, k) in day.items" :key="`agenda-${item.show._id}-${k}`" class="agenda-item-card">
+                <div class="agenda-poster">
+                  <img v-if="item.show.posterUrl" :src="item.show.posterUrl" :alt="item.show.title" loading="lazy" decoding="async" />
+                  <span v-else>{{ item.show.title.charAt(0) }}</span>
+                </div>
+                <div class="agenda-info">
+                  <strong>{{ item.show.title }}</strong>
+                  <span>{{ item.episodeText }}</span>
+                </div>
+              </div>
+            </div>
+            <p v-else class="agenda-day-empty">今天暂无更新</p>
+          </section>
+          </template>
+        </div>
       </div>
     </div>
   </Transition>
@@ -161,6 +196,14 @@ const calendarDays = computed(() => Array.from({ length: 7 }, (_, index) => {
     key: `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
   };
 }));
+const mobileAgendaDays = computed(() => calendarDays.value.filter(day => (
+  day.items.length > 0 || isSameCalendarDay(day.date, new Date())
+)));
+const formatAgendaDate = date => new Intl.DateTimeFormat('zh-CN', {
+  month: 'numeric',
+  day: 'numeric',
+  weekday: 'short'
+}).format(date);
 </script>
 
 <style scoped>
@@ -208,6 +251,7 @@ const calendarDays = computed(() => Array.from({ length: 7 }, (_, index) => {
   overflow-x: auto; 
   min-width: 0; 
 }
+.mobile-agenda-view { display: none; }
 
 /* Columns */
 .day-column { 
@@ -282,14 +326,28 @@ const calendarDays = computed(() => Array.from({ length: 7 }, (_, index) => {
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
 @media (max-width: 768px) {
-  .glass-calendar-card.compact-mode { width: 100vw; height: 60vh; border-radius: 20px 20px 0 0; position: absolute; bottom: 0; max-width: none; }
+  .glass-calendar-card.compact-mode { width: 100vw; height: min(82dvh, 720px); max-height: 82dvh; border-radius: 20px 20px 0 0; position: absolute; bottom: 0; max-width: none; }
   .glass-header { padding: 10px 12px; gap: 8px; }
   .header-left { min-width: 0; gap: 8px; }
   .header-left h3 { font-size: 1rem; white-space: nowrap; }
   .timezone-label { max-width: 100px; }
   .header-right { gap: 6px; }
   .nav-btn.today-btn { padding: 0 8px; }
-  /* 修复：移动端列宽与 Grid 一致 */
-  .day-column { min-width: 120px; }
+  .calendar-grid-view { display: none; }
+  .mobile-agenda-view { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 14px; overflow-y: auto; padding: 14px 12px max(18px, env(safe-area-inset-bottom)); background: #f8fafc; }
+  .mobile-agenda-empty { margin: auto; color: #94a3b8; font-size: 0.9rem; }
+  .agenda-day { display: flex; flex-direction: column; gap: 8px; }
+  .agenda-day-header { display: flex; align-items: center; justify-content: space-between; color: #94a3b8; font-size: 0.75rem; }
+  .agenda-day-header > div { display: flex; align-items: center; gap: 7px; }
+  .agenda-day-header strong { color: #334155; font-size: 0.92rem; }
+  .today-tag { padding: 2px 6px; border-radius: 999px; background: #dbeafe; color: #2563eb; font-size: 0.65rem; font-weight: 700; }
+  .agenda-items { display: flex; flex-direction: column; gap: 8px; }
+  .agenda-item-card { display: flex; align-items: center; gap: 12px; padding: 10px; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; box-shadow: 0 3px 12px rgba(15,23,42,0.04); }
+  .agenda-poster { width: 42px; height: 60px; flex-shrink: 0; border-radius: 8px; overflow: hidden; background: #e2e8f0; display: flex; align-items: center; justify-content: center; color: #64748b; font-weight: 700; }
+  .agenda-poster img { width: 100%; height: 100%; object-fit: cover; }
+  .agenda-info { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .agenda-info strong { color: #1e293b; font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .agenda-info span { align-self: flex-start; padding: 3px 8px; border-radius: 6px; background: #eef2ff; color: #4f46e5; font-size: 0.75rem; font-weight: 700; }
+  .agenda-day-empty { margin: 0; padding: 14px; border-radius: 12px; background: #fff; color: #94a3b8; text-align: center; font-size: 0.8rem; }
 }
 </style>

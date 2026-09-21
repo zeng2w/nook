@@ -2,6 +2,7 @@
   <aside 
     class="sidebar" 
     :class="{ 'closed': !isOpen, 'dark-theme': !store.isLightMode }"
+    :style="{ '--sidebar-bg': store.themeColor }"
   >
     <div class="sidebar-header">
       <div class="user-profile" v-show="isOpen">

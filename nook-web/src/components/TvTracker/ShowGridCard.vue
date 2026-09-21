@@ -1,8 +1,13 @@
 <template>
   <div class="show-card-wrapper">
-    <div class="show-card" :class="{ 'blur-bg': isPendingDelete, 'dropped-card': show.status === 'dropped' }" @mouseleave="flipped = false">
+    <div
+      class="show-card"
+      :class="{ 'blur-bg': isPendingDelete, 'dropped-card': show.status === 'dropped' }"
+      @keydown.esc="closeCardOverlays"
+      @mouseleave="closeCardOverlays"
+    >
       
-      <div class="flipper" :class="{ 'is-flipped': flipped }">
+      <div class="flipper" :class="{ 'is-flipped': isPosterPreviewOpen }">
         
         <div class="card-face front">
           
@@ -19,21 +24,59 @@
               </svg>
             </button>
 
-            <button class="action-circle-btn edit" :aria-label="`编辑 ${show.title}`" @click.stop="$emit('edit', show)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
-            <template v-if="show.status === 'dropped'">
-              <button class="action-circle-btn restore" :aria-label="`恢复 ${show.title}`" @click.stop="$emit('restore', show)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"></path></svg></button>
-              <button class="action-circle-btn hard-delete" :aria-label="`永久删除 ${show.title}`" @click.stop="$emit('delete', show._id)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
-            </template>
-            <template v-else>
-              <button class="action-circle-btn soft-delete" :aria-label="`将 ${show.title} 标记为弃剧`" @click.stop="$emit('drop', show)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
-            </template>
+            <div class="card-more-wrapper">
+              <button
+                type="button"
+                class="action-circle-btn more-action-btn"
+                :aria-label="`${show.title} 更多操作`"
+                :aria-expanded="actionMenuOpen"
+                @click.stop="actionMenuOpen = !actionMenuOpen"
+              >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <circle cx="5" cy="12" r="1.7"></circle>
+                  <circle cx="12" cy="12" r="1.7"></circle>
+                  <circle cx="19" cy="12" r="1.7"></circle>
+                </svg>
+              </button>
+
+              <transition name="action-menu-fade">
+                <div v-if="actionMenuOpen" class="card-action-menu" @click.stop>
+                  <button type="button" @click="runCardAction('edit')">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                    编辑
+                  </button>
+                  <template v-if="show.status === 'dropped'">
+                    <button type="button" @click="runCardAction('restore')">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"></path></svg>
+                      恢复追剧
+                    </button>
+                    <button type="button" class="danger" @click="runCardAction('delete')">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                      永久删除
+                    </button>
+                  </template>
+                  <button v-else type="button" class="danger" @click="runCardAction('drop')">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    标记弃剧
+                  </button>
+                </div>
+              </transition>
+            </div>
           </div>
           
           <div class="card-header-grid">
-            <div class="poster-mini trigger-flip" :style="{ backgroundColor: getCategoryColor(show.category) }" @mouseenter="flipped = true">
+            <button
+              type="button"
+              class="poster-mini poster-preview-btn"
+              :style="{ backgroundColor: getCategoryColor(show.category) }"
+              :aria-label="`查看 ${show.title} 海报`"
+              :aria-pressed="isPosterPreviewOpen"
+              @mouseenter="openPosterPreviewOnHover"
+              @click.stop="openPosterPreview"
+            >
               <img v-if="show.posterUrl" :src="show.posterUrl" class="mini-img" loading="lazy" decoding="async" /><span v-else>{{ show.title.charAt(0) }}</span>
-              <div class="flip-hint">↻</div>
-            </div>
+              <span class="flip-hint">翻转</span>
+            </button>
             <div class="header-info">
               <h3>{{ show.title }}</h3>
               <div class="tags-line">
@@ -93,6 +136,7 @@
           <div v-else class="back-placeholder" :style="{ backgroundColor: getCategoryColor(show.category) }">
             <span>{{ show.title }}</span>
           </div>
+          <button v-if="isPosterPreviewOpen" type="button" class="close-preview-btn" aria-label="关闭海报预览" @click.stop="isPosterPreviewOpen = false">✕</button>
         </div>
 
       </div>
@@ -118,9 +162,35 @@ const props = defineProps({
   isPendingDelete: { type: Boolean, default: false }
 });
 
-defineEmits(['edit', 'update-progress', 'delete', 'drop', 'restore', 'pause-delete', 'resume-delete', 'cancel-delete', 'toggle-favorite']);
+const emit = defineEmits(['edit', 'update-progress', 'delete', 'drop', 'restore', 'pause-delete', 'resume-delete', 'cancel-delete', 'toggle-favorite']);
 
-const flipped = ref(false);
+const isPosterPreviewOpen = ref(false);
+const actionMenuOpen = ref(false);
+
+const openPosterPreview = () => {
+  actionMenuOpen.value = false;
+  isPosterPreviewOpen.value = true;
+};
+
+const openPosterPreviewOnHover = () => {
+  if (window.matchMedia('(hover: hover) and (min-width: 769px)').matches) {
+    openPosterPreview();
+  }
+};
+
+const closeCardOverlays = () => {
+  isPosterPreviewOpen.value = false;
+  actionMenuOpen.value = false;
+};
+
+const runCardAction = (action) => {
+  actionMenuOpen.value = false;
+  if (action === 'delete') {
+    emit('delete', props.show._id);
+    return;
+  }
+  emit(action, props.show);
+};
 
 const getCategoryLabel = (cat) => ({ tv: '电视剧', anime: '动漫', movie: '电影', variety: '综艺' }[cat] || cat);
 const getCategoryColor = (cat) => ({ tv: '#e5e7eb', anime: '#f3e8ff', movie: '#e0f2fe', variety: '#ffedd5' }[cat] || '#eee');
@@ -147,26 +217,41 @@ const progressPercent = computed(() => {
 </script>
 
 <style scoped>
-.show-card-wrapper { position: relative; perspective: 1000px; }
+.show-card-wrapper { position: relative; z-index: 0; isolation: isolate; perspective: 1000px; }
 
-.show-card { width: 100%; height: 260px; position: relative; background: transparent; }
+.show-card { width: 100%; height: 276px; position: relative; isolation: isolate; background: transparent; }
 .show-card.blur-bg { filter: grayscale(100%); opacity: 0.5; }
-.flipper { position: relative; width: 100%; height: 100%; transition: transform 0.6s; transform-style: preserve-3d; background: #fff; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
+.flipper { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform 0.62s cubic-bezier(0.22, 1, 0.36, 1); background: #fff; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
 .flipper.is-flipped { transform: rotateY(180deg); }
 .show-card.dropped-card .flipper { filter: grayscale(100%); opacity: 0.6; background-color: #f3f4f6; }
-.card-face { position: relative; top: 0; left: 0; width: 100%; height: 100%; border-radius: 16px; backface-visibility: hidden; overflow: hidden; display: flex; flex-direction: column; }
+.card-face { position: relative; top: 0; left: 0; width: 100%; height: 100%; box-sizing: border-box; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
 
-.front { z-index: 2; transform: rotateY(0deg); padding: 12px; background: inherit; justify-content: space-between; }
-.back { position: absolute; top: 0; left: 0; z-index: 1; transform: rotateY(180deg); background: #000; display: flex; align-items: center; justify-content: center; }
+.front { z-index: 2; padding: 12px; transform: rotateY(0deg); background: inherit; justify-content: space-between; }
+.back { position: absolute; top: 0; left: 0; z-index: 1; transform: rotateY(180deg); background: #000; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.flipper.is-flipped .front { pointer-events: none; }
+.flipper.is-flipped .back { pointer-events: auto; }
 .full-poster { width: 100%; height: 100%; object-fit: cover; }
-.back-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: white; font-size: 1.2rem; font-weight: 700; padding: 20px; text-align: center; }
+.back-placeholder { width: 100%; height: 100%; box-sizing: border-box; display: flex; align-items: center; justify-content: center; color: white; font-size: 1.2rem; font-weight: 700; padding: 20px; text-align: center; }
+.close-preview-btn { position: absolute; top: 12px; right: 12px; z-index: 3; width: 38px; height: 38px; border: 1px solid rgba(255,255,255,0.5); border-radius: 50%; background: rgba(15,23,42,0.72); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; backdrop-filter: blur(8px); }
 
-.top-actions { position: absolute; top: 10px; right: 10px; display: flex; gap: 4px; z-index: 5; }
-.action-circle-btn { background: white; border-radius: 50%; border: 1px solid #f3f4f6; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+.top-actions { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; z-index: 30; }
+.action-circle-btn { background: white; border-radius: 50%; border: 1px solid #e2e8f0; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
 .action-circle-btn:hover { transform: scale(1.1); }
 .favorite-btn { color: #94a3b8; }
 .favorite-btn:hover { color: #f43f5e; background: #ffe4e6; border-color: #fecdd3; }
 .favorite-btn.active { color: #f43f5e; }
+.card-more-wrapper { position: relative; }
+.more-action-btn { color: #64748b; }
+.more-action-btn:hover { color: #334155; background: #f8fafc; }
+.card-action-menu { position: absolute; top: calc(100% + 7px); right: 0; z-index: 20; width: 132px; padding: 6px; border: 1px solid #e2e8f0; border-radius: 12px; background: rgba(255,255,255,0.98); box-shadow: 0 12px 30px rgba(15,23,42,0.16); backdrop-filter: blur(12px); }
+.card-action-menu button { width: 100%; min-height: 34px; padding: 7px 9px; border: 0; border-radius: 8px; background: transparent; color: #334155; display: flex; align-items: center; gap: 8px; font-size: 0.76rem; font-weight: 650; white-space: nowrap; cursor: pointer; }
+.card-action-menu button:hover { background: #f1f5f9; }
+.card-action-menu button.danger { color: #dc2626; }
+.card-action-menu button.danger:hover { background: #fef2f2; }
+.action-menu-fade-enter-active,
+.action-menu-fade-leave-active { transition: opacity 0.16s ease, transform 0.16s ease; transform-origin: top right; }
+.action-menu-fade-enter-from,
+.action-menu-fade-leave-to { opacity: 0; transform: translateY(-4px) scale(0.96); }
 
 /* ✨ 修复1：将居中对齐改为顶部对齐，并移除影响空间的 padding-right */
 .card-header-grid { 
@@ -180,7 +265,7 @@ const progressPercent = computed(() => {
   flex-shrink: 0; 
   aspect-ratio: 2 / 3; 
   height: auto; 
-  border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; background: #f3f4f6; cursor: pointer; position: relative; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.05); z-index: 10; 
+  border: 0; padding: 0; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; background: #f3f4f6; cursor: pointer; position: relative; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.05); z-index: 10;
 }
 .poster-mini .mini-img { 
   width: 100%; 
@@ -189,8 +274,7 @@ const progressPercent = computed(() => {
   transition: transform 0.3s ease; 
 }
 .poster-mini:hover .mini-img { transform: scale(1.05); }
-.flip-hint { position: absolute; inset: 0; background: rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: white; font-size: 1.2rem; opacity: 0; transition: opacity 0.2s; }
-.poster-mini:hover .flip-hint { opacity: 1; }
+.flip-hint { position: absolute; left: 4px; bottom: 4px; padding: 2px 5px; border-radius: 5px; background: rgba(15,23,42,0.72); color: white; font-size: 0.58rem; font-weight: 700; line-height: 1.2; opacity: 0.9; backdrop-filter: blur(5px); }
 
 /* ✨ 修复2：为文字信息区域增加 padding-top 避开绝对定位的按钮 */
 .header-info { 
@@ -199,7 +283,7 @@ const progressPercent = computed(() => {
   gap: 4px; 
   flex: 1; 
   min-width: 0; /* 防止子元素撑破 Flex 容器 */
-  padding-top: 28px; /* 完美避开上方 24px 尺寸的按钮 */
+  padding-top: 42px;
 }
 
 /* ✨ 修复3：增强文字换行机制，防止超长剧集名挤出边界 */
@@ -228,9 +312,17 @@ const progressPercent = computed(() => {
 .simple-dashboard { flex: 1; display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
 .simple-dashboard.disabled { opacity: 0.5; pointer-events: none; }
 
-.control-btn { width: 32px; height: 32px; border-radius: 50%; border: 1px solid #e5e7eb; background: #fff; color: #444; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
+.control-btn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid #e5e7eb; background: #fff; color: #444; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
 .control-btn:hover:not(:disabled) { background: #f9fafb; border-color: #d1d5db; color: #000; transform: scale(1.1); }
 .control-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.action-circle-btn:focus-visible,
+.control-btn:focus-visible,
+.poster-preview-btn:focus-visible,
+.close-preview-btn:focus-visible,
+.card-action-menu button:focus-visible {
+  outline: 3px solid rgba(59, 130, 246, 0.3);
+  outline-offset: 2px;
+}
 
 .progress-info-center { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; }
 .status-capsule { font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: 12px; letter-spacing: 0.5px; transition: all 0.3s; margin-bottom: 2px; }
@@ -256,6 +348,10 @@ const progressPercent = computed(() => {
 .undo-btn:hover { transform: scale(1.05); }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .flipper { transition-duration: 0.01ms; }
+}
 
 @media (max-width: 768px) {
   .card-header-grid { flex-direction: row; padding-right: 0; }

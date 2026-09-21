@@ -3,7 +3,10 @@
     <div v-if="visible" class="modal-overlay" @click.self="close">
       <div class="modal-container modern-modal" role="dialog" aria-modal="true" aria-labelledby="show-modal-title">
         
-        <div class="modal-header"><h3 id="show-modal-title">{{ isEditing ? '编辑剧集' : '添加新剧集' }}</h3></div>
+        <div class="modal-header">
+          <h3 id="show-modal-title">{{ isEditing ? '编辑剧集' : '添加新剧集' }}</h3>
+          <button type="button" class="modal-close-btn" aria-label="关闭剧集编辑窗口" @click="close">✕</button>
+        </div>
         
         <div v-if="!isEditing" class="search-fixed-area">
           <div class="tmdb-search-section">
@@ -91,40 +94,55 @@
             <span>{{ form.seasonName || form.seriesTitle }}</span>
           </div>
 
-          <div class="form-section-compact">
-            <div class="compact-header">
-              <label>更新频率</label>
-              <div class="segmented-control mini">
-                <button v-for="opt in freqOptions" :key="opt.val" type="button" class="segment-option" :class="{ active: form.updateFrequency === opt.val }" :aria-pressed="form.updateFrequency === opt.val" @click="selectFrequency(opt.val)">{{ opt.label }}</button>
+          <div class="form-section-compact schedule-section">
+            <div class="section-heading">
+              <div>
+                <label>更新排期</label>
+                <p>{{ scheduleSummaryText }}</p>
               </div>
-            </div>
-
-            <div v-if="form.tmdbId" class="source-control">
-              <span>{{ form.scheduleLocked ? '本地排期已锁定' : '排期由 TMDB 自动维护' }}</span>
-              <button type="button" @click="toggleScheduleLock">
-                {{ form.scheduleLocked ? '恢复 TMDB 排期' : '锁定当前排期' }}
+              <button
+                type="button"
+                class="advanced-toggle"
+                :aria-expanded="scheduleDetailsOpen"
+                @click="scheduleDetailsOpen = !scheduleDetailsOpen"
+              >
+                {{ scheduleDetailsOpen ? '收起设置' : '调整设置' }}
+                <span aria-hidden="true">{{ scheduleDetailsOpen ? '⌃' : '⌄' }}</span>
               </button>
             </div>
-            
-            <div v-if="form.updateFrequency === 'weekly'" class="week-selector-mini">
-              <button v-for="(day, idx) in weekDays" :key="idx" type="button" class="day-chip mini" :class="{ active: form.updateDays.includes(idx) }" :aria-pressed="form.updateDays.includes(idx)" @click="toggleDay(idx)">{{ day }}</button>
+
+            <div class="segmented-control mini schedule-frequency">
+              <button v-for="opt in freqOptions" :key="opt.val" type="button" class="segment-option" :class="{ active: form.updateFrequency === opt.val }" :aria-pressed="form.updateFrequency === opt.val" @click="selectFrequency(opt.val)">{{ opt.label }}</button>
             </div>
-            
-            <div v-if="form.updateFrequency !== 'ended' && form.updateFrequency !== 'unknown'" class="inline-row">
-              <span class="sub-label">每次更新:</span>
-              <input v-model.number="form.updateCount" type="number" min="1" class="modern-input inline-input" @change="lockSchedule" />
-              <span class="unit">集</span>
-              <span class="spacer">|</span>
-              <span class="sub-label">最近:</span>
-              <input v-model="form.lastAirDate" type="date" class="modern-input inline-date" @change="lockSchedule" />
-            </div>
-            <div v-if="form.updateFrequency !== 'ended' && form.updateFrequency !== 'unknown' && !form.scheduleLocked" class="inline-row next-air-row">
-              <span class="sub-label">下次更新:</span>
-              <input v-model="form.nextAirDate" type="date" class="modern-input inline-date" />
-              <span class="schedule-hint">TMDB 没有明确日期时可留空</span>
-            </div>
-            <div v-else-if="form.scheduleLocked && form.updateFrequency !== 'ended' && form.updateFrequency !== 'unknown'" class="manual-schedule-hint">
-              将按上方本地频率和星期重复显示，不使用 TMDB 下次更新日期。
+
+            <div v-show="scheduleDetailsOpen" class="schedule-details">
+              <div v-if="form.tmdbId" class="source-control">
+                <span>{{ form.scheduleLocked ? '本地排期已锁定' : '排期由 TMDB 自动维护' }}</span>
+                <button type="button" @click="toggleScheduleLock">
+                  {{ form.scheduleLocked ? '恢复 TMDB 排期' : '锁定当前排期' }}
+                </button>
+              </div>
+
+              <div v-if="form.updateFrequency === 'weekly'" class="week-selector-mini">
+                <button v-for="(day, idx) in weekDays" :key="idx" type="button" class="day-chip mini" :class="{ active: form.updateDays.includes(idx) }" :aria-pressed="form.updateDays.includes(idx)" @click="toggleDay(idx)">{{ day }}</button>
+              </div>
+
+              <div v-if="form.updateFrequency !== 'ended' && form.updateFrequency !== 'unknown'" class="inline-row">
+                <span class="sub-label">每次更新:</span>
+                <input v-model.number="form.updateCount" type="number" min="1" class="modern-input inline-input" aria-label="每次更新集数" @change="lockSchedule" />
+                <span class="unit">集</span>
+                <span class="spacer">|</span>
+                <span class="sub-label">最近:</span>
+                <input v-model="form.lastAirDate" type="date" class="modern-input inline-date" aria-label="最近更新日期" @change="lockSchedule" />
+              </div>
+              <div v-if="form.updateFrequency !== 'ended' && form.updateFrequency !== 'unknown' && !form.scheduleLocked" class="inline-row next-air-row">
+                <span class="sub-label">下次更新:</span>
+                <input v-model="form.nextAirDate" type="date" class="modern-input inline-date" aria-label="下次更新日期" />
+                <span class="schedule-hint">TMDB 没有明确日期时可留空</span>
+              </div>
+              <div v-else-if="form.scheduleLocked && form.updateFrequency !== 'ended' && form.updateFrequency !== 'unknown'" class="manual-schedule-hint">
+                将按上方本地频率和星期重复显示，不使用 TMDB 下次更新日期。
+              </div>
             </div>
           </div>
 
@@ -183,6 +201,7 @@ const selectedSeasonNumber = ref(null);
 const selectedSeriesDetails = ref(null);
 const seasonSummary = ref(null);
 const searchError = ref('');
+const scheduleDetailsOpen = ref(true);
 
 const createInitialForm = () => ({
   title: '',
@@ -210,6 +229,19 @@ const form = reactive(createInitialForm());
 
 const freqOptions = [ { label: '周更', val: 'weekly' }, { label: '日更', val: 'daily' }, { label: '月更', val: 'monthly' }, { label: '待定', val: 'unknown' }, { label: '完结', val: 'ended' } ];
 const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+const scheduleSummaryText = computed(() => {
+  const frequency = freqOptions.find(option => option.val === form.updateFrequency)?.label || '待定';
+  const source = form.tmdbId
+    ? (form.scheduleLocked ? '本地排期' : 'TMDB 自动维护')
+    : '手动排期';
+  const days = form.updateFrequency === 'weekly' && form.updateDays.length
+    ? ` · ${form.updateDays.map(day => weekDays[day]).join('、')}`
+    : '';
+  const nextAir = form.updateFrequency !== 'ended' && form.nextAirDate
+    ? ` · 下次 ${form.nextAirDate}`
+    : '';
+  return `${frequency}${days}${nextAir} · ${source}`;
+});
 const derivedStatus = computed(() => deriveShowStatus(form));
 const derivedStatusLabel = computed(() => ({
   wish: '想看',
@@ -239,6 +271,7 @@ watch(
       if (newData) {
         // --- 编辑模式：填充数据 ---
         replaceForm(newData);
+        scheduleDetailsOpen.value = !newData.tmdbId || newData.scheduleLocked === true;
       } else {
         // --- 添加模式：彻底重置表单 ---
         replaceForm();
@@ -250,6 +283,7 @@ watch(
         seasonSummary.value = null;
         isSeasonLoading.value = false;
         searchError.value = '';
+        scheduleDetailsOpen.value = true;
         if (initialSelection) {
           void selectTMDBResult(initialSelection, initialSelection.seasonNumber);
         }
@@ -348,6 +382,7 @@ const selectTMDBResult = async (item, preferredSeasonNumber = null) => {
   selectedSeasonNumber.value = null;
   selectedSeriesDetails.value = null;
   seasonSummary.value = null;
+  scheduleDetailsOpen.value = false;
   
   try {
     const type = item.tmdbType || item.category;
@@ -433,11 +468,13 @@ const onSeasonSelect = async () => {
 <style scoped>
 /* 遮罩层 */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(8px); }
-.modal-container.modern-modal { background: #fff; width: 460px; border-radius: 24px; box-shadow: 0 25px 60px rgba(0,0,0,0.2); display: flex; flex-direction: column; overflow: hidden; max-height: 85vh; }
+.modal-container.modern-modal { background: #fff; width: min(520px, calc(100vw - 32px)); border-radius: 24px; box-shadow: 0 25px 60px rgba(0,0,0,0.2); display: flex; flex-direction: column; overflow: hidden; max-height: 88vh; }
 
 /* 头部与固定搜索区 */
-.modal-header { padding: 24px 28px 10px; }
+.modal-header { padding: 22px 24px 12px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .modal-header h3 { font-size: 1.5rem; font-weight: 800; margin: 0; color: #1d1d1f; }
+.modal-close-btn { width: 38px; height: 38px; flex-shrink: 0; border: 0; border-radius: 50%; background: #f2f2f7; color: #64748b; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; }
+.modal-close-btn:hover { color: #111827; background: #e5e7eb; }
 
 /* ★ 关键样式：固定搜索区域，确保 z-index 高于内容区 */
 .search-fixed-area { padding: 0 24px 10px 24px; background: #fff; position: relative; z-index: 50; }
@@ -469,6 +506,10 @@ const onSeasonSelect = async () => {
 .form-section-compact { background: #f9f9fb; border-radius: 10px; padding: 10px 12px; border: 1px solid #f0f0f0; }
 .compact-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .compact-header label { margin: 0; }
+.section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.section-heading label { display: block; color: #334155; font-size: 0.82rem; font-weight: 700; margin-bottom: 3px; }
+.section-heading p { margin: 0; color: #94a3b8; font-size: 0.7rem; line-height: 1.4; }
+.advanced-toggle { flex-shrink: 0; border: 0; border-radius: 8px; padding: 6px 9px; background: #eef2ff; color: #4f46e5; font-size: 0.72rem; font-weight: 700; cursor: pointer; }
 .progress-header { align-items: flex-start; gap: 8px; }
 .source-control { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: -2px 0 8px; color: #64748b; font-size: 0.7rem; }
 .source-control button { border: 0; padding: 3px 7px; border-radius: 6px; background: #eef2ff; color: #4f46e5; font-size: 0.68rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
@@ -476,7 +517,10 @@ const onSeasonSelect = async () => {
 .compact-source { margin: 0; justify-content: flex-end; }
 .segmented-control.mini { margin: 0; padding: 2px; background: #e5e5ea; height: 28px; display: flex; border-radius: 8px; }
 .segmented-control.mini .segment-option { padding: 0 10px; font-size: 0.8rem; line-height: 24px; flex: 1; text-align: center; cursor: pointer; border: 0; background: transparent; border-radius: 6px; transition: all 0.2s; }
+.schedule-frequency { width: 100%; height: 34px !important; }
+.schedule-frequency .segment-option { line-height: 30px !important; }
 .segment-option.active { background: #fff; color: #000; box-shadow: 0 2px 5px rgba(0,0,0,0.05); font-weight: 600; }
+.schedule-details { padding-top: 12px; margin-top: 12px; border-top: 1px solid #e5e7eb; }
 .week-selector-mini { display: flex; justify-content: space-between; margin-bottom: 8px; }
 .day-chip.mini { width: 30px; height: 30px; font-size: 0.75rem; margin: 0; border-radius: 50%; border: 1px solid #eee; background: #fff; color: #666; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .day-chip.active { background: #007aff; color: white; border-color: #007aff; }
@@ -508,6 +552,14 @@ const onSeasonSelect = async () => {
 .text-btn:hover { background: #f5f5f7; color: #333; }
 .primary-btn { background: #1d1d1f; color: white; }
 .primary-btn:hover { background: #000; transform: scale(1.02); }
+.modal-close-btn:focus-visible,
+.advanced-toggle:focus-visible,
+.segment-option:focus-visible,
+.day-chip:focus-visible,
+.btn:focus-visible {
+  outline: 3px solid rgba(0, 122, 255, 0.25);
+  outline-offset: 2px;
+}
 
 /* 搜索框 (紧凑模式) */
 .search-box-modern.compact { margin-bottom: 0; height: 40px; display: flex; align-items: center; position: relative; }
@@ -532,6 +584,23 @@ const onSeasonSelect = async () => {
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
 @media (max-width: 768px) {
-  .modal-container.modern-modal { width: 90%; max-height: 85vh; }
+  .modal-overlay { align-items: flex-end; }
+  .modal-container.modern-modal { width: 100%; max-height: 92dvh; border-radius: 22px 22px 0 0; }
+  .modal-header { padding: 18px 16px 10px; }
+  .modal-header h3 { font-size: 1.25rem; }
+  .search-fixed-area { padding: 0 16px 10px; }
+  .modal-body-scroll.compact-mode { padding: 5px 16px 16px; }
+  .form-grid-row.main-info { grid-template-columns: 1fr; }
+  .form-grid-row { flex-direction: column; align-items: stretch; }
+  .section-heading { align-items: center; }
+  .week-selector-mini { gap: 5px; }
+  .day-chip.mini { width: auto; min-width: 36px; flex: 1; border-radius: 9px; }
+  .inline-row { flex-wrap: wrap; row-gap: 7px; }
+  .inline-row .spacer { display: none; }
+  .schedule-hint { width: 100%; padding-left: 0; }
+  .progress-header { flex-direction: column; }
+  .compact-source { justify-content: space-between; width: 100%; }
+  .modal-footer { padding: 12px 16px max(16px, env(safe-area-inset-bottom)); }
+  .modal-footer .btn { min-width: 92px; min-height: 44px; }
 }
 </style>

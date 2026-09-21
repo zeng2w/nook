@@ -749,6 +749,7 @@ const handleFileUpload = (event) => {
   display: flex;
   flex-direction: column;
   overflow-y: auto; 
+  overflow-x: hidden;
   position: relative;
 }
 
@@ -782,6 +783,7 @@ const handleFileUpload = (event) => {
   background: transparent; 
   padding: 10px 3vw; 
   border-bottom: none;
+  box-sizing: border-box;
 }
 
 .content-body { 

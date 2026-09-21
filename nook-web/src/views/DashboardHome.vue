@@ -251,5 +251,5 @@ onMounted(() => {
 .spinner { width: 28px; height: 28px; border: 3px solid rgba(59, 130, 246, 0.2); border-top: 3px solid #3b82f6; border-radius: 50%; animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-@media (max-width: 768px) { .dashboard-module { padding: 20px; } .dashboard-header { flex-direction: column; align-items: flex-start; gap: 10px; } }
+@media (max-width: 768px) { .dashboard-module { padding: 72px 20px 20px; } .dashboard-header { flex-direction: column; align-items: flex-start; gap: 10px; } }
 </style>

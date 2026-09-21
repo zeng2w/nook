@@ -492,14 +492,33 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
   await page.goto('/home/tv-shows')
 
   await expect(page.getByRole('heading', { name: 'First Show', level: 3 })).toBeVisible()
+  const firstCard = page.locator('.show-card').filter({ has: page.getByRole('heading', { name: 'First Show', level: 3 }) })
+  const posterBounds = await firstCard.locator('.poster-mini').boundingBox()
+  const favoriteBounds = await firstCard.getByRole('button', { name: '喜爱 First Show' }).boundingBox()
+  expect(posterBounds.x + posterBounds.width).toBeLessThan(favoriteBounds.x)
+  await expect(page.getByRole('button', { name: '导入备份' })).toHaveCount(0)
+  await page.getByRole('button', { name: '更多操作', exact: true }).click()
+  await expect(page.getByRole('button', { name: '导入备份' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '导出备份' })).toBeVisible()
+  await page.getByRole('button', { name: '更多操作', exact: true }).click()
   await expect.poll(() => listRequests.some(url => (
     url.searchParams.get('status') === 'watching' &&
     url.searchParams.get('sort') === 'date' &&
     url.searchParams.get('order') === 'desc'
   ))).toBe(true)
 
+  await firstCard.getByRole('button', { name: 'First Show 更多操作' }).click()
+  await expect(firstCard.getByRole('button', { name: '编辑', exact: true })).toBeVisible()
+  await expect(firstCard.getByRole('button', { name: '标记弃剧' })).toBeVisible()
+  await firstCard.getByRole('button', { name: 'First Show 更多操作' }).click()
+
   const listRequestCount = listRequests.length
   const calendarRequestCount = calendarRequests
+  const posterButton = page.getByRole('button', { name: '查看 First Show 海报' })
+  const posterBox = await posterButton.boundingBox()
+  await page.mouse.move(posterBox.x + posterBox.width / 2, posterBox.y + posterBox.height / 2)
+  await expect(page.getByRole('button', { name: '关闭海报预览' })).toBeVisible()
+  await page.getByRole('button', { name: '关闭海报预览' }).click()
   await page.getByRole('button', { name: 'First Show 已看集数加一' }).click()
   await expect.poll(() => (
     updatedShowId === firstShow._id ? updatedPayload?.watchedEpisodes : null
@@ -511,7 +530,7 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
   await page.getByRole('button', { name: '打开完整追剧日历' }).click()
   const calendarDialog = page.getByRole('dialog', { name: '追剧日历' })
   await expect(calendarDialog).toBeVisible()
-  await expect(calendarDialog.getByText('Caught Up Weekly Show')).toBeVisible()
+  await expect(calendarDialog.locator('.calendar-grid-view').getByText('Caught Up Weekly Show')).toBeVisible()
   await expect(calendarDialog.locator('.timezone-label')).not.toBeEmpty()
   await calendarDialog.getByRole('button', { name: '关闭追剧日历' }).click()
   await expect(calendarDialog).toHaveCount(0)
@@ -530,7 +549,8 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
   await expect(page.getByText('添加成功', { exact: true })).toBeVisible()
   await expect.poll(() => createdPayload?.title).toBe('Added Show')
 
-  await page.getByRole('button', { name: '编辑 Second Show' }).click()
+  await page.getByRole('button', { name: 'Second Show 更多操作' }).click()
+  await page.getByRole('button', { name: '编辑', exact: true }).click()
   const editDialog = page.getByRole('dialog')
   await editDialog.getByLabel('作品名称').fill('Second Show Edited')
   await editDialog.getByRole('button', { name: '周三', exact: true }).click()
@@ -544,4 +564,84 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
     nextAirDate: '',
     totalEpisodes: 12,
   })
+})
+
+test('uses drawer navigation and an agenda calendar on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockSignedIn(page)
+
+  const today = new Date()
+  const todayKey = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, '0'),
+    String(today.getDate()).padStart(2, '0'),
+  ].join('-')
+  const mobileShow = {
+    _id: '507f1f77bcf86cd799439031',
+    title: 'Mobile Weekly Show',
+    category: 'tv',
+    status: 'watching',
+    watchedEpisodes: 2,
+    airedEpisodes: 5,
+    totalEpisodes: 10,
+    updateFrequency: 'weekly',
+    updateDays: [today.getDay()],
+    updateCount: 1,
+    lastAirDate: todayKey,
+    network: 'Netflix',
+  }
+
+  await page.route('**/api/shows/calendar', route => fulfillJson(route, [mobileShow]))
+  await page.route('**/api/tmdb/trending', route => fulfillJson(route, []))
+  await page.route('**/api/tmdb/new-releases', route => fulfillJson(route, []))
+  await page.route(/\/api\/shows(?:\?.*)?$/, route => fulfillJson(route, {
+    items: [mobileShow],
+    pagination: { page: 1, limit: 24, total: 1, totalPages: 1, hasMore: false },
+    facets: {
+      allCount: 1,
+      statusCounts: { watching: 1, watched: 0, wish: 0, dropped: 0 },
+      categoryCounts: { tv: 1, anime: 0, movie: 0, variety: 0 },
+      networkTotal: 1,
+      networks: [{ name: 'Netflix', logo: '', count: 1 }],
+    },
+  }))
+
+  await page.goto('/home/tv-shows')
+
+  const sidebar = page.locator('.sidebar')
+  await expect(page.getByRole('button', { name: '打开导航菜单' })).toBeVisible()
+  expect(await page.evaluate(() => [
+    '.main-content-column',
+    '.sticky-filter-bar',
+    '.filter-bar-wrapper',
+    '.status-group',
+    '.toolbar-actions',
+  ]
+    .map(selector => document.querySelector(selector))
+    .filter(element => element && element.scrollWidth > element.clientWidth + 1)
+    .map(element => ({
+      className: element.className,
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    })))).toEqual([])
+  await expect(sidebar).not.toHaveClass(/mobile-sidebar-open/)
+  const contentBox = await page.locator('.content-area').boundingBox()
+  expect(contentBox.width).toBeGreaterThanOrEqual(389)
+
+  await page.getByRole('button', { name: '打开导航菜单' }).click()
+  await expect(sidebar).toHaveClass(/mobile-sidebar-open/)
+  await expect(page.getByRole('link', { name: 'Dashboard' })).toBeVisible()
+  await page.getByRole('button', { name: '收起侧边栏' }).click()
+  await expect(sidebar).not.toHaveClass(/mobile-sidebar-open/)
+
+  await page.getByRole('button', { name: '查看 Mobile Weekly Show 海报' }).click()
+  await expect(page.getByRole('button', { name: '关闭海报预览' })).toBeVisible()
+  await page.getByRole('button', { name: '关闭海报预览' }).click()
+  await expect(page.getByRole('button', { name: '关闭海报预览' })).toBeHidden()
+
+  await page.getByRole('button', { name: '打开追剧日历' }).click()
+  const calendarDialog = page.getByRole('dialog', { name: '追剧日历' })
+  await expect(calendarDialog.locator('.calendar-grid-view')).toBeHidden()
+  await expect(calendarDialog.locator('.mobile-agenda-view')).toBeVisible()
+  await expect(calendarDialog.locator('.mobile-agenda-view').getByText('Mobile Weekly Show')).toBeVisible()
 })

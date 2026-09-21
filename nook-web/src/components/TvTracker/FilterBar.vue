@@ -225,6 +225,7 @@ const getNetworkCount = (val) => {
 <style scoped>
 .filter-bar-wrapper { 
   width: 100%; 
+  box-sizing: border-box;
   position: relative; 
   /* ✨ 核心模块化样式：白色背景、圆角、柔和阴影 */
   background-color: var(--theme-surface, #ffffff);
@@ -240,6 +241,7 @@ const getNetworkCount = (val) => {
   width: 100%; 
   position: relative; 
   z-index: 1001; 
+  min-width: 0;
 }
 /* 状态页签 */
 .status-group { display: flex; gap: 6px; background: #f1f5f9; padding: 4px; border-radius: 30px; }
@@ -357,11 +359,16 @@ const getNetworkCount = (val) => {
 
 @media (max-width: 560px) {
   .filter-bar-wrapper { padding: 10px; }
-  .status-group { width: 100%; overflow-x: auto; border-radius: 12px; }
-  .status-pill { flex: 0 0 auto; padding: 6px 11px; }
-  .toolbar-actions { gap: 6px; overflow-x: auto; padding-bottom: 2px; }
-  .trigger-group { flex: 0 0 auto; gap: 5px; }
-  .dropdown-btn { padding: 0 10px; }
+  .status-group { width: 100%; box-sizing: border-box; gap: 2px; overflow: hidden; border-radius: 12px; }
+  .status-pill { flex: 1 1 0; min-width: 0; justify-content: center; gap: 3px; padding: 6px 3px; font-size: 0.78rem; }
+  .count-badge { font-size: 0.68rem; }
+  .toolbar-actions { max-width: 100%; box-sizing: border-box; gap: 6px; overflow: visible; padding-bottom: 2px; }
+  .trigger-group { flex: 1 1 auto; min-width: 0; gap: 5px; }
+  .dropdown-container { flex: 1 1 0; min-width: 0; }
+  .dropdown-container:last-child { flex-grow: 1.5; }
+  .dropdown-btn { width: 100%; min-width: 0; justify-content: center; gap: 4px; padding: 0 6px; font-size: 0.8rem; }
+  .dropdown-btn > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .view-toggle { flex-shrink: 0; }
   .category-menu, .network-menu { width: min(280px, calc(100vw - 40px)); }
 }
 </style>

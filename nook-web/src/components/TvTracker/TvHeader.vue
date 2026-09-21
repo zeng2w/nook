@@ -51,25 +51,12 @@
             <span>日历</span>
           </button>
 
-          <button class="icon-action-btn" aria-label="导入备份" @click="$emit('import')" title="导入备份">
-            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M14 11l-2 2-2-2M12 13V3"/>
-            </svg>
-            <span>导入</span>
-          </button>
-
-          <button class="icon-action-btn" aria-label="导出备份" @click="$emit('export')" title="导出备份">
-            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M14 11l-2-2-2 2M12 3v10"/>
-            </svg>
-            <span>导出</span>
-          </button>
         </div>
 
         <div class="divider"></div>
 
         <div class="notification-wrapper">
-          <button class="icon-btn noti-btn" aria-label="消息通知" @click="toggleNoti" :class="{ active: showNotiPanel }" title="消息通知">
+          <button class="icon-btn noti-btn" aria-label="消息通知" :aria-expanded="showNotiPanel" @click="toggleNoti" :class="{ active: showNotiPanel }" title="消息通知">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
             <span v-if="hasNew" class="red-dot"></span>
           </button>
@@ -102,11 +89,43 @@
           </transition>
         </div>
 
+        <div class="more-wrapper">
+          <button
+            class="icon-btn more-btn"
+            aria-label="更多操作"
+            :aria-expanded="showMoreMenu"
+            title="更多操作"
+            @click="toggleMoreMenu"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <circle cx="5" cy="12" r="1.8"></circle>
+              <circle cx="12" cy="12" r="1.8"></circle>
+              <circle cx="19" cy="12" r="1.8"></circle>
+            </svg>
+          </button>
+          <transition name="fade-slide">
+            <div v-if="showMoreMenu" class="more-dropdown">
+              <button type="button" class="more-menu-item" @click="runMoreAction('import')">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M14 11l-2 2-2-2M12 13V3"/>
+                </svg>
+                <span>导入备份</span>
+              </button>
+              <button type="button" class="more-menu-item" @click="runMoreAction('export')">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M14 11l-2-2-2 2M12 3v10"/>
+                </svg>
+                <span>导出备份</span>
+              </button>
+            </div>
+          </transition>
+        </div>
+
         <button class="add-btn" @click="$emit('add')">+ 添加</button>
       </div>
     </div>
     
-    <div v-if="showNotiPanel" class="transparent-overlay" @click="showNotiPanel = false"></div>
+    <div v-if="showNotiPanel || showMoreMenu" class="transparent-overlay" @click="closePanels"></div>
   </header>
 </template>
 
@@ -125,6 +144,7 @@ const props = defineProps({
 const emit = defineEmits(['add', 'add-season', 'remove-noti', 'clear-notis', 'noti-read', 'sync', 'export', 'import', 'open-calendar', 'update:searchQuery']);
 
 const showNotiPanel = ref(false);
+const showMoreMenu = ref(false);
 const formatSyncTime = value => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
@@ -161,8 +181,21 @@ const syncStatusTitle = computed(() => {
   return parts.join('；');
 });
 const toggleNoti = () => {
+  showMoreMenu.value = false;
   showNotiPanel.value = !showNotiPanel.value;
   if (showNotiPanel.value) emit('noti-read');
+};
+const toggleMoreMenu = () => {
+  showNotiPanel.value = false;
+  showMoreMenu.value = !showMoreMenu.value;
+};
+const closePanels = () => {
+  showNotiPanel.value = false;
+  showMoreMenu.value = false;
+};
+const runMoreAction = action => {
+  showMoreMenu.value = false;
+  emit(action);
 };
 const addSeason = (item) => {
   showNotiPanel.value = false;
@@ -216,6 +249,13 @@ const addSeason = (item) => {
   display: flex; align-items: center; justify-content: center; color: #666; transition: border-color 0.2s; flex-shrink: 0;
 }
 .icon-btn:hover { border-color: #cbd5e1; }
+.icon-btn:focus-visible,
+.icon-action-btn:focus-visible,
+.add-btn:focus-visible,
+.more-menu-item:focus-visible {
+  outline: 3px solid rgba(99, 102, 241, 0.25);
+  outline-offset: 2px;
+}
 
 .add-btn { 
   background: var(--theme-primary, #6366F1); color: #fff; border: none; padding: 0 20px; border-radius: 10px; 
@@ -227,7 +267,11 @@ const addSeason = (item) => {
 /* --- 下面是通知面板样式，保持不变 --- */
 .spin { animation: spin-anim 1s linear infinite; }
 @keyframes spin-anim { 100% { transform: rotate(360deg); } }
-.notification-wrapper { position: relative; display: flex; align-items: center; }
+.notification-wrapper { position: relative; z-index: 91; display: flex; align-items: center; }
+.more-wrapper { position: relative; z-index: 91; display: flex; align-items: center; }
+.more-dropdown { position: absolute; top: calc(100% + 12px); right: 0; width: 180px; padding: 8px; background: #fff; border: 1px solid rgba(0,0,0,0.06); border-radius: 14px; box-shadow: 0 12px 36px rgba(15,23,42,0.14); z-index: 100; }
+.more-menu-item { width: 100%; display: flex; align-items: center; gap: 10px; border: 0; border-radius: 9px; padding: 10px 12px; background: transparent; color: #475569; font-size: 0.86rem; font-weight: 600; cursor: pointer; }
+.more-menu-item:hover { color: #0f172a; background: #f8fafc; }
 .red-dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; background: #ef4444; border-radius: 50%; border: 1px solid white; }
 .noti-dropdown { position: absolute; top: calc(100% + 12px); right: -10px; width: 360px; background: white; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.12), 0 2px 10px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.05); z-index: 100; display: flex; flex-direction: column; overflow: hidden; max-height: 80vh; transform-origin: top right; }
 .noti-header { padding: 16px 20px; border-bottom: 1px solid #f5f5f7; display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); }
@@ -264,8 +308,8 @@ const addSeason = (item) => {
 }
 
 @media (max-width: 640px) {
-  .sticky-header-wrapper { padding: 12px; }
-  .header-right { gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+  .sticky-header-wrapper { padding: 12px 12px 12px 64px; }
+  .header-right { gap: 6px; overflow: visible; padding-bottom: 2px; }
   .action-group { gap: 2px; }
   .icon-action-btn { width: 38px; padding: 8px; justify-content: center; }
   .icon-action-btn span { display: none; }
@@ -274,5 +318,6 @@ const addSeason = (item) => {
   .divider { display: none; }
   .add-btn { padding: 0 14px; }
   .noti-dropdown { position: fixed; top: 64px; right: 12px; left: 12px; width: auto; }
+  .more-dropdown { position: fixed; top: 64px; right: 12px; width: 180px; }
 }
 </style>
