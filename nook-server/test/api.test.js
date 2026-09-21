@@ -466,6 +466,38 @@ test('the same TMDB show can be added once per season', async () => {
   }
 });
 
+test('a TMDB movie can be added without a season number', async () => {
+  const originalFindOne = Show.findOne;
+  const originalSave = Show.prototype.save;
+
+  Show.findOne = async () => null;
+  Show.prototype.save = async function save() {
+    await this.validate();
+    return this;
+  };
+
+  try {
+    const response = await request(createTestApp())
+      .post('/api/shows')
+      .set('Cookie', `nook_session=${createSessionToken(USER_A)}`)
+      .send({
+        title: 'Example Movie',
+        category: 'movie',
+        tmdbId: 200,
+        seasonNumber: null,
+        totalEpisodes: 1,
+        airedEpisodes: 1
+      });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.category, 'movie');
+    assert.equal(response.body.seasonNumber, null);
+  } finally {
+    Show.findOne = originalFindOne;
+    Show.prototype.save = originalSave;
+  }
+});
+
 test('show import performs one deduplication query before bulk insert', async () => {
   const originalFind = Show.find;
   const originalInsertMany = Show.insertMany;

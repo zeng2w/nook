@@ -31,14 +31,22 @@ test('show update days must be valid weekdays', async () => {
 });
 
 test('tracked seasons require a positive whole-number season', async () => {
-  const show = new Show({
+  const fractionalSeason = new Show({
     userId: USER_ID,
     title: 'Example',
     category: 'tv',
     seasonNumber: 1.5
   });
+  const movieWithoutSeason = new Show({
+    userId: USER_ID,
+    title: 'Example Movie',
+    category: 'movie',
+    seasonNumber: null
+  });
 
-  await assert.rejects(show.validate(), error => Boolean(error.errors.seasonNumber));
+  await assert.rejects(fractionalSeason.validate(), error => Boolean(error.errors.seasonNumber));
+  await movieWithoutSeason.validate();
+  assert.equal(movieWithoutSeason.seasonNumber, null);
 });
 
 test('show episode counts are integers and cannot exceed a known total', async () => {

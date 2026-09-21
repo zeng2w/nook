@@ -61,7 +61,15 @@ const ShowSchema = new mongoose.Schema({
 
   tmdbId: { type: Number, min: 1 },
   seriesTitle: { type: String, trim: true, maxlength: 200 },
-  seasonNumber: { type: Number, min: 1, validate: Number.isInteger },
+  seasonNumber: {
+    type: Number,
+    default: null,
+    min: 1,
+    validate: {
+      validator: value => value === null || value === undefined || Number.isInteger(value),
+      message: 'Season number must be a positive whole number when provided'
+    }
+  },
   seasonName: { type: String, trim: true, maxlength: 200 },
   lastTmdbCheckedAt: { type: Date, default: null, select: false },
   lastTmdbSyncStatus: {
