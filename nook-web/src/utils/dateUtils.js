@@ -139,13 +139,55 @@ export const isShowUpdateDay = (show, targetDate) => {
   return false;
 };
 
+/**
+ * 找到“当前已更新集数”在推测日历中的日期锚点。
+ *
+ * airedEpisodes 表示目前实际确认的进度，不能继续固定在一个较早的
+ * lastAirDate 上，否则停更或临时改播时会把中间所有理论更新日都累加进去。
+ * 对普通重复排期，将实际进度放在参考日期之前最近的更新日；如果 TMDB
+ * 明确给出了未来的下一集日期，则保留最后实际播出日期作为停播期锚点。
+ */
+const getProjectionAnchorDate = (show, referenceDate = new Date()) => {
+  const reference = toLocalCalendarDate(referenceDate);
+  const lastUpdate = toLocalCalendarDate(show?.lastAirDate);
+  if (!reference) return lastUpdate;
+
+  const nextUpdate = show?.scheduleLocked ? null : toLocalCalendarDate(show?.nextAirDate);
+  const referenceDay = getCalendarDayNumber(reference);
+  const lastUpdateDay = getCalendarDayNumber(lastUpdate);
+  const nextUpdateDay = getCalendarDayNumber(nextUpdate);
+
+  // 明确的未来播出日代表当前处于停播/待播阶段，此时不把实际进度挪到今天。
+  if (
+    Number.isFinite(nextUpdateDay) &&
+    referenceDay < nextUpdateDay &&
+    Number.isFinite(lastUpdateDay) &&
+    referenceDay >= lastUpdateDay
+  ) {
+    return lastUpdate;
+  }
+
+  if (!show || show.updateFrequency === 'unknown' || show.updateFrequency === 'ended') {
+    return lastUpdate || reference;
+  }
+
+  let cursor = reference;
+  // 日更、周更和月更的最近一次理论更新日都应在一年范围内。
+  for (let offset = 0; offset <= 366; offset += 1) {
+    if (isShowUpdateDay(show, cursor)) return cursor;
+    cursor = addCalendarDays(cursor, -1);
+  }
+
+  return lastUpdate || reference;
+};
+
 export const formatDateCN = (dateValue) => {
   const date = toLocalCalendarDate(dateValue);
   if (!date) return '';
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
 };
 
-export const getEstimatedDateText = (show) => {
+export const getEstimatedDateText = (show, referenceDate = new Date()) => {
   if (show.status === 'watched') return '已看完';
   if (show.status === 'dropped') return '已弃剧';
 
@@ -158,16 +200,16 @@ export const getEstimatedDateText = (show) => {
     return '待定';
   }
 
-  const lastDate = toLocalCalendarDate(show.lastAirDate);
-  if (!lastDate) return '日期无效';
+  const projectionAnchor = getProjectionAnchorDate(show, referenceDate);
+  if (!projectionAnchor) return '日期无效';
 
   const remaining = show.totalEpisodes - aired;
   const episodesPerUpdate = Math.max(1, Number(show.updateCount) || 1);
   const updatesNeeded = Math.ceil(remaining / episodesPerUpdate);
-  let finishDate = lastDate;
+  let finishDate = projectionAnchor;
 
   if (show.updateFrequency === 'daily') {
-    finishDate = addCalendarDays(lastDate, updatesNeeded);
+    finishDate = addCalendarDays(projectionAnchor, updatesNeeded);
   } else if (show.updateFrequency === 'weekly') {
     let completedUpdates = 0;
     let iterations = 0;
@@ -178,7 +220,11 @@ export const getEstimatedDateText = (show) => {
     }
     if (completedUpdates < updatesNeeded) return '待定';
   } else if (show.updateFrequency === 'monthly') {
-    finishDate = addCalendarMonths(lastDate, updatesNeeded, lastDate.getDate());
+    finishDate = addCalendarMonths(
+      projectionAnchor,
+      updatesNeeded,
+      projectionAnchor.getDate()
+    );
   } else {
     return '待定';
   }
@@ -212,15 +258,13 @@ const countUpdateOccurrences = (show, lastUpdate, target) => {
   return count;
 };
 
-export const calculateEpisodeForDate = (show, targetDate) => {
+export const calculateEpisodeForDate = (show, targetDate, referenceDate = new Date()) => {
   const airedEpisodes = Number(show.airedEpisodes) || 0;
-  if (!show.lastAirDate) return `${airedEpisodes}集`;
-
-  const lastUpdate = toLocalCalendarDate(show.lastAirDate);
+  const projectionAnchor = getProjectionAnchorDate(show, referenceDate);
   const target = toLocalCalendarDate(targetDate);
-  if (!lastUpdate || !target) return '待定';
+  if (!projectionAnchor || !target) return '待定';
 
-  const occurrenceOffset = countUpdateOccurrences(show, lastUpdate, target);
+  const occurrenceOffset = countUpdateOccurrences(show, projectionAnchor, target);
   const updateCount = Math.max(1, Number(show.updateCount) || 1);
   const endEpisode = airedEpisodes + (occurrenceOffset * updateCount);
   let startEpisode = endEpisode - updateCount + 1;

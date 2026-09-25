@@ -426,6 +426,23 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
     updateDays: [today.getDay()],
     lastAirDate: todayKey,
   }
+  const staleAnchorDate = new Date(today)
+  staleAnchorDate.setDate(staleAnchorDate.getDate() - 4)
+  const rebasedDailyShow = {
+    ...firstShow,
+    _id: '507f1f77bcf86cd799439025',
+    title: 'Rebased Daily Show',
+    airedEpisodes: 19,
+    totalEpisodes: 30,
+    updateFrequency: 'daily',
+    updateDays: [],
+    updateCount: 2,
+    lastAirDate: [
+      staleAnchorDate.getFullYear(),
+      String(staleAnchorDate.getMonth() + 1).padStart(2, '0'),
+      String(staleAnchorDate.getDate()).padStart(2, '0'),
+    ].join('-'),
+  }
   const listRequests = []
   let calendarRequests = 0
   let progressRequests = 0
@@ -435,7 +452,7 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
 
   await page.route('**/api/shows/calendar', route => {
     calendarRequests += 1
-    return fulfillJson(route, [firstShow, secondShow, completedOngoingShow])
+    return fulfillJson(route, [firstShow, secondShow, completedOngoingShow, rebasedDailyShow])
   })
   await page.route('**/api/tmdb/trending', route => fulfillJson(route, []))
   await page.route('**/api/tmdb/new-releases', route => fulfillJson(route, []))
@@ -492,6 +509,9 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
   await page.goto('/home/tv-shows')
 
   await expect(page.getByRole('heading', { name: 'First Show', level: 3 })).toBeVisible()
+  const calendarWidget = page.locator('.update-calendar-widget')
+  await expect(calendarWidget.getByText('Rebased Daily Show')).toBeVisible()
+  await expect(calendarWidget.getByText('18-19', { exact: true })).toBeVisible()
   const firstCard = page.locator('.show-card').filter({ has: page.getByRole('heading', { name: 'First Show', level: 3 }) })
   const posterBounds = await firstCard.locator('.poster-mini').boundingBox()
   const favoriteBounds = await firstCard.getByRole('button', { name: '喜爱 First Show' }).boundingBox()
@@ -531,6 +551,8 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
   const calendarDialog = page.getByRole('dialog', { name: '追剧日历' })
   await expect(calendarDialog).toBeVisible()
   await expect(calendarDialog.locator('.calendar-grid-view').getByText('Caught Up Weekly Show')).toBeVisible()
+  const rebasedCalendarItem = calendarDialog.locator('.mini-item-card').filter({ hasText: 'Rebased Daily Show' })
+  await expect(rebasedCalendarItem.getByText('18-19', { exact: true })).toBeVisible()
   await expect(calendarDialog.locator('.timezone-label')).not.toBeEmpty()
   await calendarDialog.getByRole('button', { name: '关闭追剧日历' }).click()
   await expect(calendarDialog).toHaveCount(0)

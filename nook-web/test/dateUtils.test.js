@@ -56,7 +56,7 @@ test('a known next episode prevents updates from appearing during a hiatus', () 
 
   assert.equal(isShowUpdateDay(show, '2026-08-10'), false)
   assert.equal(isShowUpdateDay(show, '2026-09-07'), true)
-  assert.equal(calculateEpisodeForDate(show, '2026-09-07'), 'Ep 238')
+  assert.equal(calculateEpisodeForDate(show, '2026-09-07', '2026-08-10'), 'Ep 238')
 })
 
 test('a manually locked weekly schedule takes priority over the TMDB next date', () => {
@@ -71,7 +71,7 @@ test('a manually locked weekly schedule takes priority over the TMDB next date',
   }
 
   assert.equal(isShowUpdateDay(show, '2026-08-24'), true)
-  assert.equal(calculateEpisodeForDate(show, '2026-08-24'), 'Ep 5')
+  assert.equal(calculateEpisodeForDate(show, '2026-08-24', '2026-08-23'), 'Ep 5')
 })
 
 test('episode calculation counts every scheduled update day', () => {
@@ -84,17 +84,32 @@ test('episode calculation counts every scheduled update day', () => {
     updateCount: 1,
   }
 
-  assert.equal(calculateEpisodeForDate(show, new Date(2026, 7, 3)), 'Ep 10')
-  assert.equal(calculateEpisodeForDate(show, new Date(2026, 7, 6)), 'Ep 11')
-  assert.equal(calculateEpisodeForDate(show, new Date(2026, 7, 10)), 'Ep 12')
-  assert.equal(calculateEpisodeForDate(show, new Date(2026, 6, 30)), 'Ep 9')
+  const referenceDate = new Date(2026, 7, 3)
+  assert.equal(calculateEpisodeForDate(show, new Date(2026, 7, 3), referenceDate), 'Ep 10')
+  assert.equal(calculateEpisodeForDate(show, new Date(2026, 7, 6), referenceDate), 'Ep 11')
+  assert.equal(calculateEpisodeForDate(show, new Date(2026, 7, 10), referenceDate), 'Ep 12')
+  assert.equal(calculateEpisodeForDate(show, new Date(2026, 6, 30), referenceDate), 'Ep 9')
 
   assert.equal(calculateEpisodeForDate({
     ...show,
     lastAirDate: '2026-08-03',
     airedEpisodes: 237,
     totalEpisodes: 300,
-  }, new Date(2026, 7, 3)), 'Ep 237')
+  }, new Date(2026, 7, 3), referenceDate), 'Ep 237')
+})
+
+test('recurring calendar projections rebase on the currently aired episode count', () => {
+  const show = {
+    lastAirDate: '2026-09-21',
+    airedEpisodes: 19,
+    totalEpisodes: 30,
+    updateFrequency: 'daily',
+    updateCount: 2,
+  }
+
+  assert.equal(calculateEpisodeForDate(show, '2026-09-24', '2026-09-25'), '16-17')
+  assert.equal(calculateEpisodeForDate(show, '2026-09-25', '2026-09-25'), '18-19')
+  assert.equal(calculateEpisodeForDate(show, '2026-09-26', '2026-09-25'), '20-21')
 })
 
 test('estimated finish dates use local calendar arithmetic', () => {
@@ -106,7 +121,7 @@ test('estimated finish dates use local calendar arithmetic', () => {
     updateFrequency: 'weekly',
     updateDays: [1, 4],
     updateCount: 1,
-  }), '预计：2026年8月13日')
+  }, '2026-08-03'), '预计：2026年8月13日')
 
   assert.equal(getEstimatedDateText({
     status: 'watching',
@@ -115,7 +130,7 @@ test('estimated finish dates use local calendar arithmetic', () => {
     totalEpisodes: 4,
     updateFrequency: 'monthly',
     updateCount: 1,
-  }), '预计：2026年2月28日')
+  }, '2026-01-31'), '预计：2026年2月28日')
 
   assert.equal(isAfterCalendarDay('2026-08-23', '2026-08-22T00:00:00.000Z'), true)
   assert.equal(isAfterCalendarDay('2026-08-22', '2026-08-22T00:00:00.000Z'), false)
