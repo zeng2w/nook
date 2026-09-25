@@ -45,3 +45,18 @@ test('allows unrelated shows to save independently and flushes pending input', a
   await queue.flushAll();
   assert.deepEqual(requests, [['a', 0], ['b', 12]]);
 });
+
+
+test('restores pending corrections without sending until retry and clears correction after success', async () => {
+  const requests = [], states = [];
+  const queue = createProgressQueue({ delay: 60000, save: async (id, target, correction) => { requests.push({ id, target, correction }); return {}; }, onChange: (_id, state) => states.push(state), onSaved() {} });
+  queue.restore('a', 21, { totalEpisodes: 25 });
+  await queue.flushAll();
+  assert.equal(requests.length, 0);
+  assert.equal(states.at(-1).state, 'error');
+  await queue.flush('a');
+  assert.deepEqual(requests[0], { id: 'a', target: 21, correction: { totalEpisodes: 25 } });
+  queue.set('a', 22);
+  await queue.flushAll();
+  assert.equal(requests[1].correction, undefined);
+});

@@ -2,7 +2,7 @@
 export function createProgressQueue({ save, onChange, onSaved, delay = 500 }) {
   const entries = new Map();
   const publish = entry => onChange(entry.id, {
-    target: entry.target, state: entry.state, error: entry.error,
+    target: entry.target, state: entry.state, error: entry.error, correction: entry.correction,
   });
   const flush = async id => {
     const entry = entries.get(id);
@@ -11,11 +11,12 @@ export function createProgressQueue({ save, onChange, onSaved, delay = 500 }) {
     if (entry.running) return entry.running;
     const target = entry.target;
     const revision = entry.revision;
+    const correction = entry.correction;
     entry.state = 'saving';
     publish(entry);
     entry.running = (async () => {
       try {
-        const result = await save(id, target);
+        const result = await save(id, target, correction);
         entry.state = entry.revision === revision ? 'saved' : 'saving';
         entry.error = '';
         onSaved(id, result, entry.target);
@@ -31,8 +32,15 @@ export function createProgressQueue({ save, onChange, onSaved, delay = 500 }) {
     return entry.running;
   };
   return {
-    set(id, target) {
+    restore(id, target, correction) {
+      const entry = { id, target, correction, revision: 0, state: 'error', error: new Error('进度未同步，请重试') };
+      entries.set(id, entry);
+      publish(entry);
+    },
+    set(id, target, correction) {
       const entry = entries.get(id) || { id, revision: 0 };
+      if (entry.state === 'saved') entry.correction = undefined;
+      if (correction) entry.correction = correction;
       Object.assign(entry, { target, revision: entry.revision + 1, state: 'saving', error: '' });
       entries.set(id, entry);
       clearTimeout(entry.timer);

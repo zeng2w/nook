@@ -45,16 +45,16 @@
             :network-total="showFacets.networkTotal"
             @change-sort="handleSort"
           />
+          <div class="filter-loading" :class="{ active: isLoading }" role="status" :aria-label="isLoading ? '正在更新列表' : undefined"></div>
         </div>
 
         <div class="content-body" :aria-busy="isLoading">
-          <div class="list-status" role="status">
+          <div v-if="hasSecondaryFilters" class="list-status" role="status">
             <span v-if="isLoading">正在更新列表…</span>
-            <span v-else-if="hasActiveFilters">{{ activeFilterSummary }} · {{ showPagination.total }} 部</span>
-            <span v-else>全部作品 · {{ showPagination.total }} 部</span>
-            <button v-if="hasActiveFilters" @click="resetFilters">清除筛选</button>
+            <span v-else>{{ activeFilterSummary }} · {{ showPagination.total }} 部</span>
+            <button @click="clearSecondaryFilters">清除筛选</button>
           </div>
-          <div v-for="failure in failedProgress" :key="failure._id" class="inline-error" role="alert">《{{ failure.title }}》进度未保存，已保留本次输入。<button @click="retryProgress(failure)">重试保存</button></div>
+          <div v-for="failure in failedProgress" :key="failure._id" class="inline-error" role="alert">《{{ failure.title }}》进度未同步，已保留本次输入。<button @click="retryProgress(failure)">重试保存</button></div>
           <div v-if="loadError && shows.length" class="inline-error" role="alert">{{ loadError }}，当前显示上次加载的结果。<button @click="fetchShows(true)">重试</button></div>
           <div v-if="isLoading && !shows.length" class="loading-state">
             <div class="spinner"></div>
@@ -218,6 +218,8 @@ const pendingDiscoverySignature = ref(null);
 const pendingDeletes = reactive({});
 const progressStates = reactive({});
 const progressModels = {};
+const pendingStorageKey = getAuthUserId() ? `tv_pending_progress_${getAuthUserId()}` : null;
+const pendingRecords = readJsonStorage(localStorage, pendingStorageKey, {}, value => value && typeof value === 'object' && !Array.isArray(value));
 const confirmedStatuses = {};
 const detailSelection = ref(null);
 const detailShow = computed(() => detailSelection.value?._id
@@ -254,6 +256,12 @@ let autoSyncTimer = null;
 const sortBy = ref('date');
 const sortDesc = ref(true);
 const displayShows = computed(() => shows.value);
+const hasSecondaryFilters = computed(() => currentCategory.value !== 'all' || currentNetwork.value !== 'all' || Boolean(searchQuery.value.trim()));
+const clearSecondaryFilters = () => {
+  currentCategory.value = 'all';
+  currentNetwork.value = 'all';
+  searchQuery.value = '';
+};
 const hasActiveFilters = computed(() => (
   currentCategory.value !== 'all' ||
   currentStatus.value !== 'all' ||
@@ -277,6 +285,11 @@ const resetFilters = () => {
 };
 
 onMounted(() => {
+  for (const [id, record] of Object.entries(pendingRecords)) {
+    if (!record?.show || record.show._id !== id || !Number.isSafeInteger(record.target) || record.target < 0) continue;
+    progressModels[id] = record.show;
+    progressQueue.restore(id, record.target, record.correction);
+  }
   fetchShows();
   fetchCalendarShows();
   applyModernTheme(); 
@@ -362,7 +375,7 @@ const showToast = (msg, type = 'success') => { toast.message = msg; toast.type =
 const preservePendingProgress = show => {
   const state = progressStates[show._id];
   if (!state || state.state === 'saved') return show;
-  return { ...show, watchedEpisodes: state.target, status: show.status === 'dropped' ? 'dropped' : calcStatus(state.target, show.airedEpisodes, show.totalEpisodes) };
+  return { ...show, ...state.correction, watchedEpisodes: state.target, status: show.status === 'dropped' ? 'dropped' : calcStatus(state.target, show.airedEpisodes, state.correction?.totalEpisodes ?? show.totalEpisodes) };
 };
 
 const fetchShows = async (reset = true) => {
@@ -486,9 +499,10 @@ const saveShow = async (formData) => {
 };
 
 const progressQueue = createProgressQueue({
-  save: async (id, target) => {
+  save: async (id, target, correction) => {
     const model = progressModels[id];
     const response = await updateShowProgressApi(id, {
+      ...correction,
       watchedEpisodes: target,
       status: calcStatus(target, model.airedEpisodes, model.totalEpisodes),
       date: new Date()
@@ -496,6 +510,9 @@ const progressQueue = createProgressQueue({
     return response.data.show;
   },
   onChange: (id, state) => {
+    if (state.state === 'saved') delete pendingRecords[id];
+    else pendingRecords[id] = { show: progressModels[id], target: state.target, correction: state.correction };
+    writeJsonStorage(localStorage, pendingStorageKey, pendingRecords);
     progressStates[id] = { ...state, error: state.error ? getApiErrorMessage(state.error, '保存失败，请重试') : '' };
   },
   onSaved: (id, saved, target) => {
@@ -510,17 +527,18 @@ const progressQueue = createProgressQueue({
     patchShowCollections(saved, overrides);
   }
 });
-const setProgress = (show, target) => {
+const setProgress = (show, target, correction) => {
   if (show.status === 'dropped' || !Number.isSafeInteger(target) || target < 0) return;
-  const maximum = show.totalEpisodes > 0 ? show.totalEpisodes : Number.POSITIVE_INFINITY;
+  const total = correction?.totalEpisodes ?? show.totalEpisodes;
+  const maximum = total > 0 ? total : Number.POSITIVE_INFINITY;
   const value = Math.min(maximum, target);
-  if (value === show.watchedEpisodes) return;
+  if (value === show.watchedEpisodes && !correction) return;
   confirmedStatuses[show._id] ??= show.status;
   progressModels[show._id] = show;
-  const patch = { _id: show._id, watchedEpisodes: value, status: calcStatus(value, show.airedEpisodes, show.totalEpisodes) };
+  const patch = { _id: show._id, ...correction, watchedEpisodes: value, status: calcStatus(value, show.airedEpisodes, total) };
   Object.assign(show, patch);
   patchShowCollections(patch);
-  progressQueue.set(show._id, value);
+  progressQueue.set(show._id, value, correction);
 };
 const updateProgress = (show, delta) => setProgress(show, Math.max(0, (show.watchedEpisodes || 0) + delta));
 const retryProgress = show => { void progressQueue.flush(show._id); };
@@ -879,10 +897,15 @@ const handleFileUpload = (event) => {
 .discovery-sidebar-column { width: 285px; min-width: 285px; padding: 10px 24px 30px 0; box-sizing: border-box; gap: 20px; overflow-y: auto; }
 .sticky-filter-bar { background: #f8f9fc; padding: 10px 28px 0; }
 .content-body { padding: 0 28px 40px; }
-.grid-layout { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 22px 18px; }
+.grid-layout { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 22px 18px; }
 @media (max-width: 640px) { .grid-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }.content-body { padding: 0 12px 30px; }.sticky-filter-bar { padding: 10px 12px 0; } }
 @media (max-width: 360px) { .grid-layout { grid-template-columns: 1fr; } }
 .list-status { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 30px; margin-bottom: 12px; font-size: 12px; color: #726c7d; }
 .list-status button, .inline-error button { border: 0; background: transparent; color: #775491; text-decoration: underline; cursor: pointer; font-size: 12px; flex-shrink: 0; }
 .inline-error { border: 1px solid #edd9df; background: #fff5f7; color: #9d4052; padding: 12px; border-radius: 10px; font-size: 13px; margin-bottom: 12px; }
+.filter-loading { height: 2px; margin-top: 8px; overflow: hidden; }
+.filter-loading.active { background: #e9e1f1; }
+.filter-loading.active::after { content: ""; display: block; width: 35%; height: 100%; background: #9373b5; animation: filter-loading 1.2s ease-in-out infinite alternate; }
+@keyframes filter-loading { to { transform: translateX(185%); } }
+@media (prefers-reduced-motion: reduce) { .filter-loading.active::after { animation: none; width: 100%; } }
 </style>

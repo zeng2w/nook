@@ -44,7 +44,7 @@
           </div>
         </div>
 
-        <ProgressControl class="list-progress" :show="show" :save-state="saveState" @update-progress="(s, delta) => $emit('update-progress', s, delta)" @set-progress="(s, value) => $emit('set-progress', s, value)" @retry-progress="$emit('retry-progress', show)" />
+        <ProgressControl @edit="$emit('edit', show)" class="list-progress" :show="show" :save-state="saveState" @update-progress="(s, delta) => $emit('update-progress', s, delta)" @set-progress="(s, value, correction) => $emit('set-progress', s, value, correction)" @retry-progress="$emit('retry-progress', show)" />
         <div class="list-new-actions">
           <template v-if="show.status === 'dropped'">
             <button class="restore-btn" :aria-label="`恢复 ${show.title}`" @click.stop="$emit('restore', show)">恢复</button>

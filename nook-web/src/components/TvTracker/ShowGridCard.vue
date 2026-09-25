@@ -65,7 +65,7 @@
 
         </div>
         <div class="tags-line"><span>{{ getCategoryLabel(show.category) }}</span><span class="tag-dot">·</span><span>{{ getStatusLabel(show.status) }}</span><img v-if="show.networkLogo" :src="show.networkLogo" :alt="show.network" loading="lazy" /></div>
-        <ProgressControl :show="show" :save-state="saveState" @update-progress="(s, delta) => $emit('update-progress', s, delta)" @set-progress="(s, value) => $emit('set-progress', s, value)" @retry-progress="$emit('retry-progress', show)" />
+        <ProgressControl @edit="$emit('edit', show)" :show="show" :save-state="saveState" @update-progress="(s, delta) => $emit('update-progress', s, delta)" @set-progress="(s, value, correction) => $emit('set-progress', s, value, correction)" @retry-progress="$emit('retry-progress', show)" />
         <div class="card-footer" :title="completionCaption">{{ completionCaption }}</div>
       </div>
     </div>
@@ -145,10 +145,11 @@ h3 { font-size: 14px; line-height: 22px; font-weight: 650; margin: 0; color: #25
 .card-action-menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px; background: transparent; border: 0; border-radius: 6px; color: #55596b; text-align: left; cursor: pointer; font-size: 12px; }.card-action-menu button:hover { background: #f5f4fa; }.card-action-menu .danger { color: #ba5b66; }
 .tags-line { display: flex; align-items: center; gap: 6px; height: 23px; color: #9698a6; font-size: 11px; }.tags-line img { max-width: 45px; height: 11px; object-fit: contain; margin-left: auto; }.tag-dot { color: #b7bac5; }
 button:disabled { opacity: .4; cursor: default; }button:focus-visible { outline: 2px solid #9a84c8; outline-offset: 3px; }
-.card-footer { overflow: hidden; text-overflow: ellipsis; min-height: 18px; line-height: 18px; white-space: nowrap; display: block; margin-top: 8px; font-size: 10px; color: #a2a4b0; }.card-footer span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.card-footer { text-align: center; overflow: hidden; text-overflow: ellipsis; min-height: 18px; line-height: 18px; white-space: nowrap; display: block; margin-top: 12px; font-size: 10px; color: #a2a4b0; }.card-footer span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .undo-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; }.undo-overlay button { border: 0; padding: 8px 14px; border-radius: 8px; color: white; background: #8d7ab6; cursor: pointer; }
 .poster-dialog { position: fixed; inset: 0; width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; border: 0; box-sizing: border-box; z-index: 3000; background: #20212ad9; color: white; display: flex; align-items: center; justify-content: center; padding: 40px; }.poster-dialog img { max-width: 90vw; max-height: 85vh; object-fit: contain; border-radius: 12px; }.poster-dialog > button { position: absolute; top: 20px; right: 24px; border: 0; background: white; border-radius: 50%; width: 36px; height: 36px; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 .title-details { border: 0; background: none; padding: 0; color: inherit; font: inherit; text-align: left; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }.title-details:hover { color: #765393; }
 .tags-line { font-size: 12px; color: #726c7d; }.card-footer { font-size: 12px; color: #797180; }.action-circle-btn { min-width: 28px; min-height: 32px; }.card-action-menu { top: 34px; }
+@media (pointer: coarse) { .title-row { height: 70px; flex-wrap: wrap; gap: 0; }.title-row h3 { flex-basis: 100%; }.top-actions { margin-left: auto; }.action-circle-btn { min-width: 44px; min-height: 44px; }.card-action-menu { top: 44px; } }
 </style>

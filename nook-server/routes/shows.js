@@ -319,6 +319,11 @@ router.post('/', async (req, res, next) => {
 router.patch('/:id/progress', validateObjectIdParam(), async (req, res, next) => {
   const watchedEpisodes = Number(req.body?.watchedEpisodes);
   const date = req.body?.date;
+  const correctingTotal = Object.hasOwn(req.body || {}, 'totalEpisodes');
+  const totalEpisodes = Number(req.body?.totalEpisodes);
+  if (correctingTotal && (!Number.isSafeInteger(totalEpisodes) || totalEpisodes < Math.max(1, watchedEpisodes))) {
+    return res.status(400).json({ code: 'INVALID_PROGRESS', error: 'Total must be a positive integer at least as large as watched progress' });
+  }
 
   if (!Number.isInteger(watchedEpisodes) || watchedEpisodes < 0) {
     return res.status(400).json({
@@ -345,6 +350,16 @@ router.patch('/:id/progress', validateObjectIdParam(), async (req, res, next) =>
         throw error;
       }
 
+      if (correctingTotal) {
+        if (totalEpisodes < (show.airedEpisodes || 0)) {
+          const error = new Error('Total cannot be less than aired episodes');
+          error.status = 400;
+          error.code = 'INVALID_PROGRESS';
+          throw error;
+        }
+        show.totalEpisodes = totalEpisodes;
+        show.totalEpisodesLocked = true;
+      }
       loggedDelta = watchedEpisodes - show.watchedEpisodes;
       show.watchedEpisodes = watchedEpisodes;
       applyDerivedShowStatus(show);

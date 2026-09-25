@@ -394,6 +394,16 @@ test('progress updates and activity logs share one transaction and retries are i
     assert.equal(createdLogs[0].count, 3);
     assert.equal(transactionCount, 2);
     assert.equal(sessionEnded, 2);
+    const invalid = await request(app).patch(`/api/shows/${show.id}/progress`)
+      .set('Cookie', `nook_session=${createSessionToken(USER_A)}`).send({ watchedEpisodes: 5, totalEpisodes: 9 });
+    assert.equal(invalid.status, 400);
+    assert.equal(show.totalEpisodes, 10);
+    const corrected = await request(app).patch(`/api/shows/${show.id}/progress`)
+      .set('Cookie', `nook_session=${createSessionToken(USER_A)}`).send({ watchedEpisodes: 11, totalEpisodes: 15 });
+    assert.equal(corrected.status, 200);
+    assert.equal(corrected.body.show.totalEpisodes, 15);
+    assert.equal(corrected.body.show.totalEpisodesLocked, true);
+    assert.equal(corrected.body.loggedDelta, 6);
   } finally {
     mongoose.startSession = originalStartSession;
     Show.findOne = originalFindOne;

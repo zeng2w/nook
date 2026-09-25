@@ -92,21 +92,21 @@ const selectDate = (date) => {
 };
 
 const getSummaryText = () => {
-  if (isSameCalendarDay(selectedDate.value, new Date())) return '今天将';
+  if (isSameCalendarDay(selectedDate.value, new Date())) return '今日';
   
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  if (isSameCalendarDay(selectedDate.value, tomorrow)) return '明天将';
+  if (isSameCalendarDay(selectedDate.value, tomorrow)) return '明日';
 
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-  if (isSameCalendarDay(selectedDate.value, yesterday)) return '昨天已';
+  if (isSameCalendarDay(selectedDate.value, yesterday)) return '昨日';
 
   const dayIndex = selectedDate.value.getDay();
-  return `周${dayLabels[dayIndex === 0 ? 6 : dayIndex - 1]}将`;
+  return `周${dayLabels[dayIndex === 0 ? 6 : dayIndex - 1]}`;
 };
 
-const getStatusText = entry => entry.type === 'scheduled' ? '确认播出' : entry.type === 'estimated' ? '预计更新' : entry.statusText === '当前' ? '当前已更' : '已更新';
+const getStatusText = entry => entry.type === 'scheduled' ? '确认播出' : entry.type === 'estimated' ? '预计更新' : entry.statusText === '当前' ? '当前更新' : '已更新';
 
 const getEntryTitle = show => {
   const entry = show.calendarEntry;
