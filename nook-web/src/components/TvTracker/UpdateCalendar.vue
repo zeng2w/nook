@@ -33,12 +33,15 @@
     <div class="shows-list-scroll-area">
       <div v-if="showsList.length === 0" class="empty-state">当日暂无剧集更新</div>
       
-      <div v-else v-for="show in showsList" :key="show._id" class="show-item">
+      <div v-else v-for="show in showsList" :key="show._id" class="show-item" :title="getEntryTitle(show)">
         <img :src="show.posterUrl || show.poster_path" :alt="show.title || show.name" class="show-cover" loading="lazy" decoding="async" />
         
         <div class="show-info">
           <h4 class="show-title">{{ show.title || show.name }}</h4>
-          <span class="show-episode">{{ show.calculatedEpisodeText }}</span>
+          <div class="show-episode-row">
+            <span class="entry-state" :class="show.calendarEntry.type">{{ show.calendarEntry.statusText }}</span>
+            <span class="show-episode" :class="show.calendarEntry.type">{{ show.calculatedEpisodeText }}</span>
+          </div>
         </div>
         
         <div class="platform-info" v-if="show.network">
@@ -56,10 +59,9 @@
 <script setup>
 import { ref, computed } from 'vue';
 import {
-  calculateEpisodeForDate,
+  getCalendarEpisodeEntry,
   getCurrentTimeZoneLabel,
   isSameCalendarDay,
-  isShowUpdateDay,
   toLocalCalendarDate
 } from '@/utils/dateUtils';
 
@@ -120,19 +122,28 @@ const getNetworkClass = (network) => {
   return 'default';
 };
 
+const getEntryTitle = show => {
+  const entry = show.calendarEntry;
+  if (entry.type === 'scheduled') return 'TMDB 已提供明确播出日期';
+  if (entry.type === 'estimated') return '根据更新频率和当前集数推测';
+  if (!entry.confirmedAt) return '当前已确认的实际进度';
+  const confirmedDate = toLocalCalendarDate(entry.confirmedAt);
+  return confirmedDate
+    ? `实际进度确认于 ${confirmedDate.toLocaleDateString('zh-CN')}`
+    : '当前已确认的实际进度';
+};
+
 const showsList = computed(() => {
   const targetDate = selectedDate.value;
   const results = [];
 
   props.shows.forEach(s => {
-    if (s.status === 'dropped' || s.updateFrequency === 'ended') return;
-
-    if (isShowUpdateDay(s, targetDate)) {
-      const epText = calculateEpisodeForDate(s, targetDate);
-      if (epText !== '待定' && epText !== '完结') {
-        results.push({ ...s, calculatedEpisodeText: epText });
-      }
-    }
+    const calendarEntry = getCalendarEpisodeEntry(s, targetDate);
+    if (calendarEntry) results.push({
+      ...s,
+      calendarEntry,
+      calculatedEpisodeText: calendarEntry.episodeText
+    });
   });
   
   return results;
@@ -195,7 +206,15 @@ const showsList = computed(() => {
 .show-cover { width: 32px; height: 44px; border-radius: 6px; object-fit: cover; margin-right: 10px; background-color: #f1f5f9; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.06); flex-shrink: 0; }
 .show-info { flex: 1; display: flex; flex-direction: column; justify-content: center; overflow: hidden; gap: 2px; }
 .show-title { font-size: 0.85rem; font-weight: 700; margin: 0; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.show-episode { font-size: 0.65rem; color: #6366F1; font-weight: 600; background: rgba(99, 102, 241, 0.08); padding: 2px 6px; border-radius: 4px; align-self: flex-start; }
+.show-episode-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.entry-state { flex-shrink: 0; padding: 2px 5px; border-radius: 4px; font-size: 0.56rem; font-weight: 750; line-height: 1.3; }
+.entry-state.confirmed { color: #047857; background: #d1fae5; }
+.entry-state.scheduled { color: #1d4ed8; background: #dbeafe; }
+.entry-state.estimated { color: #7c3aed; background: #ede9fe; border: 1px dashed #c4b5fd; }
+.show-episode { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 0.65rem; font-weight: 650; padding: 2px 5px; border-radius: 4px; white-space: nowrap; }
+.show-episode.confirmed { color: #047857; background: rgba(16,185,129,0.08); }
+.show-episode.scheduled { color: #2563eb; background: rgba(37,99,235,0.08); }
+.show-episode.estimated { color: #7c3aed; background: rgba(124,58,237,0.07); }
 
 .platform-info { margin-left: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .platform-logo-img { width: 18px; height: 18px; border-radius: 4px; object-fit: contain; }

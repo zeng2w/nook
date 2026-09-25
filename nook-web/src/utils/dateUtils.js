@@ -152,33 +152,40 @@ const getProjectionAnchorDate = (show, referenceDate = new Date()) => {
   const lastUpdate = toLocalCalendarDate(show?.lastAirDate);
   if (!reference) return lastUpdate;
 
-  const nextUpdate = show?.scheduleLocked ? null : toLocalCalendarDate(show?.nextAirDate);
+  const confirmedAt = toLocalCalendarDate(show?.episodeProgressConfirmedAt);
+  const confirmedDay = getCalendarDayNumber(confirmedAt);
   const referenceDay = getCalendarDayNumber(reference);
+  const projectionReference = Number.isFinite(confirmedDay) && confirmedDay <= referenceDay
+    ? confirmedAt
+    : reference;
+
+  const nextUpdate = show?.scheduleLocked ? null : toLocalCalendarDate(show?.nextAirDate);
+  const projectionReferenceDay = getCalendarDayNumber(projectionReference);
   const lastUpdateDay = getCalendarDayNumber(lastUpdate);
   const nextUpdateDay = getCalendarDayNumber(nextUpdate);
 
   // 明确的未来播出日代表当前处于停播/待播阶段，此时不把实际进度挪到今天。
   if (
     Number.isFinite(nextUpdateDay) &&
-    referenceDay < nextUpdateDay &&
+    projectionReferenceDay < nextUpdateDay &&
     Number.isFinite(lastUpdateDay) &&
-    referenceDay >= lastUpdateDay
+    projectionReferenceDay >= lastUpdateDay
   ) {
     return lastUpdate;
   }
 
   if (!show || show.updateFrequency === 'unknown' || show.updateFrequency === 'ended') {
-    return lastUpdate || reference;
+    return lastUpdate || projectionReference;
   }
 
-  let cursor = reference;
+  let cursor = projectionReference;
   // 日更、周更和月更的最近一次理论更新日都应在一年范围内。
   for (let offset = 0; offset <= 366; offset += 1) {
     if (isShowUpdateDay(show, cursor)) return cursor;
     cursor = addCalendarDays(cursor, -1);
   }
 
-  return lastUpdate || reference;
+  return lastUpdate || projectionReference;
 };
 
 export const formatDateCN = (dateValue) => {
@@ -279,4 +286,89 @@ export const calculateEpisodeForDate = (show, targetDate, referenceDate = new Da
   return updateCount === 1 || startEpisode === displayEnd
     ? `Ep ${displayEnd}`
     : `${startEpisode}-${displayEnd}`;
+};
+
+const formatEpisodeRange = (startEpisode, endEpisode) => {
+  const start = Math.max(1, Number(startEpisode) || 0);
+  const end = Math.max(start, Number(endEpisode) || 0);
+  return start === end ? `Ep ${end}` : `${start}-${end}`;
+};
+
+const getConfirmedHistoryEntry = (show, targetDate) => {
+  const matches = Array.isArray(show?.episodeUpdateHistory)
+    ? show.episodeUpdateHistory.filter(entry => isSameCalendarDay(entry?.date, targetDate))
+    : [];
+  if (matches.length === 0) return null;
+
+  const startEpisode = Math.min(...matches.map(entry => Number(entry.startEpisode) || Infinity));
+  const endEpisode = Math.max(...matches.map(entry => Number(entry.endEpisode) || 0));
+  if (!Number.isFinite(startEpisode) || endEpisode < startEpisode) return null;
+
+  return {
+    episodeText: formatEpisodeRange(startEpisode, endEpisode),
+    type: 'confirmed',
+    statusText: '已更',
+    confirmedAt: show.episodeProgressConfirmedAt || matches.at(-1)?.date || null
+  };
+};
+
+/**
+ * 返回日历某一天应该展示的内容及其可信度。
+ * 过去只展示已保存的真实更新记录；今天展示当前已确认进度；未来才做推测。
+ */
+export const getCalendarEpisodeEntry = (show, targetDate, referenceDate = new Date()) => {
+  const target = toLocalCalendarDate(targetDate);
+  const reference = toLocalCalendarDate(referenceDate);
+  if (!show || !target || !reference || show.status === 'dropped') return null;
+
+  const targetDay = getCalendarDayNumber(target);
+  const referenceDay = getCalendarDayNumber(reference);
+  const historyEntry = getConfirmedHistoryEntry(show, target);
+  if (historyEntry && targetDay <= referenceDay) return historyEntry;
+
+  if (targetDay < referenceDay) {
+    const hasHistory = Array.isArray(show.episodeUpdateHistory) && show.episodeUpdateHistory.length > 0;
+    if (!hasHistory && isSameCalendarDay(target, show.lastAirDate)) {
+      const airedEpisodes = Math.max(0, Number(show.airedEpisodes) || 0);
+      if (airedEpisodes <= 0) return null;
+      const updateCount = Math.max(1, Number(show.updateCount) || 1);
+      return {
+        episodeText: formatEpisodeRange(
+          Math.max(1, airedEpisodes - updateCount + 1),
+          airedEpisodes
+        ),
+        type: 'confirmed',
+        statusText: '已更',
+        confirmedAt: show.episodeProgressConfirmedAt || show.lastAirDate || null
+      };
+    }
+    return null;
+  }
+
+  if (show.updateFrequency === 'ended' || !isShowUpdateDay(show, target)) return null;
+
+  const confirmedAt = toLocalCalendarDate(show.episodeProgressConfirmedAt);
+  const isCurrentProgress = targetDay === referenceDay && (
+    !confirmedAt || isSameCalendarDay(confirmedAt, reference)
+  );
+  if (isCurrentProgress) {
+    const airedEpisodes = Math.max(0, Number(show.airedEpisodes) || 0);
+    if (airedEpisodes <= 0) return null;
+    return {
+      episodeText: `Ep ${airedEpisodes}`,
+      type: 'confirmed',
+      statusText: '当前',
+      confirmedAt: show.episodeProgressConfirmedAt || null
+    };
+  }
+
+  const episodeText = calculateEpisodeForDate(show, target, reference);
+  if (episodeText === '待定' || episodeText === '完结') return null;
+  const hasExactNextDate = !show.scheduleLocked && isSameCalendarDay(target, show.nextAirDate);
+  return {
+    episodeText,
+    type: hasExactNextDate ? 'scheduled' : 'estimated',
+    statusText: hasExactNextDate ? '排期' : '预计',
+    confirmedAt: show.episodeProgressConfirmedAt || null
+  };
 };

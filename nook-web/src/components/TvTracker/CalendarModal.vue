@@ -35,19 +35,22 @@
             </div>
             
             <div class="day-body">
-              <div v-for="(item, k) in day.items" :key="`${item.show._id}-${k}`" class="mini-item-card">
-                <div class="mini-poster">
-                  <img v-if="item.show.posterUrl" :src="item.show.posterUrl" :alt="item.show.title" loading="lazy" decoding="async"/>
-                  <span v-else>{{ item.show.title.charAt(0) }}</span>
+              <div
+                v-for="(item, k) in day.items"
+                :key="`${item.show._id}-${k}`"
+                class="mini-item-card"
+                :title="`${item.show.title} · ${getEntryTitle(item)}`"
+              >
+                <div class="mini-card-main">
+                  <div class="mini-poster">
+                    <img v-if="item.show.posterUrl" :src="item.show.posterUrl" :alt="item.show.title" loading="lazy" decoding="async"/>
+                    <span v-else>{{ item.show.title.charAt(0) }}</span>
+                  </div>
+                  <span class="mini-title">{{ item.show.title }}</span>
                 </div>
-                
-                <div class="mini-info">
-                  <div class="mini-row-top marquee-box">
-                    <span class="mini-title">{{ item.show.title }}</span>
-                  </div>
-                  <div class="mini-row-bot">
-                    <span class="mini-ep">{{ item.episodeText }}</span>
-                  </div>
+                <div class="mini-row-bot">
+                  <span class="entry-state" :class="item.entryType">{{ item.statusText }}</span>
+                  <span class="mini-ep" :class="item.entryType">{{ item.episodeText }}</span>
                 </div>
               </div>
               
@@ -82,7 +85,10 @@
                 </div>
                 <div class="agenda-info">
                   <strong>{{ item.show.title }}</strong>
-                  <span>{{ item.episodeText }}</span>
+                  <div class="agenda-episode-row" :title="getEntryTitle(item)">
+                    <span class="entry-state" :class="item.entryType">{{ item.statusText }}</span>
+                    <span class="agenda-episode" :class="item.entryType">{{ item.episodeText }}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -98,10 +104,9 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import {
-  calculateEpisodeForDate,
+  getCalendarEpisodeEntry,
   getCurrentTimeZoneLabel,
   isSameCalendarDay,
-  isShowUpdateDay,
   toLocalCalendarDate
 } from '@/utils/dateUtils';
 
@@ -175,17 +180,26 @@ const getShowsForDate = (dateObj) => {
   const results = [];
   
   props.shows.forEach(s => {
-    // 个人已经看完不代表作品不再更新；日历只过滤弃剧和明确停止更新的作品。
-    if (s.status === 'dropped' || s.updateFrequency === 'ended') return;
-    
-    if (isShowUpdateDay(s, dateObj)) {
-      const epText = calculateEpisodeForDate(s, dateObj);
-      if (epText !== '待定' && epText !== '完结') {
-        results.push({ show: s, episodeText: epText });
-      }
-    }
+    const entry = getCalendarEpisodeEntry(s, dateObj);
+    if (entry) results.push({
+      show: s,
+      episodeText: entry.episodeText,
+      entryType: entry.type,
+      statusText: entry.statusText,
+      confirmedAt: entry.confirmedAt
+    });
   });
   return results;
+};
+
+const getEntryTitle = item => {
+  if (item.entryType === 'scheduled') return 'TMDB 已提供明确播出日期';
+  if (item.entryType === 'estimated') return '根据更新频率和当前集数推测';
+  if (!item.confirmedAt) return '当前已确认的实际进度';
+  const confirmedDate = toLocalCalendarDate(item.confirmedAt);
+  return confirmedDate
+    ? `实际进度确认于 ${confirmedDate.toLocaleDateString('zh-CN')}`
+    : '当前已确认的实际进度';
 };
 
 const calendarDays = computed(() => Array.from({ length: 7 }, (_, index) => {
@@ -213,7 +227,7 @@ const formatAgendaDate = date => new Intl.DateTimeFormat('zh-CN', {
 .glass-calendar-card.compact-mode {
   background: rgba(255, 255, 255, 0.96); 
   backdrop-filter: blur(20px) saturate(180%); 
-  width: fit-content; 
+  width: min(1400px, 95vw);
   max-width: 95vw; 
   height: 60vh;
   max-height: 60vh; 
@@ -245,7 +259,7 @@ const formatAgendaDate = date => new Intl.DateTimeFormat('zh-CN', {
 /* Grid 布局 */
 .calendar-grid-view { 
   display: grid; 
-  grid-template-columns: repeat(7, 120px); 
+  grid-template-columns: repeat(7, minmax(150px, 1fr));
   flex: 1; 
   overflow-y: auto; 
   overflow-x: auto; 
@@ -274,7 +288,7 @@ const formatAgendaDate = date => new Intl.DateTimeFormat('zh-CN', {
 
 /* Mini Cards */
 .mini-item-card { 
-  display: flex; align-items: center; gap: 8px; 
+  display: flex; flex-direction: column; gap: 5px;
   padding: 6px; 
   border-radius: 10px; 
   background: #fff; 
@@ -283,47 +297,47 @@ const formatAgendaDate = date => new Intl.DateTimeFormat('zh-CN', {
   /* 纯展示模式 */
   cursor: default; 
   transition: all 0.2s; 
-  overflow: hidden; 
+  min-width: 0;
 }
 .mini-item-card:hover { transform: translateX(2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-color: rgba(0,0,0,0.08); }
+
+.mini-card-main { display: flex; align-items: center; gap: 7px; min-width: 0; }
 
 .mini-poster { width: 32px; height: 48px; border-radius: 6px; overflow: hidden; background: #f1f5f9; flex-shrink: 0; z-index: 2; }
 .mini-poster img { width: 100%; height: 100%; object-fit: cover; }
 .mini-poster span { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; font-size: 0.9rem; color: #ccc; font-weight: 700; }
 
-.mini-info { flex: 1; display: flex; flex-direction: column; justify-content: center; overflow: hidden; gap: 2px; }
-
-/* 弹幕效果 */
-.marquee-box {
-  width: 100%;
-  overflow: hidden;
-  white-space: nowrap;
-  mask-image: linear-gradient(to right, black 85%, transparent); 
-}
-
 .mini-title { 
-  display: inline-block;
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
   font-size: 0.8rem; 
-  font-weight: 600; 
+  line-height: 1.35;
+  font-weight: 650;
   color: #333; 
-  transition: transform 0.2s;
-}
-.mini-item-card:hover .mini-title {
-  animation: marquee-scroll 4s linear infinite;
 }
 
-@keyframes marquee-scroll {
-  0% { transform: translateX(0); }
-  30% { transform: translateX(0); } 
-  100% { transform: translateX(-100%); }
-}
-
-.mini-ep { font-size: 0.7rem; color: #007aff; background: rgba(0,122,255,0.08); padding: 1px 6px; border-radius: 4px; align-self: flex-start; font-weight: 500; white-space: nowrap; }
+.mini-row-bot { display: flex; align-items: center; gap: 4px; width: 100%; min-width: 0; }
+.entry-state { padding: 1px 4px; border-radius: 4px; font-size: 0.58rem; font-weight: 750; line-height: 1.35; white-space: nowrap; }
+.entry-state.confirmed { color: #047857; background: #d1fae5; }
+.entry-state.scheduled { color: #1d4ed8; background: #dbeafe; }
+.entry-state.estimated { color: #7c3aed; background: #ede9fe; border: 1px dashed #c4b5fd; }
+.mini-ep { min-width: 0; font-size: 0.68rem; padding: 1px 4px; border-radius: 4px; font-weight: 700; white-space: nowrap; }
+.mini-ep.confirmed { color: #047857; background: rgba(16,185,129,0.08); }
+.mini-ep.scheduled { color: #2563eb; background: rgba(37,99,235,0.08); }
+.mini-ep.estimated { color: #7c3aed; background: rgba(124,58,237,0.07); }
 
 .empty-line { height: 100%; min-height: 50px; }
 
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+@media (max-width: 1100px) and (min-width: 769px) {
+  .calendar-grid-view { grid-template-columns: repeat(7, minmax(120px, 1fr)); }
+}
 
 @media (max-width: 768px) {
   .glass-calendar-card.compact-mode { width: 100vw; height: min(82dvh, 720px); max-height: 82dvh; border-radius: 20px 20px 0 0; position: absolute; bottom: 0; max-width: none; }
@@ -347,7 +361,12 @@ const formatAgendaDate = date => new Intl.DateTimeFormat('zh-CN', {
   .agenda-poster img { width: 100%; height: 100%; object-fit: cover; }
   .agenda-info { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
   .agenda-info strong { color: #1e293b; font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .agenda-info span { align-self: flex-start; padding: 3px 8px; border-radius: 6px; background: #eef2ff; color: #4f46e5; font-size: 0.75rem; font-weight: 700; }
+  .agenda-episode-row { display: flex; align-items: center; gap: 5px; }
+  .agenda-info .entry-state { align-self: center; padding: 2px 6px; }
+  .agenda-info .agenda-episode { align-self: flex-start; padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; }
+  .agenda-episode.confirmed { background: #ecfdf5; color: #047857; }
+  .agenda-episode.scheduled { background: #eff6ff; color: #2563eb; }
+  .agenda-episode.estimated { background: #f5f3ff; color: #7c3aed; }
   .agenda-day-empty { margin: 0; padding: 14px; border-radius: 12px; background: #fff; color: #94a3b8; text-align: center; font-size: 0.8rem; }
 }
 </style>

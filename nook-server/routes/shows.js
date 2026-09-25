@@ -19,6 +19,10 @@ const { getCalendarDateKeyInTimeZone, isValidTimeZone } = require('../utils/time
 const logger = require('../utils/logger');
 const { validateObjectIdParam } = require('../middleware/validate');
 const { createRateLimit } = require('../middleware/rateLimit');
+const {
+  MAX_EPISODE_HISTORY_ENTRIES,
+  confirmEpisodeProgress
+} = require('../utils/episodeProgress');
 
 const SHOW_LIST_FIELDS = '-userId -__v -lastTmdbCheckedAt -lastTmdbSyncStatus';
 const activeSyncUsers = new Set();
@@ -93,6 +97,18 @@ const pickShowFields = (source) => {
       .filter(field => Object.prototype.hasOwnProperty.call(source, field))
       .map(field => [field, source[field]])
   );
+};
+
+const pickEpisodeProgressBackup = source => {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+  const result = {};
+  if (Object.prototype.hasOwnProperty.call(source, 'episodeProgressConfirmedAt')) {
+    result.episodeProgressConfirmedAt = source.episodeProgressConfirmedAt;
+  }
+  if (Array.isArray(source.episodeUpdateHistory)) {
+    result.episodeUpdateHistory = source.episodeUpdateHistory.slice(-MAX_EPISODE_HISTORY_ENTRIES);
+  }
+  return result;
 };
 
 const toCalendarDateKey = (value) => {
@@ -240,7 +256,7 @@ router.get('/stats', async (req, res, next) => {
 router.get('/calendar', async (req, res, next) => {
   try {
     const shows = await Show.find({ userId: req.user.id })
-      .select('title posterUrl network networkLogo status totalEpisodes airedEpisodes updateFrequency updateDays updateCount scheduleLocked lastAirDate nextAirDate estimatedFinishDate seriesTitle seasonNumber seasonName')
+      .select('title posterUrl network networkLogo status totalEpisodes airedEpisodes updateFrequency updateDays updateCount scheduleLocked lastAirDate nextAirDate estimatedFinishDate seriesTitle seasonNumber seasonName +episodeProgressConfirmedAt +episodeUpdateHistory')
       .sort({ lastAirDate: -1, title: 1 })
       .lean();
     res.json(shows);
@@ -276,6 +292,13 @@ router.post('/', async (req, res, next) => {
     }
 
     const newShow = new Show({ userId: req.user.id, ...showData });
+    if (newShow.airedEpisodes > 0) {
+      confirmEpisodeProgress(newShow, newShow.airedEpisodes, {
+        confirmedAt: new Date(),
+        eventDate: newShow.lastAirDate || new Date(),
+        source: 'manual'
+      });
+    }
     applyDerivedShowStatus(newShow);
 
     const show = await newShow.save();
@@ -354,10 +377,22 @@ router.patch('/:id/progress', validateObjectIdParam(), async (req, res, next) =>
 // ==========================================
 router.put('/:id', validateObjectIdParam(), async (req, res, next) => {
   try {
-    const show = await Show.findOne({ _id: req.params.id, userId: req.user.id });
+    const show = await Show.findOne({ _id: req.params.id, userId: req.user.id })
+      .select('+episodeProgressConfirmedAt +episodeUpdateHistory');
     if (!show) return res.status(404).json({ code: 'SHOW_NOT_FOUND', error: 'Show not found' });
 
-    Object.assign(show, pickShowFields(req.body), { updatedAt: Date.now() });
+    const updates = pickShowFields(req.body);
+    const hasAiredEpisodes = Object.prototype.hasOwnProperty.call(updates, 'airedEpisodes');
+    const nextAiredEpisodes = updates.airedEpisodes;
+    delete updates.airedEpisodes;
+    Object.assign(show, updates, { updatedAt: Date.now() });
+    if (hasAiredEpisodes) {
+      confirmEpisodeProgress(show, nextAiredEpisodes, {
+        confirmedAt: new Date(),
+        eventDate: show.lastAirDate || new Date(),
+        source: 'manual'
+      });
+    }
     applyDerivedShowStatus(show);
     await show.save();
     res.json(show);
@@ -400,7 +435,7 @@ router.post('/sync', syncRateLimit, limitForcedSync, preventConcurrentSync, asyn
     const syncableShows = await Show.find({
       userId: req.user.id,
       status: { $ne: 'dropped' }
-    }).select('+lastTmdbCheckedAt +lastTmdbSyncStatus');
+    }).select('+lastTmdbCheckedAt +lastTmdbSyncStatus +episodeProgressConfirmedAt +episodeUpdateHistory');
 
     const eligibleShows = syncableShows.filter(show => show.tmdbId && show.category !== 'movie');
     const trackedSeasonKeys = new Set();
@@ -508,25 +543,34 @@ router.post('/sync', syncRateLimit, limitForcedSync, preventConcurrentSync, asyn
           // 用户锁定总集数后，以本地确认过的总集数作为进度上限。
           // 这样 TMDB 的临时错数不会让已更新集数越界并导致保存失败。
           const syncedEpisodeCount = getSyncedEpisodeCount(show, remoteEpisodeCount);
+          const previousEpisodeCount = Number(show.airedEpisodes) || 0;
           let needsSave = false;
           let updateLog = null;
 
-          if (syncedEpisodeCount > show.airedEpisodes) {
+          if (syncedEpisodeCount > previousEpisodeCount) {
             updateLog = {
               id: show._id,
               title: show.title,
-              oldEp: show.airedEpisodes,
+              oldEp: previousEpisodeCount,
               newEp: syncedEpisodeCount,
               date: remoteAirDate || today,
               posterUrl: show.posterUrl
             };
           }
-          if (
+          const shouldApplyEpisodeCount = (
             seasonProgress
-              ? syncedEpisodeCount !== show.airedEpisodes
-              : syncedEpisodeCount > show.airedEpisodes
-          ) {
-            show.airedEpisodes = syncedEpisodeCount;
+              ? syncedEpisodeCount !== previousEpisodeCount
+              : syncedEpisodeCount > previousEpisodeCount
+          );
+          if (shouldApplyEpisodeCount || syncedEpisodeCount === previousEpisodeCount) {
+            confirmEpisodeProgress(show, syncedEpisodeCount, {
+              confirmedAt: checkedAt,
+              eventDate: remoteAirDate || today,
+              updateCount: remoteSchedule.updateCount,
+              source: 'tmdb'
+            });
+          }
+          if (shouldApplyEpisodeCount) {
             needsSave = true;
           }
           if (
@@ -665,6 +709,7 @@ router.get('/export', async (req, res, next) => {
   try {
     const shows = await Show.find({ userId: req.user.id })
       .select(SHOW_LIST_FIELDS)
+      .select('+episodeProgressConfirmedAt +episodeUpdateHistory')
       .lean();
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', `attachment; filename=tv_shows_backup_${Date.now()}.json`);
@@ -710,6 +755,7 @@ router.post('/import', async (req, res, next) => {
 
     for (const [index, item] of shows.entries()) {
       const showData = pickShowFields(item);
+      const progressBackup = pickEpisodeProgressBackup(item);
       const backupTimestamps = item && typeof item === 'object' && !Array.isArray(item)
         ? {
             ...(Object.prototype.hasOwnProperty.call(item, 'createdAt') ? { createdAt: item.createdAt } : {}),
@@ -717,7 +763,19 @@ router.post('/import', async (req, res, next) => {
           }
         : {};
       const normalizedTitle = String(showData.title || '').trim().toLowerCase();
-      const candidate = new Show({ userId: req.user.id, ...showData, ...backupTimestamps });
+      const candidate = new Show({
+        userId: req.user.id,
+        ...showData,
+        ...progressBackup,
+        ...backupTimestamps
+      });
+      if (!candidate.episodeProgressConfirmedAt && candidate.airedEpisodes > 0) {
+        confirmEpisodeProgress(candidate, candidate.airedEpisodes, {
+          confirmedAt: candidate.updatedAt || candidate.createdAt || new Date(),
+          eventDate: candidate.lastAirDate || candidate.updatedAt || new Date(),
+          source: 'manual'
+        });
+      }
       applyDerivedShowStatus(candidate);
 
       try {

@@ -108,7 +108,9 @@ const buildShowListPipeline = (userId, options) => {
               sortLag: 0,
               statusRank: 0,
               lastTmdbCheckedAt: 0,
-              lastTmdbSyncStatus: 0
+              lastTmdbSyncStatus: 0,
+              episodeProgressConfirmedAt: 0,
+              episodeUpdateHistory: 0
             }
           }
         ],

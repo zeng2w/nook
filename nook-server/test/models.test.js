@@ -71,6 +71,27 @@ test('show episode counts are integers and cannot exceed a known total', async (
   ));
 });
 
+test('show stores confirmed episode history without requiring a migration', async () => {
+  const show = new Show({
+    userId: '507f1f77bcf86cd799439011',
+    title: 'Calendar History',
+    category: 'tv',
+    airedEpisodes: 19,
+    totalEpisodes: 30,
+    episodeProgressConfirmedAt: new Date('2026-09-25T08:30:00.000Z'),
+    episodeUpdateHistory: [{
+      date: new Date('2026-09-23T12:00:00.000Z'),
+      startEpisode: 18,
+      endEpisode: 19,
+      source: 'tmdb'
+    }]
+  });
+
+  await show.validate();
+  assert.equal(show.episodeUpdateHistory.length, 1);
+  assert.equal(show.episodeUpdateHistory[0].endEpisode, 19);
+});
+
 test('show title and media URLs are validated', async () => {
   const show = new Show({
     userId: USER_ID,

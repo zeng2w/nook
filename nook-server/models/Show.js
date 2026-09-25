@@ -1,5 +1,12 @@
 const mongoose = require('mongoose');
 
+const EpisodeUpdateSchema = new mongoose.Schema({
+  date: { type: Date, required: true },
+  startEpisode: { type: Number, required: true, min: 1, validate: Number.isInteger },
+  endEpisode: { type: Number, required: true, min: 1, validate: Number.isInteger },
+  source: { type: String, enum: ['tmdb', 'manual'], default: 'tmdb' }
+}, { _id: false });
+
 const ShowSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   title: { type: String, required: true, trim: true, minlength: 1, maxlength: 200 },
@@ -10,6 +17,8 @@ const ShowSchema = new mongoose.Schema({
   totalEpisodes: { type: Number, default: 0, min: 0, validate: Number.isInteger },
   airedEpisodes: { type: Number, default: 0, min: 0, validate: Number.isInteger },
   watchedEpisodes: { type: Number, default: 0, min: 0, validate: Number.isInteger },
+  episodeProgressConfirmedAt: { type: Date, default: null, select: false },
+  episodeUpdateHistory: { type: [EpisodeUpdateSchema], default: [], select: false },
   
   // 更新规则
   updateFrequency: { 

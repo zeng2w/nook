@@ -182,6 +182,8 @@ test('calendar shows include the episode counts required for calendar labels', a
     assert.match(selectedFields, /\bairedEpisodes\b/);
     assert.match(selectedFields, /\btotalEpisodes\b/);
     assert.match(selectedFields, /\bnextAirDate\b/);
+    assert.match(selectedFields, /\bepisodeProgressConfirmedAt\b/);
+    assert.match(selectedFields, /\bepisodeUpdateHistory\b/);
     assert.equal(response.body[0].airedEpisodes, 237);
     assert.equal(response.body[0].totalEpisodes, 300);
   } finally {
