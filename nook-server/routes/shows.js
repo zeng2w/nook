@@ -72,6 +72,7 @@ const ALLOWED_SHOW_FIELDS = [
   'airedEpisodes',
   'watchedEpisodes',
   'posterUrl',
+  'playUrl',
   'tmdbId',
   'updateFrequency',
   'updateDays',
@@ -256,7 +257,7 @@ router.get('/stats', async (req, res, next) => {
 router.get('/calendar', async (req, res, next) => {
   try {
     const shows = await Show.find({ userId: req.user.id })
-      .select('title tmdbId category watchedEpisodes posterUrl network networkLogo status totalEpisodes airedEpisodes updateFrequency updateDays updateCount scheduleLocked lastAirDate nextAirDate estimatedFinishDate seriesTitle seasonNumber seasonName +episodeProgressConfirmedAt +episodeUpdateHistory')
+      .select('title tmdbId category watchedEpisodes posterUrl playUrl network networkLogo status totalEpisodes airedEpisodes updateFrequency updateDays updateCount scheduleLocked lastAirDate nextAirDate estimatedFinishDate seriesTitle seasonNumber seasonName +episodeProgressConfirmedAt +episodeUpdateHistory')
       .sort({ lastAirDate: -1, title: 1 })
       .lean();
     res.json(shows);

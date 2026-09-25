@@ -53,6 +53,17 @@ const ShowSchema = new mongoose.Schema({
     }
   },
   
+  playUrl: {
+    type: String, default: '', trim: true, maxlength: 2048,
+    validate: {
+      validator: value => {
+        if (!value) return true;
+        try { return ['https:', 'http:'].includes(new URL(value).protocol); } catch { return false; }
+      },
+      message: 'Playback URL must be a valid HTTP or HTTPS URL'
+    }
+  },
+
   // 播放平台信息
   network: { type: String, default: '', trim: true, maxlength: 100 },
   networkLogo: {

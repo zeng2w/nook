@@ -1,372 +1,105 @@
 <template>
-  <Transition name="fade">
-    <div v-if="visible" class="modal-overlay glass-background" @click.self="close">
-      <div class="glass-calendar-card compact-mode" role="dialog" aria-modal="true" aria-labelledby="calendar-modal-title">
-        
-        <div class="glass-header">
-          <div class="header-left">
-            <h3 id="calendar-modal-title">追剧日历</h3>
-            <div class="calendar-context">
-              <span class="month-label">{{ monthTitle }}</span>
-              <span class="timezone-label" :title="timeZoneLabel">{{ timeZoneLabel }}</span>
-            </div>
-          </div>
-          <div class="header-right">
-            <button class="nav-btn today-btn" @click="resetToToday">今天</button>
-            <div class="nav-group">
-              <button class="nav-btn arrow" aria-label="上一周" @click="changeWeek(-1)">❮</button>
-              <button class="nav-btn arrow" aria-label="下一周" @click="changeWeek(1)">❯</button>
-            </div>
-            <button class="close-glass-btn" aria-label="关闭追剧日历" @click="close">✕</button>
-          </div>
+  <Teleport to="body">
+    <dialog v-if="visible" ref="dialog" class="calendar-modal" aria-labelledby="calendar-modal-title" @click.self="close" @cancel.prevent="close">
+      <header class="calendar-header">
+        <div class="header-left"><h3 id="calendar-modal-title">追剧日历</h3><div class="calendar-context"><span class="month-label" aria-live="polite">{{ monthTitle }}</span><span class="timezone-label">{{ timeZoneLabel }}</span></div></div>
+        <div class="header-right">
+          <div class="view-switch" role="group" aria-label="日历视图"><button v-for="mode in modes" :key="mode.value" :aria-pressed="view === mode.value" @click="setView(mode.value)">{{ mode.label }}</button></div>
+          <button class="today-btn" @click="resetToToday">今天</button>
+          <div class="nav-group"><button :aria-label="view === 'week' ? '上一周' : '上一月'" @click="navigate(-1)">‹</button><button :aria-label="view === 'week' ? '下一周' : '下一月'" @click="navigate(1)">›</button></div>
+          <button class="close-btn" aria-label="关闭追剧日历" @click="close">✕</button>
         </div>
-        
-        <div class="calendar-grid-view">
-          <div 
-            v-for="day in calendarDays"
-            :key="day.key"
-            class="day-column" 
-            :class="{ 'is-today': isSameCalendarDay(day.date, new Date()) }"
-            ref="dayColumns"
-          >
-            <div class="day-header">
-              <span class="day-name">{{ weekDaysAbbr[day.date.getDay()] }}</span>
-              <div class="day-circle">{{ day.date.getDate() }}</div>
-            </div>
-            
+      </header>
+      <div class="calendar-scroll">
+        <div class="calendar-grid-view" :class="{ 'month-view': view === 'month' }">
+          <template v-if="view === 'month'"><div v-for="label in weekDays" :key="label" class="month-weekday">{{ label }}</div></template>
+          <section v-for="day in calendarDays" :key="day.key" class="day-column" :class="dayClasses(day)" :aria-label="formatDate(day.date)">
+            <div class="day-header"><span v-if="view === 'week'" class="day-name">{{ weekDays[day.date.getDay()] }}</span><span class="day-circle" :aria-current="isToday(day.date) ? 'date' : undefined">{{ day.date.getDate() }}</span><span v-if="isToday(day.date)" class="today-label">今天</span></div>
             <div class="day-body">
-              <div
-                v-for="(item, k) in day.items"
-                :key="`${item.show._id}-${k}`"
-                class="mini-item-card"
-                :title="`${item.show.title} · ${getEntryTitle(item)}`"
-              >
-                <div class="mini-card-main">
-                  <div class="mini-poster">
-                    <img v-if="item.show.posterUrl" :src="item.show.posterUrl" :alt="item.show.title" loading="lazy" decoding="async"/>
-                    <span v-else>{{ item.show.title.charAt(0) }}</span>
-                  </div>
-                  <span class="mini-title">{{ item.show.title }}</span>
-                </div>
-                <div class="mini-row-bot">
-                  <span class="entry-state" :class="item.entryType">{{ item.statusText }}</span>
-                  <span class="mini-ep" :class="item.entryType">{{ item.episodeText }}</span>
-                </div>
-              </div>
-              
-              <div v-if="day.items.length === 0" class="empty-line"></div>
+              <CalendarEntry v-for="item in displayedItems(day)" :key="item.show._id" :item="item" :date="day.date" :today="today" @details="openDetails" />
+              <button v-if="view === 'month' && day.items.length > 2" class="expand-day" :aria-expanded="!!expanded[day.key]" @click="expanded[day.key] = !expanded[day.key]">{{ expanded[day.key] ? '收起' : `还有 ${day.items.length - 2} 部` }}</button>
+              <span v-if="!day.items.length" class="empty-day">—</span>
             </div>
-          </div>
-        </div>
-
-        <div class="mobile-agenda-view">
-          <div v-if="mobileAgendaDays.length === 0" class="mobile-agenda-empty">
-            这一周暂时没有更新安排
-          </div>
-          <template v-else>
-          <section
-            v-for="day in mobileAgendaDays"
-            :key="`agenda-${day.key}`"
-            class="agenda-day"
-          >
-            <div class="agenda-day-header">
-              <div>
-                <strong>{{ formatAgendaDate(day.date) }}</strong>
-                <span v-if="isSameCalendarDay(day.date, new Date())" class="today-tag">今天</span>
-              </div>
-              <span>{{ day.items.length }} 部更新</span>
-            </div>
-
-            <div v-if="day.items.length" class="agenda-items">
-              <div v-for="(item, k) in day.items" :key="`agenda-${item.show._id}-${k}`" class="agenda-item-card">
-                <div class="agenda-poster">
-                  <img v-if="item.show.posterUrl" :src="item.show.posterUrl" :alt="item.show.title" loading="lazy" decoding="async" />
-                  <span v-else>{{ item.show.title.charAt(0) }}</span>
-                </div>
-                <div class="agenda-info">
-                  <strong>{{ item.show.title }}</strong>
-                  <div class="agenda-episode-row" :title="getEntryTitle(item)">
-                    <span class="entry-state" :class="item.entryType">{{ item.statusText }}</span>
-                    <span class="agenda-episode" :class="item.entryType">{{ item.episodeText }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <p v-else class="agenda-day-empty">今天暂无更新</p>
           </section>
-          </template>
+        </div>
+        <div class="mobile-agenda-view">
+          <p v-if="!mobileAgendaDays.length" class="agenda-day-empty">{{ view === 'week' ? '本周' : '本月' }}暂无更新安排</p>
+          <section v-for="day in mobileAgendaDays" :key="day.key" class="agenda-day" :class="dayClasses(day)">
+            <div class="agenda-day-header"><strong>{{ formatDate(day.date) }}</strong><span>{{ isToday(day.date) ? '今天 · ' : '' }}{{ day.items.length }} 部</span></div>
+            <CalendarEntry v-for="item in day.items" :key="item.show._id" :item="item" :date="day.date" :today="today" @details="openDetails" />
+            <p v-if="!day.items.length" class="agenda-day-empty">今天暂无更新</p>
+          </section>
         </div>
       </div>
-    </div>
-  </Transition>
+      <footer class="calendar-footer">未来更新依照播出安排推算，以平台实际更新为准。</footer>
+    </dialog>
+  </Teleport>
 </template>
-
 <script setup>
-import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
-import {
-  getCalendarEpisodeEntry,
-  getCurrentTimeZoneLabel,
-  isSameCalendarDay,
-  toLocalCalendarDate
-} from '@/utils/dateUtils';
-
-const props = defineProps({
-  visible: Boolean,
-  shows: { type: Array, default: () => [] }
-});
-const emit = defineEmits(['update:visible']);
-
-const calendarStart = ref(toLocalCalendarDate(new Date()));
-const weekDaysAbbr = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-const dayColumns = ref([]);
-const timeZoneLabel = ref(getCurrentTimeZoneLabel());
-
-const initCalendar = () => {
-  const d = toLocalCalendarDate(new Date());
-  const day = d.getDay();
-  const diff = d.getDate() - day;
-  const sunday = new Date(d.setDate(diff));
-  sunday.setHours(12,0,0,0);
-  calendarStart.value = sunday;
-  timeZoneLabel.value = getCurrentTimeZoneLabel();
-};
-
-const scrollToToday = () => {
-  nextTick(() => {
-    // 增加了一个安全判断 el 是否存在
-    const todayEl = dayColumns.value.find(el => el && el.classList.contains('is-today'));
-    if (todayEl) {
-      todayEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-    }
-  });
-};
-
-const resetToToday = () => {
-  initCalendar();
+import { ref, computed, watch, nextTick } from 'vue';
+import CalendarEntry from './CalendarEntry.vue';
+import { getCalendarEpisodeEntry, getCurrentTimeZoneLabel, isSameCalendarDay, toLocalCalendarDate, toCalendarDateInput } from '@/utils/dateUtils';
+const props = defineProps({ visible: Boolean, shows: { type: Array, default: () => [] } });
+const emit = defineEmits(['update:visible', 'details']);
+const dialog = ref(null), view = ref('week'), today = ref(toLocalCalendarDate(new Date())), anchor = ref(today.value), expanded = ref({});
+const timeZoneLabel = getCurrentTimeZoneLabel();
+const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+const modes = [{ value: 'week', label: '周' }, { value: 'month', label: '月' }];
+const isToday = date => isSameCalendarDay(date, today.value);
+let opener;
+watch(() => props.visible, async visible => {
+  if (!visible) return;
+  opener = document.activeElement;
+  resetToToday();
+  await nextTick();
+  dialog.value?.showModal();
+  dialog.value?.querySelector('.close-btn')?.focus();
   scrollToToday();
+}, { immediate: true });
+const close = () => { dialog.value?.close(); emit('update:visible', false); opener?.focus(); };
+const openDetails = show => { close(); emit('details', show); };
+function scrollToToday() {
+  if (!dialog.value?.open) return;
+  const target = [...dialog.value.querySelectorAll('.is-today')].find(element => element.getClientRects().length);
+  target?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+function resetToToday() { today.value = toLocalCalendarDate(new Date()); anchor.value = today.value; expanded.value = {}; void nextTick(scrollToToday); }
+const setView = value => { view.value = value; expanded.value = {}; };
+const navigate = amount => {
+  const date = new Date(anchor.value);
+  if (view.value === 'week') date.setDate(date.getDate() + amount * 7);
+  else { date.setDate(1); date.setMonth(date.getMonth() + amount); }
+  anchor.value = date; expanded.value = {};
+  dialog.value?.querySelector('.calendar-scroll')?.scrollTo({ top: 0 });
 };
-
-watch(() => props.visible, (val) => { 
-  if(val) {
-    initCalendar();
-    scrollToToday();
-  }
+const range = computed(() => {
+  const start = new Date(anchor.value);
+  if (view.value === 'month') start.setDate(1);
+  start.setDate(start.getDate() - start.getDay());
+  const length = view.value === 'week' ? 7 : Math.ceil((new Date(anchor.value.getFullYear(), anchor.value.getMonth(), 1).getDay() + new Date(anchor.value.getFullYear(), anchor.value.getMonth() + 1, 0).getDate()) / 7) * 7;
+  return { start, length };
 });
-
-const close = () => emit('update:visible', false);
-const handleKeydown = event => {
-  if (props.visible && event.key === 'Escape') close();
-};
-onMounted(() => window.addEventListener('keydown', handleKeydown));
-onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown));
-
-const changeWeek = (offset) => {
-  const d = new Date(calendarStart.value);
-  d.setDate(d.getDate() + (offset * 7));
-  calendarStart.value = d;
-};
-
-const monthTitle = computed(() => {
-  return new Date(calendarStart.value).toLocaleDateString('zh-CN', { month: 'long', year: 'numeric' });
-});
-
-const getCalendarDate = (offsetIndex) => {
-  const d = new Date(calendarStart.value);
-  d.setDate(d.getDate() + offsetIndex);
-  return d;
-};
-
-const getShowsForDate = (dateObj) => {
-  const results = [];
-  
-  props.shows.forEach(s => {
-    const entry = getCalendarEpisodeEntry(s, dateObj);
-    if (entry) results.push({
-      show: s,
-      episodeText: entry.episodeText,
-      entryType: entry.type,
-      statusText: entry.statusText,
-      confirmedAt: entry.confirmedAt
-    });
-  });
-  return results;
-};
-
-const getEntryTitle = item => {
-  if (item.entryType === 'scheduled') return 'TMDB 已提供明确播出日期';
-  if (item.entryType === 'estimated') return '根据更新频率和当前集数推测';
-  if (!item.confirmedAt) return '当前已确认的实际进度';
-  const confirmedDate = toLocalCalendarDate(item.confirmedAt);
-  return confirmedDate
-    ? `实际进度确认于 ${confirmedDate.toLocaleDateString('zh-CN')}`
-    : '当前已确认的实际进度';
-};
-
-const calendarDays = computed(() => Array.from({ length: 7 }, (_, index) => {
-  const date = getCalendarDate(index);
-  return {
-    date,
-    items: getShowsForDate(date),
-    key: `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
-  };
+const calendarDays = computed(() => Array.from({ length: range.value.length }, (_, index) => {
+  const date = new Date(range.value.start); date.setDate(date.getDate() + index);
+  return { date, key: toCalendarDateInput(date), items: props.shows.flatMap(show => { const entry = getCalendarEpisodeEntry(show, date, today.value); return entry ? [{ show, entry }] : []; }) };
 }));
-const mobileAgendaDays = computed(() => calendarDays.value.filter(day => (
-  day.items.length > 0 || isSameCalendarDay(day.date, new Date())
-)));
-const formatAgendaDate = date => new Intl.DateTimeFormat('zh-CN', {
-  month: 'numeric',
-  day: 'numeric',
-  weekday: 'short'
-}).format(date);
+const monthTitle = computed(() => {
+  if (view.value === 'month') return `${anchor.value.getFullYear()}年 ${anchor.value.getMonth() + 1}月`;
+  const first = calendarDays.value[0].date, last = calendarDays.value.at(-1).date;
+  const start = `${first.getFullYear()}年 ${first.getMonth() + 1}月`;
+  return first.getFullYear() !== last.getFullYear() ? `${start} - ${last.getFullYear()}年 ${last.getMonth() + 1}月` : first.getMonth() !== last.getMonth() ? `${start} - ${last.getMonth() + 1}月` : start;
+});
+const dayClasses = day => ({ 'is-today': isToday(day.date), 'is-past': day.date < today.value, 'outside-month': view.value === 'month' && day.date.getMonth() !== anchor.value.getMonth() });
+const displayedItems = day => view.value === 'month' && !expanded.value[day.key] ? day.items.slice(0, 2) : day.items;
+const mobileAgendaDays = computed(() => calendarDays.value.filter(day => (view.value === 'week' || day.date.getMonth() === anchor.value.getMonth()) && (day.items.length || isToday(day.date))));
+const formatDate = date => new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' }).format(date);
 </script>
-
 <style scoped>
-.modal-overlay.glass-background { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.3); display: flex; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(4px); }
-
-/* Compact Mode 容器 */
-.glass-calendar-card.compact-mode {
-  background: rgba(255, 255, 255, 0.96); 
-  backdrop-filter: blur(20px) saturate(180%); 
-  width: min(1400px, 95vw);
-  max-width: 95vw; 
-  height: 60vh;
-  max-height: 60vh; 
-  min-height: 300px;
-  border-radius: 20px; 
-  box-shadow: 0 20px 50px rgba(0,0,0,0.2); 
-  border: 1px solid rgba(255, 255, 255, 0.5); 
-  display: flex; flex-direction: column; overflow: hidden; 
-  color: #1d1d1f; 
-}
-
-/* Header */
-.glass-header { padding: 12px 24px; border-bottom: 1px solid rgba(0,0,0,0.06); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; background: rgba(255,255,255,0.5); }
-.header-left { display: flex; align-items: center; gap: 10px; }
-.header-left h3 { margin: 0; font-size: 1.2rem; font-weight: 800; letter-spacing: -0.5px; }
-.calendar-context { display: flex; flex-direction: column; gap: 1px; }
-.month-label { color: #86868b; font-size: 0.85rem; font-weight: 500; }
-.timezone-label { max-width: 160px; color: #9ca3af; font-size: 0.62rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-.header-right { display: flex; align-items: center; gap: 12px; }
-.nav-group { display: flex; gap: 4px; background: #f2f2f7; padding: 2px; border-radius: 8px; }
-.nav-btn { background: transparent; border: none; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; color: #555; transition: 0.2s; }
-.nav-btn:hover { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-.nav-btn.today-btn { width: auto; padding: 0 12px; background: #f2f2f7; font-weight: 600; font-size: 0.8rem; height: 32px; border-radius: 8px; color: #007aff; }
-.nav-btn.today-btn:hover { background: #e0e0e0; }
-.close-glass-btn { background: #f2f2f7; width: 32px; height: 32px; border-radius: 50%; border: none; font-size: 1rem; cursor: pointer; color: #666; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
-.close-glass-btn:hover { background: #e5e5ea; color: #000; }
-
-/* Grid 布局 */
-.calendar-grid-view { 
-  display: grid; 
-  grid-template-columns: repeat(7, minmax(150px, 1fr));
-  flex: 1; 
-  overflow-y: auto; 
-  overflow-x: auto; 
-  min-width: 0; 
-}
-.mobile-agenda-view { display: none; }
-
-/* Columns */
-.day-column { 
-  border-right: 1px solid rgba(0,0,0,0.04); 
-  display: flex; flex-direction: column; 
-  min-width: 120px;
-}
-.day-column:last-child { border-right: none; }
-.day-column.is-today { background: rgba(0, 122, 255, 0.04); }
-
-/* Day Header */
-.day-header { padding: 10px 0; text-align: center; border-bottom: 1px solid rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; gap: 4px; position: sticky; top: 0; background: inherit; z-index: 1; backdrop-filter: blur(5px); }
-.day-name { font-size: 0.65rem; font-weight: 700; color: #86868b; }
-.day-circle { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1rem; font-weight: 600; color: #1d1d1f; transition: 0.3s; }
-.is-today .day-circle { background: #007aff; color: white; box-shadow: 0 3px 8px rgba(0,122,255,0.3); }
-.is-today .day-name { color: #007aff; }
-
-/* Day Body */
-.day-body { flex: 1; padding: 10px 6px; display: flex; flex-direction: column; gap: 8px; }
-
-/* Mini Cards */
-.mini-item-card { 
-  display: flex; flex-direction: column; gap: 5px;
-  padding: 6px; 
-  border-radius: 10px; 
-  background: #fff; 
-  border: 1px solid rgba(0,0,0,0.03); 
-  box-shadow: 0 2px 5px rgba(0,0,0,0.02); 
-  /* 纯展示模式 */
-  cursor: default; 
-  transition: all 0.2s; 
-  min-width: 0;
-}
-.mini-item-card:hover { transform: translateX(2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-color: rgba(0,0,0,0.08); }
-
-.mini-card-main { display: flex; align-items: center; gap: 7px; min-width: 0; }
-
-.mini-poster { width: 32px; height: 48px; border-radius: 6px; overflow: hidden; background: #f1f5f9; flex-shrink: 0; z-index: 2; }
-.mini-poster img { width: 100%; height: 100%; object-fit: cover; }
-.mini-poster span { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; font-size: 0.9rem; color: #ccc; font-weight: 700; }
-
-.mini-title { 
-  flex: 1;
-  min-width: 0;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  font-size: 0.8rem; 
-  line-height: 1.35;
-  font-weight: 650;
-  color: #333; 
-}
-
-.mini-row-bot { display: flex; align-items: center; gap: 4px; width: 100%; min-width: 0; }
-.entry-state { padding: 1px 4px; border-radius: 4px; font-size: 0.58rem; font-weight: 750; line-height: 1.35; white-space: nowrap; }
-.entry-state.confirmed { color: #047857; background: #d1fae5; }
-.entry-state.scheduled { color: #1d4ed8; background: #dbeafe; }
-.entry-state.estimated { color: #7c3aed; background: #ede9fe; border: 1px dashed #c4b5fd; }
-.mini-ep { min-width: 0; font-size: 0.68rem; padding: 1px 4px; border-radius: 4px; font-weight: 700; white-space: nowrap; }
-.mini-ep.confirmed { color: #047857; background: rgba(16,185,129,0.08); }
-.mini-ep.scheduled { color: #2563eb; background: rgba(37,99,235,0.08); }
-.mini-ep.estimated { color: #7c3aed; background: rgba(124,58,237,0.07); }
-
-.empty-line { height: 100%; min-height: 50px; }
-
-.fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-
-@media (max-width: 1100px) and (min-width: 769px) {
-  .calendar-grid-view { grid-template-columns: repeat(7, minmax(120px, 1fr)); }
-}
-
-@media (max-width: 768px) {
-  .glass-calendar-card.compact-mode { width: 100vw; height: min(82dvh, 720px); max-height: 82dvh; border-radius: 20px 20px 0 0; position: absolute; bottom: 0; max-width: none; }
-  .glass-header { padding: 10px 12px; gap: 8px; }
-  .header-left { min-width: 0; gap: 8px; }
-  .header-left h3 { font-size: 1rem; white-space: nowrap; }
-  .timezone-label { max-width: 100px; }
-  .header-right { gap: 6px; }
-  .nav-btn.today-btn { padding: 0 8px; }
-  .calendar-grid-view { display: none; }
-  .mobile-agenda-view { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 14px; overflow-y: auto; padding: 14px 12px max(18px, env(safe-area-inset-bottom)); background: #f8fafc; }
-  .mobile-agenda-empty { margin: auto; color: #94a3b8; font-size: 0.9rem; }
-  .agenda-day { display: flex; flex-direction: column; gap: 8px; }
-  .agenda-day-header { display: flex; align-items: center; justify-content: space-between; color: #94a3b8; font-size: 0.75rem; }
-  .agenda-day-header > div { display: flex; align-items: center; gap: 7px; }
-  .agenda-day-header strong { color: #334155; font-size: 0.92rem; }
-  .today-tag { padding: 2px 6px; border-radius: 999px; background: #dbeafe; color: #2563eb; font-size: 0.65rem; font-weight: 700; }
-  .agenda-items { display: flex; flex-direction: column; gap: 8px; }
-  .agenda-item-card { display: flex; align-items: center; gap: 12px; padding: 10px; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; box-shadow: 0 3px 12px rgba(15,23,42,0.04); }
-  .agenda-poster { width: 42px; height: 60px; flex-shrink: 0; border-radius: 8px; overflow: hidden; background: #e2e8f0; display: flex; align-items: center; justify-content: center; color: #64748b; font-weight: 700; }
-  .agenda-poster img { width: 100%; height: 100%; object-fit: cover; }
-  .agenda-info { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-  .agenda-info strong { color: #1e293b; font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .agenda-episode-row { display: flex; align-items: center; gap: 5px; }
-  .agenda-info .entry-state { align-self: center; padding: 2px 6px; }
-  .agenda-info .agenda-episode { align-self: flex-start; padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; }
-  .agenda-episode.confirmed { background: #ecfdf5; color: #047857; }
-  .agenda-episode.scheduled { background: #eff6ff; color: #2563eb; }
-  .agenda-episode.estimated { background: #f5f3ff; color: #7c3aed; }
-  .agenda-day-empty { margin: 0; padding: 14px; border-radius: 12px; background: #fff; color: #94a3b8; text-align: center; font-size: 0.8rem; }
-}
+.calendar-modal { box-sizing: border-box; width: min(1400px, 96vw); max-width: 96vw; height: fit-content; max-height: 85vh; max-height: 85dvh; padding: 0; border: 1px solid #ebe7f0; border-radius: 20px; background: #fff; color: #343040; box-shadow: 0 24px 80px #26203626; overflow: hidden; }
+.calendar-modal[open] { display: flex; flex-direction: column; }.calendar-modal::backdrop { background: #27213355; backdrop-filter: blur(4px); }
+.calendar-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 24px; border-bottom: 1px solid #efedf3; flex-shrink: 0; }.header-left,.header-right { display: flex; align-items: center; gap: 16px; }.header-left h3 { font-size: 18px; font-weight: 650; margin: 0; white-space: nowrap; }.calendar-context { display: flex; flex-direction: column; gap: 4px; }.month-label { font-size: 13px; font-weight: 550; }.timezone-label { font-size: 10px; color: #8c8596; }
+button { font: inherit; cursor: pointer; color: #71677e; border: none; background: transparent; border-radius: 7px; }button:focus-visible { outline: 2px solid #9876bc; outline-offset: 2px; }button:hover { background: #eee9f5; }.view-switch,.nav-group { display: flex; align-items: center; padding: 3px; background: #f6f4f8; border-radius: 9px; gap: 2px; }.view-switch button { min-width: 32px; height: 28px; font-size: 12px; }.view-switch [aria-pressed="true"] { background: white; color: #765594; box-shadow: 0 1px 5px #39264e12; }.nav-group button { width: 28px; height: 28px; font-size: 22px; }.today-btn { font-size: 12px; padding: 8px 12px; border: 1px solid #ebe5f0; }.close-btn { width: 32px; height: 32px; font-size: 14px; background: #f6f4f8; }
+.calendar-scroll { min-height: 0; overflow: auto; overscroll-behavior: contain; }.calendar-grid-view { display: grid; grid-template-columns: repeat(7, minmax(155px, 1fr)); padding: 12px; gap: 6px; }.day-column { min-width: 0; border-radius: 10px; background: linear-gradient(#faf9fc, #faf9fc88); border: 1px solid transparent; }.day-header { display: flex; flex-direction: column; gap: 4px; align-items: center; padding: 10px 6px; height: 72px; box-sizing: border-box; }.day-name { font-size: 11px; color: #82778e; }.day-circle { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; font-size: 15px; font-weight: 600; }.today-label { display: none; }.day-body { display: flex; flex-direction: column; gap: 8px; padding: 0 6px 10px; }.is-today { background: #f5f1fc; border-color: #e4daf2; box-shadow: inset 0 0 0 1px #f8f5fc; }.is-today .day-circle { background: #8a6bad; color: white; box-shadow: 0 3px 8px #8a6bad20; }.is-today .day-name { color: #79579c; }.is-past .day-header { color: #96909e; }.is-past :deep(.mini-title) { color: #807987; }.is-past :deep(.mini-poster) { opacity: .75; }.is-past :deep(.entry-state) { background: #f2f4f3; color: #78877d; }.empty-day { color: #cec8d6; text-align: center; font-size: 12px; padding: 16px 0; }.calendar-footer { margin: 0; padding: 10px 24px 14px; font-size: 11px; color: #918998; flex-shrink: 0; }
+.month-weekday { text-align: center; padding: 5px; font-size: 11px; color: #8c8297; }.month-view .day-header { height: 40px; flex-direction: row; padding: 6px 10px; }.month-view .day-circle { width: 25px; height: 25px; font-size: 12px; }.month-view .today-label { display: inline; font-size: 10px; color: #8a6bad; }.month-view .outside-month { background: #fcfbfd; }.outside-month .day-circle { color: #b5adbd; }.expand-day { padding: 7px; font-size: 11px; color: #816598; }.mobile-agenda-view { display: none; }
+@media (max-width: 768px) { .calendar-modal { width: calc(100vw - 20px); max-width: none; border-radius: 18px; }.calendar-header { padding: 16px; flex-wrap: wrap; gap: 14px; }.header-left { width: 100%; justify-content: space-between; padding-right: 32px; }.header-left h3 { font-size: 17px; }.calendar-context { text-align: right; }.header-right { width: 100%; gap: 10px; justify-content: space-between; }.close-btn { position: absolute; top: 18px; right: 10px; }.nav-group button,.view-switch button { min-width: 38px; height: 34px; }.calendar-grid-view { display: none; }.mobile-agenda-view { display: flex; flex-direction: column; gap: 12px; padding: 12px; }.agenda-day { display: flex; flex-direction: column; gap: 8px; border: 1px solid transparent; padding: 10px; border-radius: 12px; }.agenda-day.is-today { border-color: #e4daf2; }.agenda-day-header { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #95889e; padding: 2px 0 4px; }.agenda-day-header strong { font-size: 13px; color: #6f637d; }.agenda-day-empty { color: #a198aa; text-align: center; font-size: 12px; margin: 10px; }.calendar-footer { padding: 8px 20px 14px; font-size: 10px; } }
 </style>

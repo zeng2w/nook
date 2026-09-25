@@ -72,6 +72,11 @@
             </div>
           </div>
 
+          <div class="form-group compact-group">
+            <label for="show-play-url">播放链接（可选）</label>
+            <input id="show-play-url" ref="playUrlInput" v-model.trim="form.playUrl" type="url" pattern="https?://.+" maxlength="2048" class="modern-input" placeholder="粘贴平台作品页链接，日历卡片可直达" />
+          </div>
+
           <div v-if="!isEditing && availableSeasons.length > 1" class="form-group compact-group season-picker">
             <label for="show-season">追踪范围</label>
             <select id="show-season" v-model="selectedSeasonNumber" @change="onSeasonSelect" class="modern-input" :disabled="isSeasonLoading">
@@ -237,6 +242,7 @@ const createInitialForm = () => ({
   lastAirDate: toCalendarDateInput(new Date()),
   nextAirDate: '',
   posterUrl: '',
+  playUrl: '',
   network: '',
   networkLogo: '',
   tmdbId: null,
@@ -314,7 +320,9 @@ watch(
 const close = () => {
   if (!props.isSaving) emit('update:visible', false);
 };
+const playUrlInput = ref(null);
 const save = () => {
+  if (!playUrlInput.value?.reportValidity()) return;
   if (!props.isSaving && !isSeasonLoading.value) {
     emit('save', { ...form, status: derivedStatus.value });
   }

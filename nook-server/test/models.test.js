@@ -146,3 +146,14 @@ test('email index is unique and case-insensitive', () => {
   assert.equal(emailIndex[1].unique, true);
   assert.equal(emailIndex[1].collation.strength, 2);
 });
+
+test('playback links accept web URLs and reject executable or malformed URLs', async () => {
+  for (const playUrl of ['https://example.com/watch/1', '']) {
+    const show = new Show({ userId: USER_ID, title: 'Playback', category: 'tv', playUrl });
+    await show.validate();
+  }
+  for (const playUrl of ['javascript:alert(1)', 'https://', 'file:///tmp/movie']) {
+    const show = new Show({ userId: USER_ID, title: 'Playback', category: 'tv', playUrl });
+    await assert.rejects(show.validate());
+  }
+});

@@ -140,7 +140,7 @@
 
     <ShowDetailsModal :show="detailShow" @close="detailSelection = null" @edit="openEditModal" @add="addFromDiscovery" />
     <EditShowModal v-model:visible="showModal" :edit-data="editingShow" :initial-selection="newShowPreset" :is-saving="isSavingShow" @save="saveShow" />
-    <CalendarModal v-model:visible="showCalendar" :shows="calendarShows" />
+    <CalendarModal v-model:visible="showCalendar" :shows="calendarShows" @details="openDetails" />
     <input type="file" ref="fileInput" style="display: none" accept=".json" @change="handleFileUpload" />
   </div>
 </template>
