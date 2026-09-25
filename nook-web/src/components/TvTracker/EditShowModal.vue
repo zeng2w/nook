@@ -1,7 +1,7 @@
 <template>
   <Transition name="fade">
     <div v-if="visible" class="modal-overlay" @click.self="close">
-      <div class="modal-container modern-modal" role="dialog" aria-modal="true" aria-labelledby="show-modal-title">
+      <div ref="modalContainer" class="modal-container modern-modal" @keydown.esc.stop="close" @keydown.tab="trapFocus" role="dialog" aria-modal="true" aria-labelledby="show-modal-title">
         
         <div class="modal-header">
           <h3 id="show-modal-title">{{ isEditing ? '编辑剧集' : '添加新剧集' }}</h3>
@@ -175,7 +175,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch, computed } from 'vue';
+import { ref, reactive, watch, computed, nextTick } from 'vue';
 import axios from 'axios';
 import { getApiErrorMessage } from '@/api/errors';
 import { toCalendarDateInput } from '@/utils/dateUtils';
@@ -190,6 +190,25 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['update:visible', 'save']);
+
+const modalContainer = ref(null);
+let modalOpener;
+watch(() => props.visible, async visible => {
+  if (visible) {
+    modalOpener = document.activeElement;
+    await nextTick();
+    modalContainer.value?.querySelector('button')?.focus();
+  } else {
+    await nextTick();
+    modalOpener?.focus();
+  }
+});
+const trapFocus = event => {
+  const controls = [...modalContainer.value.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), a[href], [tabindex="0"]')].filter(node => node.getClientRects().length);
+  const first = controls[0], last = controls.at(-1);
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+};
 
 const isEditing = computed(() => !!props.editData);
 const tmdbQuery = ref('');

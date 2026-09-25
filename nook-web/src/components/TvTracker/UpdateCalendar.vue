@@ -44,7 +44,7 @@
           </div>
         </div>
         
-        <span class="entry-status" :class="show.calendarEntry.type">{{ show.calendarEntry.statusText }}</span>
+        <span class="entry-status" :class="show.calendarEntry.type">{{ getStatusText(show.calendarEntry) }}</span>
       </div>
     </div>
   </div>
@@ -105,6 +105,8 @@ const getSummaryText = () => {
   const dayIndex = selectedDate.value.getDay();
   return `周${dayLabels[dayIndex === 0 ? 6 : dayIndex - 1]}将`;
 };
+
+const getStatusText = entry => entry.type === 'scheduled' ? '确认播出' : entry.type === 'estimated' ? '预计更新' : entry.statusText === '当前' ? '当前已更' : '已更新';
 
 const getEntryTitle = show => {
   const entry = show.calendarEntry;
@@ -215,4 +217,5 @@ const showsList = computed(() => {
 .week-selector { margin: 6px 0 16px; }.day-item { width: 29px; height: 48px; border-radius: 20px; }.day-item.active { background: #aa98c9; box-shadow: 0 3px 8px #aa98c922; transform: none; }.day-label { font-size: 9px; }.day-number { font-weight: 550; font-size: 12px; }
 .update-summary { font-size: 10px; padding-bottom: 10px; border-bottom: 1px solid #f3f2f7; color: #a09baa; }.shows-list-scroll-area { flex: 0 1 auto; gap: 0; }.empty-state { padding: 16px 0 4px; font-size: 11px; }.show-item { padding: 9px 0; }.show-item:hover { transform: none; }.show-cover { width: 30px; height: 45px; margin-right: 8px; }.show-title { font-size: 11px; font-weight: 550; }.show-name-row { display: flex; align-items: center; gap: 4px; min-width: 0; }.inline-network { width: 13px; height: 12px; object-fit: contain; flex-shrink: 0; }.show-episode { background: transparent !important; padding: 4px 0 0; font-size: 10px; color: #9d96aa !important; }.entry-status { font-size: 9px; color: #9d8bb4; margin-left: 8px; flex-shrink: 0; }
 .cover-placeholder { display: grid; place-items: center; color: #9d96aa; font-size: 12px; }
+.title { font-size: 14px; }.timezone-label { font-size: 11px; max-width: 190px; color: #766d80; }.more-link, .day-label, .update-summary, .empty-state { font-size: 12px; }.show-title { font-size: 13px; }.show-episode { font-size: 12px; color: #766d80 !important; }.entry-status { font-size: 11px; color: #715484; }.entry-status.confirmed { color: #476f5c; }.entry-status.estimated { border-bottom: 1px dashed #9d8bb4; }.show-item { min-height: 54px; }.update-calendar-widget { max-height: 390px; }
 </style>

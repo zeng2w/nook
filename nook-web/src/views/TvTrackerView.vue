@@ -29,9 +29,9 @@
 
     <div class="bottom-main-layout">
       
-      <div class="main-content-column">
+      <div ref="mainColumn" class="main-content-column">
         
-        <div class="sticky-filter-bar" v-if="!isLoading && showFacets.allCount > 0">
+        <div class="sticky-filter-bar" v-if="showFacets.allCount > 0 || hasActiveFilters">
           <FilterBar 
             v-model:category="currentCategory"
             v-model:status="currentStatus"
@@ -47,8 +47,16 @@
           />
         </div>
 
-        <div class="content-body">
-          <div v-if="isLoading" class="loading-state">
+        <div class="content-body" :aria-busy="isLoading">
+          <div class="list-status" role="status">
+            <span v-if="isLoading">正在更新列表…</span>
+            <span v-else-if="hasActiveFilters">{{ activeFilterSummary }} · {{ showPagination.total }} 部</span>
+            <span v-else>全部作品 · {{ showPagination.total }} 部</span>
+            <button v-if="hasActiveFilters" @click="resetFilters">清除筛选</button>
+          </div>
+          <div v-for="failure in failedProgress" :key="failure._id" class="inline-error" role="alert">《{{ failure.title }}》进度未保存，已保留本次输入。<button @click="retryProgress(failure)">重试保存</button></div>
+          <div v-if="loadError && shows.length" class="inline-error" role="alert">{{ loadError }}，当前显示上次加载的结果。<button @click="fetchShows(true)">重试</button></div>
+          <div v-if="isLoading && !shows.length" class="loading-state">
             <div class="spinner"></div>
             <p>数据加载中...</p>
           </div>
@@ -74,6 +82,10 @@
                 v-for="show in displayShows" 
                 :key="show._id" 
                 :show="show"
+                :save-state="progressStates[show._id]"
+                @set-progress="setProgress"
+                @retry-progress="retryProgress"
+                @details="openDetails"
                 :is-pending-delete="!!pendingDeletes[show._id]"
                 @edit="openEditModal"
                 @update-progress="updateProgress"
@@ -92,6 +104,10 @@
                 v-for="show in displayShows" 
                 :key="show._id" 
                 :show="show"
+                :save-state="progressStates[show._id]"
+                @set-progress="setProgress"
+                @retry-progress="retryProgress"
+                @details="openDetails"
                 :is-pending-delete="!!pendingDeletes[show._id]"
                 @edit="openEditModal"
                 @update-progress="updateProgress"
@@ -116,12 +132,13 @@
 
       <div class="discovery-sidebar-column">
         <UpdateCalendar :shows="calendarShows" @open-calendar="showCalendar = true" />
-        <TrendingSidebar :shows="calendarShows" />
+        <TrendingSidebar :shows="calendarShows" @details="openDiscoveryDetails" />
 
       </div>
 
     </div>
 
+    <ShowDetailsModal :show="detailShow" @close="detailSelection = null" @edit="openEditModal" @add="addFromDiscovery" />
     <EditShowModal v-model:visible="showModal" :edit-data="editingShow" :initial-selection="newShowPreset" :is-saving="isSavingShow" @save="saveShow" />
     <CalendarModal v-model:visible="showCalendar" :shows="calendarShows" />
     <input type="file" ref="fileInput" style="display: none" accept=".json" @change="handleFileUpload" />
@@ -133,6 +150,8 @@ import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { updateTheme } from '../store';
 import { fetchShowsApi, fetchCalendarShowsApi, addShowApi, updateShowApi, updateShowProgressApi, deleteShowApi, syncShowsApi, importShowsApi } from '@/api/shows';
 import { getApiErrorMessage } from '@/api/errors';
+import { createProgressQueue } from '@/utils/progressQueue';
+import ShowDetailsModal from '@/components/TvTracker/ShowDetailsModal.vue';
 import { deriveShowStatus } from '@/utils/showStatus';
 import { getAuthUserId } from '@/auth';
 import { getCurrentTimeZone } from '@/utils/dateUtils';
@@ -182,6 +201,7 @@ const isLoadingMore = ref(false);
 const isSavingShow = ref(false);
 const loadError = ref('');
 
+const mainColumn = ref(null);
 const shows = ref([]);
 const calendarShows = ref([]);
 const showPagination = reactive({ page: 0, limit: 24, total: 0, totalPages: 0, hasMore: false });
@@ -196,8 +216,20 @@ const editingShow = ref(null);
 const newShowPreset = ref(null);
 const pendingDiscoverySignature = ref(null);
 const pendingDeletes = reactive({});
-const updateTimers = {};
-const pendingDeltas = {}; 
+const progressStates = reactive({});
+const progressModels = {};
+const confirmedStatuses = {};
+const detailSelection = ref(null);
+const detailShow = computed(() => detailSelection.value?._id
+  ? shows.value.find(show => show._id === detailSelection.value._id) || detailSelection.value
+  : detailSelection.value);
+const failedProgress = computed(() => Object.entries(progressStates).filter(([, state]) => state.state === 'error').map(([id]) => progressModels[id]));
+const activeFilterSummary = computed(() => [
+  { all: '全部状态', watching: '在看', wish: '想看', watched: '已看', dropped: '弃剧' }[currentStatus.value],
+  { all: '', tv: '电视剧', movie: '电影', anime: '动漫', variety: '综艺' }[currentCategory.value],
+  currentNetwork.value !== 'all' ? currentNetwork.value : '',
+  searchQuery.value.trim() ? `搜索「${searchQuery.value.trim()}」` : ''
+].filter(Boolean).join(' · '));
 const notifications = ref([]);
 const hasNewNotis = ref(false);
 const fileInput = ref(null);
@@ -278,17 +310,7 @@ onUnmounted(() => {
   removeModernTheme(); 
   updateTheme('#ffffff');
   Object.values(pendingDeletes).forEach(timer => clearTimeout(timer));
-  Object.keys(updateTimers).forEach(showId => {
-    clearTimeout(updateTimers[showId]); 
-    const show = shows.value.find(s => s._id === showId);
-    if (show && pendingDeltas[showId] !== 0) {
-      updateShowProgressApi(show._id, {
-        watchedEpisodes: show.watchedEpisodes,
-        status: show.status,
-        date: new Date()
-      }).catch(()=>{});
-    }
-  });
+  void progressQueue.flushAll();
 });
 
 const getNotificationStorageKey = () => {
@@ -337,6 +359,12 @@ watch(notifications, (newVal) => {
 }, { deep: true });
 const showToast = (msg, type = 'success') => { toast.message = msg; toast.type = type; toast.visible = true; setTimeout(() => { toast.visible = false; }, 3000); };
 
+const preservePendingProgress = show => {
+  const state = progressStates[show._id];
+  if (!state || state.state === 'saved') return show;
+  return { ...show, watchedEpisodes: state.target, status: show.status === 'dropped' ? 'dropped' : calcStatus(state.target, show.airedEpisodes, show.totalEpisodes) };
+};
+
 const fetchShows = async (reset = true) => {
   const userId = getAuthUserId();
   if (!userId) return;
@@ -357,7 +385,7 @@ const fetchShows = async (reset = true) => {
       order: sortDesc.value ? 'desc' : 'asc'
     });
     if (requestId !== latestFetchId) return;
-    const incoming = res.data.items || [];
+    const incoming = (res.data.items || []).map(preservePendingProgress);
     if (reset) {
       shows.value = incoming;
     } else {
@@ -384,7 +412,7 @@ const fetchShows = async (reset = true) => {
 const fetchCalendarShows = async () => {
   try {
     const response = await fetchCalendarShowsApi();
-    calendarShows.value = response.data;
+    calendarShows.value = response.data.map(preservePendingProgress);
   } catch (error) {
     console.error('Calendar data load failed:', error);
   }
@@ -406,12 +434,12 @@ const refreshShowData = async () => Promise.all([fetchShows(true), fetchCalendar
 
 watch(
   [currentCategory, currentStatus, currentNetwork, sortBy, sortDesc],
-  () => fetchShows(true)
+  () => { mainColumn.value?.scrollTo({ top: 0 }); fetchShows(true); }
 );
 
 watch(searchQuery, () => {
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => fetchShows(true), 300);
+  searchTimer = setTimeout(() => { mainColumn.value?.scrollTo({ top: 0 }); fetchShows(true); }, 300);
 });
 
 const calcStatus = (watchedEpisodes, airedEpisodes, totalEpisodes) => deriveShowStatus({
@@ -457,54 +485,59 @@ const saveShow = async (formData) => {
   }
 };
 
-const updateProgress = (show, delta) => {
-  if (show.status === 'dropped') return;
-  const maximum = show.totalEpisodes > 0 ? show.totalEpisodes : Number.POSITIVE_INFINITY;
-  const newVal = Math.min(maximum, Math.max(0, show.watchedEpisodes + delta));
-  if (newVal === show.watchedEpisodes) return;
-  show.watchedEpisodes = newVal;
-  const newStatus = calcStatus(newVal, show.airedEpisodes, show.totalEpisodes);
-  if (newStatus !== show.status) show.status = newStatus;
-  pendingDeltas[show._id] = (pendingDeltas[show._id] || 0) + delta;
-  if (updateTimers[show._id]) clearTimeout(updateTimers[show._id]);
-  updateTimers[show._id] = setTimeout(async () => {
-    const finalDelta = pendingDeltas[show._id];
-    delete pendingDeltas[show._id];
-    delete updateTimers[show._id];
-    if (finalDelta === 0) return; 
-    const previousStatus = calcStatus(
-      Math.max(0, show.watchedEpisodes - finalDelta),
-      show.airedEpisodes,
-      show.totalEpisodes
-    );
-    try {
-      const response = await updateShowProgressApi(show._id, {
-        watchedEpisodes: show.watchedEpisodes,
-        status: show.status,
-        date: new Date()
-      });
-      const savedShow = response.data.show;
-      const queuedDelta = pendingDeltas[show._id] || 0;
-      const overrides = queuedDelta === 0 ? {} : {
-        watchedEpisodes: savedShow.watchedEpisodes + queuedDelta,
-        status: calcStatus(
-          savedShow.watchedEpisodes + queuedDelta,
-          savedShow.airedEpisodes,
-          savedShow.totalEpisodes
-        )
-      };
-      patchShowCollections(savedShow, overrides);
-
-      if (queuedDelta === 0 && (previousStatus !== savedShow.status || sortBy.value === 'lag')) {
-        await fetchShows(true);
-      }
-    } catch (e) {
-      console.error(e);
-      show.watchedEpisodes = Math.max(0, show.watchedEpisodes - finalDelta);
-      show.status = calcStatus(show.watchedEpisodes, show.airedEpisodes, show.totalEpisodes);
-      showToast(`${getApiErrorMessage(e, '更新进度失败')}，已回滚`, "error");
+const progressQueue = createProgressQueue({
+  save: async (id, target) => {
+    const model = progressModels[id];
+    const response = await updateShowProgressApi(id, {
+      watchedEpisodes: target,
+      status: calcStatus(target, model.airedEpisodes, model.totalEpisodes),
+      date: new Date()
+    });
+    return response.data.show;
+  },
+  onChange: (id, state) => {
+    progressStates[id] = { ...state, error: state.error ? getApiErrorMessage(state.error, '保存失败，请重试') : '' };
+  },
+  onSaved: (id, saved, target) => {
+    const previousStatus = confirmedStatuses[id];
+    if (previousStatus && previousStatus !== saved.status) {
+      showFacets.statusCounts[previousStatus] = Math.max(0, (showFacets.statusCounts[previousStatus] || 0) - 1);
+      showFacets.statusCounts[saved.status] = (showFacets.statusCounts[saved.status] || 0) + 1;
     }
-  }, 500); 
+    confirmedStatuses[id] = saved.status;
+    const overrides = { watchedEpisodes: target, status: calcStatus(target, saved.airedEpisodes, saved.totalEpisodes) };
+    Object.assign(progressModels[id], saved, overrides);
+    patchShowCollections(saved, overrides);
+  }
+});
+const setProgress = (show, target) => {
+  if (show.status === 'dropped' || !Number.isSafeInteger(target) || target < 0) return;
+  const maximum = show.totalEpisodes > 0 ? show.totalEpisodes : Number.POSITIVE_INFINITY;
+  const value = Math.min(maximum, target);
+  if (value === show.watchedEpisodes) return;
+  confirmedStatuses[show._id] ??= show.status;
+  progressModels[show._id] = show;
+  const patch = { _id: show._id, watchedEpisodes: value, status: calcStatus(value, show.airedEpisodes, show.totalEpisodes) };
+  Object.assign(show, patch);
+  patchShowCollections(patch);
+  progressQueue.set(show._id, value);
+};
+const updateProgress = (show, delta) => setProgress(show, Math.max(0, (show.watchedEpisodes || 0) + delta));
+const retryProgress = show => { void progressQueue.flush(show._id); };
+const openDetails = show => { detailSelection.value = show; };
+const openDiscoveryDetails = show => {
+  detailSelection.value = {
+    tmdbId: show.id, tmdbType: 'tv', title: show.name,
+    category: show.genre_ids?.includes(16) ? 'anime' : show.genre_ids?.includes(10764) ? 'variety' : 'tv',
+    posterUrl: show.poster_path ? `https://image.tmdb.org/t/p/w342${show.poster_path}` : '',
+    overview: show.overview, releaseDate: show.first_air_date, rating: show.vote_average
+  };
+};
+const addFromDiscovery = show => {
+  editingShow.value = null;
+  pendingDiscoverySignature.value = null;
+  newShowPreset.value = show;
+  showModal.value = true;
 };
 
 const toggleFavorite = async (show) => {
@@ -542,13 +575,20 @@ const openDiscoveredSeason = (notification) => {
   pendingDiscoverySignature.value = getNotificationSignature(notification);
   showModal.value = true;
 };
-const openEditModal = (show) => {
+const settleProgress = async show => {
+  if (progressStates[show._id]?.state === 'saving') await progressQueue.flush(show._id);
+  if (progressStates[show._id]?.state === 'error') { showToast('观看进度尚未保存，请先重试', 'error'); return false; }
+  return true;
+};
+const openEditModal = async (show) => {
+  if (!await settleProgress(show)) return;
   newShowPreset.value = null;
   pendingDiscoverySignature.value = null;
   editingShow.value = { ...show };
   showModal.value = true;
 };
 const dropShow = async (show) => {
+  if (!await settleProgress(show)) return;
   const originalStatus = show.status;
   show.status = 'dropped';
   try {
@@ -562,6 +602,7 @@ const dropShow = async (show) => {
   }
 };
 const restoreShow = async (show) => {
+  if (!await settleProgress(show)) return;
   const originalStatus = show.status;
   const correctStatus = calcStatus(show.watchedEpisodes, show.airedEpisodes, show.totalEpisodes);
   show.status = correctStatus;
@@ -841,4 +882,7 @@ const handleFileUpload = (event) => {
 .grid-layout { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 22px 18px; }
 @media (max-width: 640px) { .grid-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }.content-body { padding: 0 12px 30px; }.sticky-filter-bar { padding: 10px 12px 0; } }
 @media (max-width: 360px) { .grid-layout { grid-template-columns: 1fr; } }
+.list-status { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 30px; margin-bottom: 12px; font-size: 12px; color: #726c7d; }
+.list-status button, .inline-error button { border: 0; background: transparent; color: #775491; text-decoration: underline; cursor: pointer; font-size: 12px; flex-shrink: 0; }
+.inline-error { border: 1px solid #edd9df; background: #fff5f7; color: #9d4052; padding: 12px; border-radius: 10px; font-size: 13px; margin-bottom: 12px; }
 </style>

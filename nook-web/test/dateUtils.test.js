@@ -195,3 +195,12 @@ test('estimated finish dates use local calendar arithmetic', () => {
   assert.equal(isAfterCalendarDay('2026-08-23', '2026-08-22T00:00:00.000Z'), true)
   assert.equal(isAfterCalendarDay('2026-08-22', '2026-08-22T00:00:00.000Z'), false)
 })
+
+test('completion captions distinguish a broadcast ending from watched status', async () => {
+  const { getCompletionCaption } = await import('../src/utils/dateUtils.js');
+  assert.equal(getCompletionCaption({ updateFrequency: 'ended', lastAirDate: '2026-10-30' }), '2026.10.30 播毕');
+  assert.equal(getCompletionCaption({ updateFrequency: 'ended' }), '已播毕');
+  assert.equal(getCompletionCaption({ totalEpisodes: 0 }), '完结时间待定');
+  const caption = getCompletionCaption({ status: 'watched', totalEpisodes: 10, airedEpisodes: 9, updateFrequency: 'daily', lastAirDate: '2026-10-29', updateCount: 1 }, new Date(2026, 9, 29));
+  assert.equal(caption, '预计 2026.10.30 完结');
+});

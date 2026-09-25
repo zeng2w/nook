@@ -1,4 +1,5 @@
 const express = require('express');
+const { getMediaPresentation } = require('../utils/mediaPresentation');
 const router = express.Router();
 const {
   classifyTmdbCategory,
@@ -73,7 +74,7 @@ router.get('/details/:type/:id', async (req, res) => {
 
     const response = await tmdbGet(`/${queryType}/${id}`, {
       cacheTtlMs: getCacheTtl(),
-      params: { language: 'zh-CN' }
+      params: { language: 'zh-CN', append_to_response: queryType === 'tv' ? 'aggregate_credits' : 'credits' }
     });
 
     const data = response.data;
@@ -112,6 +113,7 @@ router.get('/details/:type/:id', async (req, res) => {
       ? { updateFrequency: 'ended', updateDays: [], nextAirDate: null }
       : getTmdbSchedule(data);
     const details = {
+      ...getMediaPresentation(data),
       tmdbId: data.id,
       title: data.title || data.name,
       
@@ -165,7 +167,7 @@ router.get('/season/:id/:seasonNumber', async (req, res) => {
       }),
       tmdbGet(`/tv/${id}/season/${seasonNumber}`, {
         cacheTtlMs: getCacheTtl(),
-        params: { language: 'zh-CN' }
+        params: { language: 'zh-CN', append_to_response: 'aggregate_credits' }
       })
     ]);
     const progress = getTmdbSeasonProgress(seasonResponse.data, seriesResponse.data, {
@@ -174,6 +176,7 @@ router.get('/season/:id/:seasonNumber', async (req, res) => {
 
     res.json({
       ...progress,
+      ...getMediaPresentation(seasonResponse.data, seriesResponse.data),
       posterUrl: getPosterUrl(seasonResponse.data.poster_path || seriesResponse.data.poster_path)
     });
   } catch (err) {

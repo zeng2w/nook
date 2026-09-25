@@ -372,3 +372,15 @@ export const getCalendarEpisodeEntry = (show, targetDate, referenceDate = new Da
     confirmedAt: show.episodeProgressConfirmedAt || null
   };
 };
+
+// Broadcast completion is independent of the viewer's watched status.
+export const getCompletionCaption = (show, referenceDate = new Date()) => {
+  const ended = show.updateFrequency === 'ended' || (show.totalEpisodes > 0 && show.airedEpisodes >= show.totalEpisodes);
+  if (ended) {
+    const date = toCalendarDateInput(show.lastAirDate);
+    return date ? `${date.replaceAll('-', '.')} 播毕` : '已播毕';
+  }
+  const estimate = getEstimatedDateText({ ...show, status: 'watching' }, referenceDate);
+  const match = estimate.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+  return match ? `预计 ${match[1]}.${match[2].padStart(2, '0')}.${match[3].padStart(2, '0')} 完结` : '完结时间待定';
+};

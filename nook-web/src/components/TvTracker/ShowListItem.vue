@@ -10,7 +10,7 @@
       <div class="list-main-content">
         <div class="list-info-col">
           <div class="title-row">
-            <button class="title-edit-btn" :aria-label="`编辑 ${show.title}`" @click="$emit('edit', show)">
+            <button class="title-edit-btn" :aria-label="`查看 ${show.title} 详情`" @click="$emit('details', show)">
               <h3>{{ show.title }}</h3>
             </button>
             <button
@@ -44,39 +44,8 @@
           </div>
         </div>
 
-        <div class="list-stats-col">
-          <div class="bars-container">
-            <div class="bar-line" v-for="(bar, idx) in progressBars" :key="idx">
-              <div class="bar-header">
-                <span class="bar-label">{{ bar.label }}</span>
-                <span class="bar-pct">{{ bar.percent }}%</span>
-              </div>
-              <div class="bar-track-slim">
-                <div class="bar-fill" :class="bar.color" :style="{ width: bar.percent + '%' }"></div>
-              </div>
-            </div>
-          </div>
-          
-          <div class="stats-simple-row">
-            <div class="stat-pair"><span>已看</span><strong>{{ show.watchedEpisodes }}</strong></div>
-            <div class="divider-dot">·</div>
-            <div class="stat-pair"><span>更新</span><strong>{{ show.airedEpisodes }}</strong></div>
-            <div class="divider-dot">·</div>
-            <div class="stat-pair"><span>总集</span><strong>{{ show.totalEpisodes || '-' }}</strong></div>
-          </div>
-        </div>
-
+        <ProgressControl class="list-progress" :show="show" :save-state="saveState" @update-progress="(s, delta) => $emit('update-progress', s, delta)" @set-progress="(s, value) => $emit('set-progress', s, value)" @retry-progress="$emit('retry-progress', show)" />
         <div class="list-new-actions">
-          <div class="stepper-group">
-            <button class="stepper-btn minus" :aria-label="`${show.title} 已看集数减一`" @click.stop="$emit('update-progress', show, -1)" :disabled="show.status === 'dropped' || show.watchedEpisodes <= 0">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            </button>
-            <div class="stepper-divider"></div>
-            <button class="stepper-btn plus" :aria-label="`${show.title} 已看集数加一`" @click.stop="$emit('update-progress', show, 1)" :disabled="show.status === 'dropped'">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            </button>
-          </div>
-
           <template v-if="show.status === 'dropped'">
             <button class="restore-btn" :aria-label="`恢复 ${show.title}`" @click.stop="$emit('restore', show)">恢复</button>
             <button class="hover-action-btn trash-btn" :aria-label="`永久删除 ${show.title}`" @click.stop="$emit('delete', show._id)" title="彻底删除">
@@ -104,29 +73,23 @@
 </template>
 
 <script setup>
+import ProgressControl from './ProgressControl.vue';
 import { computed } from 'vue';
-import { getEstimatedDateText } from '@/utils/dateUtils';
+import { getCompletionCaption } from '@/utils/dateUtils';
 
 const props = defineProps({
   show: { type: Object, required: true },
+  saveState: { type: Object, default: () => ({}) },
   isPendingDelete: { type: Boolean, default: false }
 });
 
 // ★ 增加 'toggle-favorite' 事件
-defineEmits(['edit', 'update-progress', 'delete', 'restore', 'drop', 'pause-delete', 'resume-delete', 'cancel-delete', 'toggle-favorite']);
+defineEmits(['details', 'set-progress', 'retry-progress', 'edit', 'update-progress', 'delete', 'restore', 'drop', 'pause-delete', 'resume-delete', 'cancel-delete', 'toggle-favorite']);
 
 const getCategoryLabel = (cat) => ({ tv: '电视剧', anime: '动漫', movie: '电影', variety: '综艺' }[cat] || cat);
 const getCategoryColor = (cat) => ({ tv: '#e5e7eb', anime: '#f3e8ff', movie: '#e0f2fe', variety: '#ffedd5' }[cat] || '#eee');
 const getStatusLabel = (st) => ({ wish: '想看', watching: '在看', watched: '已看完', dropped: '弃剧' }[st] || st);
-const calcPercent = (n, d) => (!d || d === 0) ? 0 : Math.round((n / d) * 100);
-
-const progressBars = computed(() => [
-  { label: '更新', color: 'purple', percent: calcPercent(props.show.airedEpisodes, props.show.totalEpisodes) },
-  { label: '观看', color: 'blue', percent: calcPercent(props.show.watchedEpisodes, props.show.totalEpisodes) },
-  { label: '追剧', color: 'green', percent: calcPercent(props.show.watchedEpisodes, props.show.airedEpisodes) },
-]);
-
-const estimateDate = computed(() => getEstimatedDateText(props.show));
+const estimateDate = computed(() => getCompletionCaption(props.show));
 </script>
 
 <style scoped>
@@ -224,4 +187,6 @@ const estimateDate = computed(() => getEstimatedDateText(props.show));
   .list-new-actions { width: 100%; justify-content: space-between; border-top: 1px solid #f1f5f9; padding-top: 10px; margin-top: 5px; padding-left: 0; }
   .hover-action-btn { opacity: 1; transform: none; }
 }
+.list-card.full-height-poster { height: auto; min-height: 180px; }.list-progress { flex: 1; margin: 14px 0; min-width: 180px; }.list-main-content { gap: 20px; }.list-info-col { flex-basis: 180px; }
+@media (max-width: 768px) { .list-main-content { flex-wrap: wrap; padding: 14px; gap: 12px; }.list-info-col { flex: 1 1 100%; }.list-progress { min-width: 0; flex: 1 1 100%; }.list-poster-side { width: 68px; }.list-new-actions { margin-left: auto; } }
 </style>

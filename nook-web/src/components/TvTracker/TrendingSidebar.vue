@@ -19,7 +19,7 @@
     <div v-else-if="displayList.length === 0" class="loading-state">暂无内容</div>
 
     <div v-else class="show-list">
-      <div v-for="(show, index) in displayList" :key="show.id" class="show-item">
+      <button v-for="(show, index) in displayList" :key="show.id" class="show-item" :aria-label="`查看 ${show.name} 详情`" @click="$emit('details', show)">
         <div class="rank" v-if="activeTab === 'popular'">{{ index + 1 }}</div>
         <img v-if="show.poster_path" :src="getPosterUrl(show.poster_path)" :alt="show.name" class="mini-poster" loading="lazy" decoding="async" />
         <div v-else class="mini-poster poster-placeholder" aria-hidden="true">{{ show.name?.charAt(0) || '?' }}</div>
@@ -29,7 +29,8 @@
             {{ getUpdateText(show) }}
           </span>
         </div>
-      </div>
+        <span aria-hidden="true" class="details-arrow">›</span>
+      </button>
     </div>
   </div>
 </template>
@@ -39,6 +40,7 @@ import { ref, computed, onMounted } from 'vue';
 import { fetchTrendingShows, fetchNewReleases } from '@/api/tmdb';
 import { getApiErrorMessage } from '@/api/errors';
 
+defineEmits(['details']);
 const props = defineProps({ shows: { type: Array, default: () => [] } });
 const getUpdateText = show => {
   const tracked = props.shows.find(item => String(item.tmdbId) === String(show.id));
@@ -163,4 +165,5 @@ onMounted(loadTrending);
 .show-list { overflow: visible; padding: 0; }.show-item { gap: 9px; padding: 9px 0; margin: 0; border: 0; border-radius: 0; border-bottom: 1px solid #f3f2f7; box-shadow: none; cursor: default; }.show-item:last-child { border: 0; }.show-item:hover { transform: none; box-shadow: none; }
 .rank { width: 12px; font-size: 12px; font-weight: 500; color: #a3a0ad; }.show-item:first-child .rank { color: #9a80bf; }.mini-poster { width: 34px; height: 51px; }.title { font-size: 12px; font-weight: 550; }.meta { font-size: 9px; color: #aaa6b4; }
 .loading-state { margin: 12px 0 20px; font-size: 12px; }
+.show-item { width: 100%; text-align: left; font-family: inherit; cursor: pointer; }.show-item:hover { background: #f8f5fc; }.show-item:focus-visible { outline: 2px solid #9676b8; outline-offset: 2px; }.title { font-size: 13px; }.meta { font-size: 12px; line-height: 1.5; color: #766d80; }.details-arrow { color: #8d7d9c; }.tabs button { font-size: 12px; }.rank { color: #766d80; }
 </style>
