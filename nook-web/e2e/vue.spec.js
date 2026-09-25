@@ -334,7 +334,7 @@ test('opens a discovered single season without asking for a season choice', asyn
   expect(createdPayload.title).toBe('Single Season Anime')
 })
 
-test('syncs only on the visible tracker and loads discovery on demand', async ({ page }) => {
+test('syncs only on the visible tracker and automatically loads popular discovery', async ({ page }) => {
   const syncRequests = []
   let trendingRequests = 0
   let newReleaseRequests = 0
@@ -374,15 +374,13 @@ test('syncs only on the visible tracker and loads discovery on demand', async ({
   await page.getByRole('button', { name: '智能同步 TMDB 数据' }).click()
   await expect.poll(() => syncRequests.length).toBe(2)
   expect(syncRequests[1].postDataJSON()).toMatchObject({ force: false })
-  expect(trendingRequests).toBe(0)
+  await expect.poll(() => trendingRequests).toBe(1)
   expect(newReleaseRequests).toBe(0)
 
-  await page.getByRole('button', { name: '加载排行榜' }).click()
   await expect.poll(() => trendingRequests).toBe(1)
   expect(newReleaseRequests).toBe(0)
 
   await page.getByRole('button', { name: '刚上映' }).click()
-  await page.getByRole('button', { name: '加载刚上映' }).click()
   await expect.poll(() => newReleaseRequests).toBe(1)
 })
 
@@ -522,9 +520,10 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
   await expect(currentCalendarItem.getByText('当前', { exact: true })).toBeVisible()
   await expect(currentCalendarItem.getByText('Ep 19', { exact: true })).toBeVisible()
   const firstCard = page.locator('.show-card').filter({ has: page.getByRole('heading', { name: 'First Show', level: 3 }) })
-  const posterBounds = await firstCard.locator('.poster-mini').boundingBox()
+  const posterBounds = await firstCard.locator('.poster-preview-btn').boundingBox()
   const favoriteBounds = await firstCard.getByRole('button', { name: '喜爱 First Show' }).boundingBox()
-  expect(posterBounds.x + posterBounds.width).toBeLessThan(favoriteBounds.x)
+  expect(posterBounds.y + posterBounds.height).toBeLessThan(favoriteBounds.y)
+  expect(posterBounds.width / posterBounds.height).toBeCloseTo(2 / 3, 2)
   await expect(page.getByRole('button', { name: '导入备份' })).toHaveCount(0)
   await page.getByRole('button', { name: '更多操作', exact: true }).click()
   await expect(page.getByRole('button', { name: '导入备份' })).toBeVisible()
@@ -541,11 +540,12 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
   await expect(firstCard.getByRole('button', { name: '标记弃剧' })).toBeVisible()
   await firstCard.getByRole('button', { name: 'First Show 更多操作' }).click()
 
+  await page.locator('body').press('ControlOrMeta+k')
+  await expect(page.getByRole('textbox', { name: '搜索剧集名称' })).toBeFocused()
   const listRequestCount = listRequests.length
   const calendarRequestCount = calendarRequests
   const posterButton = page.getByRole('button', { name: '查看 First Show 海报' })
-  const posterBox = await posterButton.boundingBox()
-  await page.mouse.move(posterBox.x + posterBox.width / 2, posterBox.y + posterBox.height / 2)
+  await posterButton.click()
   await expect(page.getByRole('button', { name: '关闭海报预览' })).toBeVisible()
   await page.getByRole('button', { name: '关闭海报预览' }).click()
   await page.getByRole('button', { name: 'First Show 已看集数加一' }).click()

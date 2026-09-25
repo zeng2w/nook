@@ -115,8 +115,8 @@
       </div>
 
       <div class="discovery-sidebar-column">
-        <TrendingSidebar />
         <UpdateCalendar :shows="calendarShows" @open-calendar="showCalendar = true" />
+        <TrendingSidebar :shows="calendarShows" />
 
       </div>
 
@@ -832,4 +832,13 @@ const handleFileUpload = (event) => {
   .grid-layout { grid-template-columns: 1fr; gap: 18px; }
   .content-body { padding-left: 12px; padding-right: 12px; }
 }
+
+.tv-page-modern-layout { background: #f8f9fc; }
+.main-content-column { min-width: 0; }
+.discovery-sidebar-column { width: 285px; min-width: 285px; padding: 10px 24px 30px 0; box-sizing: border-box; gap: 20px; overflow-y: auto; }
+.sticky-filter-bar { background: #f8f9fc; padding: 10px 28px 0; }
+.content-body { padding: 0 28px 40px; }
+.grid-layout { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 22px 18px; }
+@media (max-width: 640px) { .grid-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }.content-body { padding: 0 12px 30px; }.sticky-filter-bar { padding: 10px 12px 0; } }
+@media (max-width: 360px) { .grid-layout { grid-template-columns: 1fr; } }
 </style>

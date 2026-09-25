@@ -1,11 +1,11 @@
 <template>
   <div class="trending-sidebar-modern">
     <div class="sidebar-header">
-      <h3>探索发现</h3>
+      <h3>热门榜单 <span class="top-five">TOP 5</span></h3>
     </div>
     
     <div class="tabs">
-      <button :class="{ active: activeTab === 'popular' }" @click="selectTab('popular')">排行榜</button>
+      <button :class="{ active: activeTab === 'popular' }" @click="selectTab('popular')">热门排行</button>
       <button :class="{ active: activeTab === 'new' }" @click="selectTab('new')">刚上映</button>
     </div>
 
@@ -14,13 +14,6 @@
     <div v-else-if="loadError" class="loading-state error-state">
       <span>{{ loadError }}</span>
       <button @click="loadTrending">重试</button>
-    </div>
-
-    <div v-else-if="!hasLoaded" class="explore-empty">
-      <span>需要时再从 TMDB 获取，减少不必要的请求。</span>
-      <button @click="loadTrending">
-        {{ activeTab === 'popular' ? '加载排行榜' : '加载刚上映' }}
-      </button>
     </div>
 
     <div v-else-if="displayList.length === 0" class="loading-state">暂无内容</div>
@@ -33,8 +26,7 @@
         <div class="show-info">
           <span class="title">{{ show.name }}</span>
           <span class="meta">
-            {{ show.first_air_date ? show.first_air_date.substring(0, 4) : '未知年份' }} 
-            • ⭐ {{ show.vote_average ? show.vote_average.toFixed(1) : '暂无' }}
+            {{ getUpdateText(show) }}
           </span>
         </div>
       </div>
@@ -43,10 +35,16 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { fetchTrendingShows, fetchNewReleases } from '@/api/tmdb';
 import { getApiErrorMessage } from '@/api/errors';
 
+const props = defineProps({ shows: { type: Array, default: () => [] } });
+const getUpdateText = show => {
+  const tracked = props.shows.find(item => String(item.tmdbId) === String(show.id));
+  if (tracked) return `已更新 ${tracked.airedEpisodes || 0} 集`;
+  return show.first_air_date ? `首播 ${show.first_air_date} · ${show.vote_average ? show.vote_average.toFixed(1) + ' 分' : '暂无评分'}` : '播出信息待更新';
+};
 const activeTab = ref('popular');
 const popularShows = ref([]);
 const newShows = ref([]);
@@ -55,9 +53,8 @@ const isLoading = ref(false);
 const loadError = ref('');
 
 const displayList = computed(() => {
-  return activeTab.value === 'popular' ? popularShows.value : newShows.value;
+  return (activeTab.value === 'popular' ? popularShows.value : newShows.value).slice(0, 5);
 });
-const hasLoaded = computed(() => loadedTabs.value[activeTab.value]);
 
 const getPosterUrl = (path) => {
   return `https://image.tmdb.org/t/p/w92${path}`;
@@ -83,9 +80,12 @@ const loadTrending = async () => {
 };
 
 const selectTab = (tab) => {
+  if (isLoading.value) return;
   activeTab.value = tab;
   loadError.value = '';
+  if (!loadedTabs.value[tab]) loadTrending();
 };
+onMounted(loadTrending);
 </script>
 
 <style scoped>
@@ -155,4 +155,12 @@ const selectTab = (tab) => {
 .explore-empty { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 14px; padding: 16px; text-align: center; color: #94a3b8; font-size: 0.78rem; line-height: 1.5; }
 .explore-empty button { border: none; background: var(--theme-primary, #6366f1); color: #fff; border-radius: 9px; padding: 8px 14px; font-weight: 600; cursor: pointer; }
 .explore-empty button:hover { background: var(--theme-primary-hover, #4f46e5); }
+
+.trending-sidebar-modern { flex: 0 0 auto; border-radius: 16px; padding: 18px 14px 8px; box-shadow: 0 3px 14px #20213c04; }
+.sidebar-header h3 { font-size: 13px; display: flex; justify-content: space-between; align-items: center; font-weight: 650; }
+.top-five { font-size: 9px; letter-spacing: 1.5px; color: #aca4bb; font-weight: 500; }
+.tabs { background: #f7f6fa; margin-bottom: 12px; }.tabs button { font-size: 11px; }.tabs button.active { color: #8670a7; }
+.show-list { overflow: visible; padding: 0; }.show-item { gap: 9px; padding: 9px 0; margin: 0; border: 0; border-radius: 0; border-bottom: 1px solid #f3f2f7; box-shadow: none; cursor: default; }.show-item:last-child { border: 0; }.show-item:hover { transform: none; box-shadow: none; }
+.rank { width: 12px; font-size: 12px; font-weight: 500; color: #a3a0ad; }.show-item:first-child .rank { color: #9a80bf; }.mini-poster { width: 34px; height: 51px; }.title { font-size: 12px; font-weight: 550; }.meta { font-size: 9px; color: #aaa6b4; }
+.loading-state { margin: 12px 0 20px; font-size: 12px; }
 </style>

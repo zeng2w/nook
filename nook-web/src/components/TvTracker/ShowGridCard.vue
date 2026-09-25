@@ -1,16 +1,12 @@
 <template>
-  <div class="show-card-wrapper">
-    <div
-      class="show-card"
-      :class="{ 'blur-bg': isPendingDelete, 'dropped-card': show.status === 'dropped' }"
-      @keydown.esc="closeCardOverlays"
-      @mouseleave="closeCardOverlays"
-    >
-      
-      <div class="flipper" :class="{ 'is-flipped': isPosterPreviewOpen }">
-        
-        <div class="card-face front">
-          
+  <article class="show-card-wrapper" @keydown.esc="closeCardOverlays">
+    <div class="show-card" :class="{ 'blur-bg': isPendingDelete, 'dropped-card': show.status === 'dropped' }">
+      <button type="button" class="poster-preview-btn" :aria-label="`查看 ${show.title} 海报`" @click="openPosterPreview" :style="{ backgroundColor: getCategoryColor(show.category) }">
+        <img v-if="show.posterUrl" :src="show.posterUrl" :alt="show.title" loading="lazy" decoding="async" />
+        <span v-else class="poster-placeholder">{{ show.title }}</span>
+      </button>
+      <div class="card-content">
+        <div class="title-row"><h3 :title="show.title">{{ show.title }}</h3>
           <div class="top-actions" v-if="!isPendingDelete">
             <button 
               class="action-circle-btn favorite-btn" 
@@ -45,6 +41,7 @@
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                     编辑
                   </button>
+                  <button type="button" :disabled="show.status === 'dropped' || show.watchedEpisodes <= 0" :aria-label="`${show.title} 已看集数减一`" @click=" $emit('update-progress', show, -1); actionMenuOpen = false">已看集数 −1</button>
                   <template v-if="show.status === 'dropped'">
                     <button type="button" @click="runCardAction('restore')">
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"></path></svg>
@@ -64,97 +61,24 @@
             </div>
           </div>
           
-          <div class="card-header-grid">
-            <button
-              type="button"
-              class="poster-mini poster-preview-btn"
-              :style="{ backgroundColor: getCategoryColor(show.category) }"
-              :aria-label="`查看 ${show.title} 海报`"
-              :aria-pressed="isPosterPreviewOpen"
-              @mouseenter="openPosterPreviewOnHover"
-              @click.stop="openPosterPreview"
-            >
-              <img v-if="show.posterUrl" :src="show.posterUrl" class="mini-img" loading="lazy" decoding="async" /><span v-else>{{ show.title.charAt(0) }}</span>
-              <span class="flip-hint">翻转</span>
-            </button>
-            <div class="header-info">
-              <h3>{{ show.title }}</h3>
-              <div class="tags-line">
-                <span class="tag-badge" :class="show.category">{{ getCategoryLabel(show.category) }}</span>
-                <span class="status-tag" :class="show.status">{{ getStatusLabel(show.status) }}</span>
-                <div v-if="show.networkLogo" class="network-tag-logo" :title="show.network"><img :src="show.networkLogo" alt="Network" loading="lazy" decoding="async" /></div>
-              </div>
-            </div>
-          </div>
-
-          <div class="simple-dashboard" :class="{ 'disabled': show.status === 'dropped' }">
-            <button class="control-btn minus" :aria-label="`${show.title} 已看集数减一`" :disabled="show.status === 'dropped' || show.watchedEpisodes <= 0" @click.stop="$emit('update-progress', show, -1)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            </button>
-            
-            <div class="progress-info-center">
-              <div class="status-capsule" :class="unwatchedCount > 0 ? 'has-new' : 'all-done'">
-                <span v-if="unwatchedCount > 0">+{{ unwatchedCount }} 待看</span>
-                <span v-else>已追平</span>
-              </div>
-
-              <div class="main-stats">
-                <span class="stat-watched">{{ show.watchedEpisodes }}</span>
-              </div>
-              
-              <div class="mini-progress-track">
-                <div class="mini-progress-fill" :style="{ width: progressPercent + '%' }"></div>
-              </div>
-            </div>
-            
-            <button class="control-btn plus" :aria-label="`${show.title} 已看集数加一`" :disabled="show.status === 'dropped'" @click.stop="$emit('update-progress', show, 1)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            </button>
-          </div>
-
-          <div class="data-footer-grid">
-            <div class="footer-col">
-              <span class="f-label">已更</span>
-              <span class="f-val highlight">{{ show.airedEpisodes }}</span>
-            </div>
-            <div class="v-divider"></div>
-            <div class="footer-col">
-              <span class="f-label">总集</span>
-              <span class="f-val">{{ show.totalEpisodes || '-' }}</span>
-            </div>
-            <div class="v-divider"></div>
-            <div class="footer-col date-col">
-              <span class="f-label">完结</span>
-              <span class="f-val date-text">{{ cleanEstimateDate }}</span>
-            </div>
-          </div>
 
         </div>
-        
-        <div class="card-face back">
-          <img v-if="show.posterUrl" :src="show.posterUrl" class="full-poster" loading="lazy" decoding="async" />
-          <div v-else class="back-placeholder" :style="{ backgroundColor: getCategoryColor(show.category) }">
-            <span>{{ show.title }}</span>
-          </div>
-          <button v-if="isPosterPreviewOpen" type="button" class="close-preview-btn" aria-label="关闭海报预览" @click.stop="isPosterPreviewOpen = false">✕</button>
+        <div class="tags-line"><span>{{ getCategoryLabel(show.category) }}</span><span class="tag-dot">·</span><span>{{ getStatusLabel(show.status) }}</span><img v-if="show.networkLogo" :src="show.networkLogo" :alt="show.network" loading="lazy" /></div>
+        <div class="progress-heading">
+          <span class="progress-numbers"><strong>{{ show.watchedEpisodes }}</strong><span> / {{ show.totalEpisodes || show.airedEpisodes || '—' }}</span><small> 集</small></span>
+          <span class="status-capsule" :class="unwatchedCount > 0 ? 'has-new' : 'all-done'">{{ unwatchedCount > 0 ? `待看 +${unwatchedCount}` : '已追平' }}</span>
         </div>
-
+        <div class="mini-progress-track" role="progressbar" :aria-label="`${show.title} 观看进度`" :aria-valuenow="progressPercent" :aria-valuemin="0" :aria-valuemax="100"><div class="mini-progress-fill" :style="{ width: progressPercent + '%' }"></div></div>
+        <button class="next-episode" :aria-label="`${show.title} 已看集数加一`" :disabled="show.status === 'dropped' || (show.totalEpisodes > 0 && show.watchedEpisodes >= show.totalEpisodes)" @click="$emit('update-progress', show, 1)"><span>看下一集</span><span class="plus-label">+1</span></button>
+        <div class="card-footer"><span>已更新 {{ show.airedEpisodes || 0 }} 集</span><span :title="`预计完结 ${cleanEstimateDate}`">{{ cleanEstimateDate === '-' ? '完结时间待定' : cleanEstimateDate }}</span></div>
       </div>
     </div>
-
-    <transition name="fade">
-      <div v-if="isPendingDelete" class="undo-overlay" 
-           @mouseenter="$emit('pause-delete', show._id)" 
-           @mouseleave="$emit('resume-delete', show._id)">
-        <span class="undo-text">即将删除...</span>
-        <button class="undo-btn" @click.stop="$emit('cancel-delete', show._id)">撤回</button>
-      </div>
-    </transition>
-  </div>
+    <div v-if="isPendingDelete" class="undo-overlay" @mouseenter="$emit('pause-delete', show._id)" @mouseleave="$emit('resume-delete', show._id)"><span>即将删除…</span><button @click="$emit('cancel-delete', show._id)">撤回</button></div>
+    <Teleport to="body"><dialog v-if="isPosterPreviewOpen" ref="posterDialog" class="poster-dialog" @cancel="closeCardOverlays" :aria-label="`${show.title} 海报`" @click.self="closeCardOverlays" @keydown.esc="closeCardOverlays"><button autofocus aria-label="关闭海报预览" @click="closeCardOverlays">✕</button><img v-if="show.posterUrl" :src="show.posterUrl" :alt="show.title" /><span v-else>{{ show.title }}</span></dialog></Teleport>
+  </article>
 </template>
-
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, nextTick } from 'vue';
 import { getEstimatedDateText } from '@/utils/dateUtils';
 
 const props = defineProps({
@@ -165,17 +89,14 @@ const props = defineProps({
 const emit = defineEmits(['edit', 'update-progress', 'delete', 'drop', 'restore', 'pause-delete', 'resume-delete', 'cancel-delete', 'toggle-favorite']);
 
 const isPosterPreviewOpen = ref(false);
+const posterDialog = ref(null);
 const actionMenuOpen = ref(false);
 
-const openPosterPreview = () => {
+const openPosterPreview = async () => {
   actionMenuOpen.value = false;
   isPosterPreviewOpen.value = true;
-};
-
-const openPosterPreviewOnHover = () => {
-  if (window.matchMedia('(hover: hover) and (min-width: 769px)').matches) {
-    openPosterPreview();
-  }
+  await nextTick();
+  posterDialog.value?.showModal();
 };
 
 const closeCardOverlays = () => {
@@ -217,145 +138,30 @@ const progressPercent = computed(() => {
 </script>
 
 <style scoped>
-.show-card-wrapper { position: relative; z-index: 0; isolation: isolate; perspective: 1000px; }
-
-.show-card { width: 100%; height: 276px; position: relative; isolation: isolate; background: transparent; }
-.show-card.blur-bg { filter: grayscale(100%); opacity: 0.5; }
-.flipper { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform 0.62s cubic-bezier(0.22, 1, 0.36, 1); background: #fff; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
-.flipper.is-flipped { transform: rotateY(180deg); }
-.show-card.dropped-card .flipper { filter: grayscale(100%); opacity: 0.6; background-color: #f3f4f6; }
-.card-face { position: relative; top: 0; left: 0; width: 100%; height: 100%; box-sizing: border-box; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-
-.front { z-index: 2; padding: 12px; transform: rotateY(0deg); background: inherit; justify-content: space-between; }
-.back { position: absolute; top: 0; left: 0; z-index: 1; transform: rotateY(180deg); background: #000; display: flex; align-items: center; justify-content: center; pointer-events: none; }
-.flipper.is-flipped .front { pointer-events: none; }
-.flipper.is-flipped .back { pointer-events: auto; }
-.full-poster { width: 100%; height: 100%; object-fit: cover; }
-.back-placeholder { width: 100%; height: 100%; box-sizing: border-box; display: flex; align-items: center; justify-content: center; color: white; font-size: 1.2rem; font-weight: 700; padding: 20px; text-align: center; }
-.close-preview-btn { position: absolute; top: 12px; right: 12px; z-index: 3; width: 38px; height: 38px; border: 1px solid rgba(255,255,255,0.5); border-radius: 50%; background: rgba(15,23,42,0.72); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; backdrop-filter: blur(8px); }
-
-.top-actions { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; z-index: 30; }
-.action-circle-btn { background: white; border-radius: 50%; border: 1px solid #e2e8f0; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-.action-circle-btn:hover { transform: scale(1.1); }
-.favorite-btn { color: #94a3b8; }
-.favorite-btn:hover { color: #f43f5e; background: #ffe4e6; border-color: #fecdd3; }
-.favorite-btn.active { color: #f43f5e; }
-.card-more-wrapper { position: relative; }
-.more-action-btn { color: #64748b; }
-.more-action-btn:hover { color: #334155; background: #f8fafc; }
-.card-action-menu { position: absolute; top: calc(100% + 7px); right: 0; z-index: 20; width: 132px; padding: 6px; border: 1px solid #e2e8f0; border-radius: 12px; background: rgba(255,255,255,0.98); box-shadow: 0 12px 30px rgba(15,23,42,0.16); backdrop-filter: blur(12px); }
-.card-action-menu button { width: 100%; min-height: 34px; padding: 7px 9px; border: 0; border-radius: 8px; background: transparent; color: #334155; display: flex; align-items: center; gap: 8px; font-size: 0.76rem; font-weight: 650; white-space: nowrap; cursor: pointer; }
-.card-action-menu button:hover { background: #f1f5f9; }
-.card-action-menu button.danger { color: #dc2626; }
-.card-action-menu button.danger:hover { background: #fef2f2; }
-.action-menu-fade-enter-active,
-.action-menu-fade-leave-active { transition: opacity 0.16s ease, transform 0.16s ease; transform-origin: top right; }
-.action-menu-fade-enter-from,
-.action-menu-fade-leave-to { opacity: 0; transform: translateY(-4px) scale(0.96); }
-
-/* ✨ 修复1：将居中对齐改为顶部对齐，并移除影响空间的 padding-right */
-.card-header-grid { 
-  display: flex; 
-  align-items: flex-start; /* 保持顶部对齐 */
-  gap: 10px; 
-}
-
-.poster-mini { 
-  width: 60px; 
-  flex-shrink: 0; 
-  aspect-ratio: 2 / 3; 
-  height: auto; 
-  border: 0; padding: 0; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; background: #f3f4f6; cursor: pointer; position: relative; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.05); z-index: 10;
-}
-.poster-mini .mini-img { 
-  width: 100%; 
-  height: 100%; 
-  object-fit: cover; 
-  transition: transform 0.3s ease; 
-}
-.poster-mini:hover .mini-img { transform: scale(1.05); }
-.flip-hint { position: absolute; left: 4px; bottom: 4px; padding: 2px 5px; border-radius: 5px; background: rgba(15,23,42,0.72); color: white; font-size: 0.58rem; font-weight: 700; line-height: 1.2; opacity: 0.9; backdrop-filter: blur(5px); }
-
-/* ✨ 修复2：为文字信息区域增加 padding-top 避开绝对定位的按钮 */
-.header-info { 
-  display: flex; 
-  flex-direction: column; 
-  gap: 4px; 
-  flex: 1; 
-  min-width: 0; /* 防止子元素撑破 Flex 容器 */
-  padding-top: 42px;
-}
-
-/* ✨ 修复3：增强文字换行机制，防止超长剧集名挤出边界 */
-.header-info h3 { 
-  margin: 0; 
-  font-size: 0.95rem; 
-  font-weight: 700; 
-  color: #1f2937; 
-  line-height: 1.3; 
-  display: -webkit-box; 
-  -webkit-line-clamp: 2; 
-  -webkit-box-orient: vertical; 
-  overflow: hidden;
-  word-break: break-word; /* 防止长连串字符破坏布局 */
-}
-
-.tags-line { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
-.tag-badge, .status-tag, .network-tag-logo, .network-text { height: 18px; display: inline-flex; align-items: center; justify-content: center; line-height: 1; box-sizing: border-box; border-radius: 4px; font-size: 0.65rem; font-weight: 600; vertical-align: middle; }
-.tag-badge, .status-tag, .network-text { padding: 0 6px; }
-.tag-badge.tv { background: #dbeafe; color: #1e40af; } .tag-badge.anime { background: #f3e8ff; color: #6b21a8; } .tag-badge.movie { background: #e0e7ff; color: #3730a3; } .tag-badge.variety { background: #ffedd5; color: #9a3412; }
-.status-tag.wish { background: #fef3c7; color: #d97706; } .status-tag.watching { background: #d1fae5; color: #059669; } .status-tag.watched { background: #e0e7ff; color: #4338ca; } .status-tag.dropped { background: #f3f4f6; color: #9ca3af; text-decoration: line-through; }
-.network-text { background: #f3f4f6; color: #4b5563; border: 1px solid #e5e7eb; }
-.network-tag-logo { padding: 0 4px; background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
-.network-tag-logo img { height: 10px; width: auto; object-fit: contain; display: block; }
-
-.simple-dashboard { flex: 1; display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
-.simple-dashboard.disabled { opacity: 0.5; pointer-events: none; }
-
-.control-btn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid #e5e7eb; background: #fff; color: #444; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
-.control-btn:hover:not(:disabled) { background: #f9fafb; border-color: #d1d5db; color: #000; transform: scale(1.1); }
-.control-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-.action-circle-btn:focus-visible,
-.control-btn:focus-visible,
-.poster-preview-btn:focus-visible,
-.close-preview-btn:focus-visible,
-.card-action-menu button:focus-visible {
-  outline: 3px solid rgba(59, 130, 246, 0.3);
-  outline-offset: 2px;
-}
-
-.progress-info-center { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; }
-.status-capsule { font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: 12px; letter-spacing: 0.5px; transition: all 0.3s; margin-bottom: 2px; }
-.status-capsule.has-new { background: #eff6ff; color: #3b82f6; } 
-.status-capsule.all-done { background: #f8fafc; color: #94a3b8; }
-
-.main-stats { display: flex; align-items: baseline; line-height: 1; }
-.stat-watched { font-size: 1.8rem; font-weight: 900; color: #0f172a; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
-.mini-progress-track { width: 60px; height: 4px; background: #f1f5f9; border-radius: 10px; overflow: hidden; margin-top: 4px; }
-.mini-progress-fill { height: 100%; background: #3b82f6; border-radius: 10px; transition: width 0.4s ease; }
-
-.data-footer-grid { display: grid; grid-template-columns: 0.8fr auto 0.8fr auto 1.4fr; align-items: center; padding: 8px 4px; background: #f8fafc; border-radius: 10px; border: 1px solid #f1f5f9; margin-top: auto; }
-.footer-col { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
-.f-label { font-size: 0.6rem; color: #94a3b8; font-weight: 600; letter-spacing: 0.5px; white-space: nowrap; }
-.f-val { font-size: 0.85rem; font-weight: 700; color: #334155; font-variant-numeric: tabular-nums; line-height: 1; }
-.f-val.highlight { color: #8b5cf6; } 
-.f-val.date-text { font-size: 0.7rem; color: #64748b; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.v-divider { width: 1px; height: 12px; background: #e2e8f0; }
-
-.undo-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; z-index: 10; background: rgba(255,255,255,0.6); backdrop-filter: blur(4px); border-radius: 16px; }
-.undo-text { font-weight: 600; color: #333; font-size: 1.1rem; }
-.undo-btn { display: flex; align-items: center; gap: 6px; background: #000; color: white; border: none; padding: 10px 20px; border-radius: 30px; font-weight: 600; cursor: pointer; box-shadow: 0 5px 15px rgba(0,0,0,0.2); transition: transform 0.2s; }
-.undo-btn:hover { transform: scale(1.05); }
-.fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-
-@media (prefers-reduced-motion: reduce) {
-  .flipper { transition-duration: 0.01ms; }
-}
-
-@media (max-width: 768px) {
-  .card-header-grid { flex-direction: row; padding-right: 0; }
-  .poster-mini { width: 45px; display: flex; }
-  .header-info h3 { font-size: 0.85rem; }
-}
+.show-card-wrapper { position: relative; min-width: 0; }
+.show-card { background: white; border: 1px solid #e8e9ef; border-radius: 16px; padding: 10px; box-shadow: 0 3px 12px #20213c05; transition: box-shadow .2s; }
+.show-card:hover { box-shadow: 0 8px 24px #20213c0d; }
+.blur-bg { opacity: .4; } .dropped-card { filter: grayscale(1); }
+.poster-preview-btn { display: block; width: 100%; aspect-ratio: 2 / 3; border: 0; border-radius: 10px; padding: 0; overflow: hidden; cursor: zoom-in; }
+.poster-preview-btn img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.poster-placeholder { color: #64748b; font-size: 22px; padding: 18px; }
+.card-content { padding: 12px 4px 2px; }
+.title-row { display: flex; align-items: center; gap: 4px; }
+h3 { font-size: 14px; line-height: 22px; font-weight: 650; margin: 0; color: #252736; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.top-actions { display: flex; gap: 2px; }
+.action-circle-btn { display: grid; place-items: center; width: 25px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: #9295a6; cursor: pointer; }
+.action-circle-btn:hover { background: #f4f3f9; color: #6557c7; }.favorite-btn.active { color: #db7895; }
+.card-more-wrapper { position: relative; }.card-action-menu { position: absolute; top: 30px; right: 0; width: 145px; padding: 6px; border: 1px solid #e8e9ef; border-radius: 12px; background: white; z-index: 5; box-shadow: 0 8px 28px #25273620; }
+.card-action-menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px; background: transparent; border: 0; border-radius: 6px; color: #55596b; text-align: left; cursor: pointer; font-size: 12px; }.card-action-menu button:hover { background: #f5f4fa; }.card-action-menu .danger { color: #ba5b66; }
+.tags-line { display: flex; align-items: center; gap: 6px; height: 23px; color: #9698a6; font-size: 11px; }.tags-line img { max-width: 45px; height: 11px; object-fit: contain; margin-left: auto; }.tag-dot { color: #b7bac5; }
+.progress-heading { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-top: 15px; }
+.progress-numbers { color: #9194a3; font-size: 12px; font-variant-numeric: tabular-nums; }.progress-numbers strong { font-size: 22px; font-weight: 650; color: #343646; letter-spacing: -.6px; }.progress-numbers small { font-size: 10px; }
+.status-capsule { display: inline-flex; align-items: center; justify-content: center; min-width: 48px; height: 23px; padding: 0 7px; border-radius: 20px; font-size: 10px; font-weight: 550; white-space: nowrap; }.has-new { background: #f0edfa; color: #8570b5; }.all-done { background: #edf4f0; color: #719886; }
+.mini-progress-track { height: 4px; background: #f0eff5; border-radius: 10px; overflow: hidden; margin: 10px 0 14px; }.mini-progress-fill { height: 100%; background: #a597cd; border-radius: inherit; transition: width .3s; }
+.next-episode { width: 100%; height: 34px; border: 1px solid #e8e3f2; border-radius: 20px; background: #f5f2fb; color: #7c65aa; display: flex; align-items: center; justify-content: center; gap: 14px; font-size: 12px; font-weight: 600; cursor: pointer; }.next-episode:hover:not(:disabled) { background: #ebe5f6; }.plus-label { font-size: 11px; opacity: .75; }
+button:disabled { opacity: .4; cursor: default; }button:focus-visible { outline: 2px solid #9a84c8; outline-offset: 3px; }
+.card-footer { display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; font-size: 10px; color: #a2a4b0; }.card-footer span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.undo-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; }.undo-overlay button { border: 0; padding: 8px 14px; border-radius: 8px; color: white; background: #8d7ab6; cursor: pointer; }
+.poster-dialog { position: fixed; inset: 0; width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; border: 0; box-sizing: border-box; z-index: 3000; background: #20212ad9; color: white; display: flex; align-items: center; justify-content: center; padding: 40px; }.poster-dialog img { max-width: 90vw; max-height: 85vh; object-fit: contain; border-radius: 12px; }.poster-dialog > button { position: absolute; top: 20px; right: 24px; border: 0; background: white; border-radius: 50%; width: 36px; height: 36px; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>

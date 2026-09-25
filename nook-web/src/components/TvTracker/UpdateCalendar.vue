@@ -2,7 +2,7 @@
   <div class="update-calendar-widget">
     <div class="calendar-header">
       <div class="title-group">
-        <h3 class="title">更新日历</h3>
+        <h3 class="title">本周更新时刻表</h3>
         <span class="timezone-label" :title="timeZoneLabel">{{ timeZoneLabel }}</span>
       </div>
       <button type="button" class="more-link" aria-label="打开完整追剧日历" @click="$emit('open-calendar')">
@@ -34,23 +34,17 @@
       <div v-if="showsList.length === 0" class="empty-state">当日暂无剧集更新</div>
       
       <div v-else v-for="show in showsList" :key="show._id" class="show-item" :title="getEntryTitle(show)">
-        <img :src="show.posterUrl || show.poster_path" :alt="show.title || show.name" class="show-cover" loading="lazy" decoding="async" />
+        <img v-if="show.posterUrl || show.poster_path" :src="show.posterUrl || show.poster_path" :alt="show.title || show.name" class="show-cover" loading="lazy" decoding="async" />
+        <span v-else class="show-cover cover-placeholder" aria-hidden="true">{{ (show.title || show.name || '?').charAt(0) }}</span>
         
         <div class="show-info">
-          <h4 class="show-title">{{ show.title || show.name }}</h4>
+          <div class="show-name-row"><img v-if="show.networkLogo" :src="show.networkLogo" :alt="show.network" class="inline-network" /><h4 class="show-title">{{ show.title || show.name }}</h4></div>
           <div class="show-episode-row">
-            <span class="entry-state" :class="show.calendarEntry.type">{{ show.calendarEntry.statusText }}</span>
             <span class="show-episode" :class="show.calendarEntry.type">{{ show.calculatedEpisodeText }}</span>
           </div>
         </div>
         
-        <div class="platform-info" v-if="show.network">
-          <img v-if="show.networkLogo" :src="show.networkLogo" class="platform-logo-img" alt="Network" loading="lazy" decoding="async" />
-          
-          <span v-else class="platform-icon-fallback" :class="getNetworkClass(show.network)">
-            {{ show.network.charAt(0).toUpperCase() }}
-          </span>
-        </div>
+        <span class="entry-status" :class="show.calendarEntry.type">{{ show.calendarEntry.statusText }}</span>
       </div>
     </div>
   </div>
@@ -110,16 +104,6 @@ const getSummaryText = () => {
 
   const dayIndex = selectedDate.value.getDay();
   return `周${dayLabels[dayIndex === 0 ? 6 : dayIndex - 1]}将`;
-};
-
-const getNetworkClass = (network) => {
-  const net = network.toLowerCase();
-  if (net.includes('tencent') || net.includes('腾讯')) return 'tencent';
-  if (net.includes('youku') || net.includes('优酷')) return 'youku';
-  if (net.includes('iqiyi') || net.includes('爱奇艺')) return 'iqiyi';
-  if (net.includes('bilibili') || net.includes('b站')) return 'bilibili';
-  if (net.includes('netflix')) return 'netflix';
-  return 'default';
 };
 
 const getEntryTitle = show => {
@@ -225,4 +209,10 @@ const showsList = computed(() => {
 .platform-icon-fallback.bilibili { background: linear-gradient(135deg, #FB7299, #E05C82); } 
 .platform-icon-fallback.netflix { background: linear-gradient(135deg, #E50914, #B20710); } 
 .platform-icon-fallback.default { background: linear-gradient(135deg, #94a3b8, #64748b); }
+
+.update-calendar-widget { height: auto; max-height: 360px; border-radius: 16px; padding: 18px 14px; box-shadow: 0 3px 14px #20213c04; }
+.title { font-size: 13px; font-weight: 650; }.timezone-label { font-size: 8px; margin-top: 4px; }.more-link { font-size: 10px; color: #9784b4; }
+.week-selector { margin: 6px 0 16px; }.day-item { width: 29px; height: 48px; border-radius: 20px; }.day-item.active { background: #aa98c9; box-shadow: 0 3px 8px #aa98c922; transform: none; }.day-label { font-size: 9px; }.day-number { font-weight: 550; font-size: 12px; }
+.update-summary { font-size: 10px; padding-bottom: 10px; border-bottom: 1px solid #f3f2f7; color: #a09baa; }.shows-list-scroll-area { flex: 0 1 auto; gap: 0; }.empty-state { padding: 16px 0 4px; font-size: 11px; }.show-item { padding: 9px 0; }.show-item:hover { transform: none; }.show-cover { width: 30px; height: 45px; margin-right: 8px; }.show-title { font-size: 11px; font-weight: 550; }.show-name-row { display: flex; align-items: center; gap: 4px; min-width: 0; }.inline-network { width: 13px; height: 12px; object-fit: contain; flex-shrink: 0; }.show-episode { background: transparent !important; padding: 4px 0 0; font-size: 10px; color: #9d96aa !important; }.entry-status { font-size: 9px; color: #9d8bb4; margin-left: 8px; flex-shrink: 0; }
+.cover-placeholder { display: grid; place-items: center; color: #9d96aa; font-size: 12px; }
 </style>

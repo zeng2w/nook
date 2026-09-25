@@ -15,12 +15,14 @@
         <div class="search-box">
           <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
           <input 
+            ref="searchInput"
             type="text" 
             aria-label="搜索剧集名称"
             placeholder="搜索剧集名称..." 
             :value="searchQuery"
             @input="$emit('update:searchQuery', $event.target.value)"
           />
+          <kbd v-if="!searchQuery" class="search-shortcut">⌘K</kbd>
           <button v-if="searchQuery" class="clear-btn" aria-label="清除搜索" @click="$emit('update:searchQuery', '')">×</button>
         </div>
       </div>
@@ -130,7 +132,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted, onUnmounted } from 'vue';
 
 const props = defineProps({
   notifications: { type: Array, default: () => [] },
@@ -141,6 +143,15 @@ const props = defineProps({
   searchQuery: { type: String, default: '' } // 接收搜索词
 });
 
+const searchInput = ref(null);
+const focusSearch = event => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault();
+    searchInput.value?.focus();
+  }
+};
+onMounted(() => window.addEventListener('keydown', focusSearch));
+onUnmounted(() => window.removeEventListener('keydown', focusSearch));
 const emit = defineEmits(['add', 'add-season', 'remove-noti', 'clear-notis', 'noti-read', 'sync', 'export', 'import', 'open-calendar', 'update:searchQuery']);
 
 const showNotiPanel = ref(false);
@@ -320,4 +331,7 @@ const addSeason = (item) => {
   .noti-dropdown { position: fixed; top: 64px; right: 12px; left: 12px; width: auto; }
   .more-dropdown { position: fixed; top: 64px; right: 12px; width: 180px; }
 }
+.search-box { border-radius: 24px; height: 40px; box-sizing: border-box; }
+.search-box input { min-width: 0; font-size: 12px; }
+.search-shortcut { font-family: inherit; color: #aaa6b3; border: 1px solid #eeecf1; border-radius: 5px; padding: 2px 5px; font-size: 10px; white-space: nowrap; }
 </style>

@@ -86,6 +86,7 @@
               class="dropdown-btn" 
               :class="{ 'is-open': activeDropdown === 'sort' }" 
               :aria-expanded="activeDropdown === 'sort'"
+              :aria-label="`排序：${currentSortLabel}`"
               @click="toggleDropdown('sort')"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
@@ -162,14 +163,14 @@ const closeDropdown = () => { activeDropdown.value = null; };
 
 const statuses = [
   { label: '全部', value: 'all' },
-  { label: '想看', value: 'wish' },
   { label: '在看', value: 'watching' },
-  { label: '已看完', value: 'watched' },
+  { label: '想看', value: 'wish' },
+  { label: '已看', value: 'watched' },
   { label: '弃剧', value: 'dropped' }
 ];
 
 const categories = [
-  { label: '全部', value: 'all' },
+  { label: '全部类型', value: 'all' },
   { label: '电视剧', value: 'tv', icon: '📺' },
   { label: '动漫', value: 'anime', icon: '🎎' },
   { label: '电影', value: 'movie', icon: '🎬' },
@@ -185,7 +186,7 @@ const currentCategoryLabel = computed(() => {
   return categories.find(c => c.value === props.category)?.label || '类型';
 });
 const currentNetworkLabel = computed(() => {
-  return props.network === 'all' ? '平台' : props.network;
+  return props.network === 'all' ? '全部平台' : props.network;
 });
 const currentSortLabel = computed(() => {
   return sortOptions.find(o => o.value === props.sortBy)?.label || '排序';
@@ -370,5 +371,20 @@ const getNetworkCount = (val) => {
   .dropdown-btn > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .view-toggle { flex-shrink: 0; }
   .category-menu, .network-menu { width: min(280px, calc(100vw - 40px)); }
+}
+
+.main-toolbar { flex-wrap: wrap; gap: 16px; }
+.filter-bar-wrapper { padding: 0 0 18px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.status-group { background: transparent; padding: 0; gap: 5px; }
+.status-pill { border-radius: 8px; padding: 8px 12px; font-size: 12px; color: #9693a3; }
+.status-pill.active { background: #eeebf5; color: #80679f; box-shadow: none; }
+.dropdown-btn { font-size: 11px; border-color: #e9e6ee; font-weight: 500; padding: 0 10px; }
+.dropdown-container { height: 32px; }.view-toggle { height: 32px; }
+@media (max-width: 560px) { .status-group { width: 100%; }.status-pill { padding: 8px 4px; }.toolbar-actions { width: 100%; } }
+@media (max-width: 560px) {
+  .dropdown-container:last-child { flex: 0 0 34px; }
+  .dropdown-container:last-child .dropdown-btn > span, .dropdown-container:last-child .chevron { display: none; }
+  .dropdown-container:last-child .dropdown-btn { padding: 0; }
+  .toolbar-actions > .divider { display: none; }
 }
 </style>
