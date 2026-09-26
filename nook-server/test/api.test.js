@@ -19,6 +19,25 @@ const { errorHandler } = require('../middleware/error');
 const USER_A = '507f1f77bcf86cd799439011';
 const USER_B = '507f1f77bcf86cd799439012';
 
+test('ordinary edits preserve progress confirmation while episode corrections confirm it', async () => {
+  const original = Show.findOne;
+  const confirmedAt = new Date('2026-09-20T10:00:00Z');
+  const show = { _id: USER_B, title: 'Before', airedEpisodes: 19, watchedEpisodes: 1,
+    totalEpisodes: 30, status: 'watching', episodeProgressConfirmedAt: confirmedAt,
+    episodeUpdateHistory: [], save: async () => {} };
+  Show.findOne = () => ({ select: async () => show });
+  try {
+    const edit = body => request(createTestApp()).put(`/api/shows/${USER_B}`)
+      .set('Cookie', `nook_session=${createSessionToken(USER_A)}`).send(body);
+    assert.equal((await edit({ title: 'After', airedEpisodes: 19 })).status, 200);
+    assert.equal(show.episodeProgressConfirmedAt, confirmedAt);
+    assert.equal(show.episodeUpdateHistory.length, 0);
+    assert.equal((await edit({ airedEpisodes: 20, timeZone: 'Asia/Shanghai' })).status, 200);
+    assert.notEqual(show.episodeProgressConfirmedAt, confirmedAt);
+    assert.equal(show.episodeUpdateHistory[0].kind, 'snapshot');
+  } finally { Show.findOne = original; }
+});
+
 const createTestApp = () => {
   const app = express();
   app.use(express.json());

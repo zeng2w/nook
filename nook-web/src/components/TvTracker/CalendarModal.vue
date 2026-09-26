@@ -13,7 +13,7 @@
       <div class="calendar-scroll">
         <div class="calendar-grid-view" :class="{ 'month-view': view === 'month' }">
           <template v-if="view === 'month'"><div v-for="label in weekDays" :key="label" class="month-weekday">{{ label }}</div></template>
-          <section v-for="day in calendarDays" :key="day.key" class="day-column" :class="dayClasses(day)" :aria-label="formatDate(day.date)">
+          <section v-for="day in calendarDays" :key="day.key" class="day-column" :class="dayClasses(day)" :data-selected="isSameCalendarDay(day.date, anchor)" :aria-label="formatDate(day.date)">
             <div class="day-header"><span v-if="view === 'week'" class="day-name">{{ weekDays[day.date.getDay()] }}</span><span class="day-circle" :aria-current="isToday(day.date) ? 'date' : undefined">{{ day.date.getDate() }}</span><span v-if="isToday(day.date)" class="today-label">今天</span></div>
             <div class="day-body">
               <CalendarEntry v-for="item in displayedItems(day)" :key="item.show._id" :item="item" :date="day.date" :today="today" @details="openDetails" />
@@ -24,7 +24,7 @@
         </div>
         <div class="mobile-agenda-view">
           <p v-if="!mobileAgendaDays.length" class="agenda-day-empty">{{ view === 'week' ? '本周' : '本月' }}暂无更新安排</p>
-          <section v-for="day in mobileAgendaDays" :key="day.key" class="agenda-day" :class="dayClasses(day)">
+          <section v-for="day in mobileAgendaDays" :key="day.key" class="agenda-day" :class="dayClasses(day)" :data-selected="isSameCalendarDay(day.date, anchor)">
             <div class="agenda-day-header"><strong>{{ formatDate(day.date) }}</strong><span>{{ isToday(day.date) ? '今天 · ' : '' }}{{ day.items.length }} 部</span></div>
             <CalendarEntry v-for="item in day.items" :key="item.show._id" :item="item" :date="day.date" :today="today" @details="openDetails" />
             <p v-if="!day.items.length" class="agenda-day-empty">今天暂无更新</p>
@@ -38,10 +38,15 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
 import CalendarEntry from './CalendarEntry.vue';
+import { useCalendarToday } from '@/composables/useCalendarToday';
 import { getCalendarEpisodeEntry, getCurrentTimeZoneLabel, isSameCalendarDay, toLocalCalendarDate, toCalendarDateInput } from '@/utils/dateUtils';
-const props = defineProps({ visible: Boolean, shows: { type: Array, default: () => [] } });
+const props = defineProps({ visible: Boolean, shows: { type: Array, default: () => [] }, initialDate: { type: Date, default: null } });
 const emit = defineEmits(['update:visible', 'details']);
-const dialog = ref(null), view = ref('week'), today = ref(toLocalCalendarDate(new Date())), anchor = ref(today.value), expanded = ref({});
+const today = useCalendarToday();
+const dialog = ref(null), view = ref('week'), anchor = ref(today.value), expanded = ref({});
+watch(today, (current, previous) => {
+  if (isSameCalendarDay(anchor.value, previous)) anchor.value = current;
+});
 const timeZoneLabel = getCurrentTimeZoneLabel();
 const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 const modes = [{ value: 'week', label: '周' }, { value: 'month', label: '月' }];
@@ -51,6 +56,10 @@ watch(() => props.visible, async visible => {
   if (!visible) return;
   opener = document.activeElement;
   resetToToday();
+  if (props.initialDate) {
+    anchor.value = toLocalCalendarDate(props.initialDate);
+    view.value = 'week';
+  }
   await nextTick();
   dialog.value?.showModal();
   dialog.value?.querySelector('.close-btn')?.focus();
@@ -60,7 +69,7 @@ const close = () => { dialog.value?.close(); emit('update:visible', false); open
 const openDetails = show => { close(); emit('details', show); };
 function scrollToToday() {
   if (!dialog.value?.open) return;
-  const target = [...dialog.value.querySelectorAll('.is-today')].find(element => element.getClientRects().length);
+  const target = [...dialog.value.querySelectorAll('[data-selected="true"]')].find(element => element.getClientRects().length) || [...dialog.value.querySelectorAll('.is-today')].find(element => element.getClientRects().length);
   target?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 function resetToToday() { today.value = toLocalCalendarDate(new Date()); anchor.value = today.value; expanded.value = {}; void nextTick(scrollToToday); }

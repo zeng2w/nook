@@ -5,7 +5,7 @@
         <h3 class="title">本周更新时刻表</h3>
         <span class="timezone-label" :title="timeZoneLabel">{{ timeZoneLabel }}</span>
       </div>
-      <button type="button" class="more-link" aria-label="打开完整追剧日历" @click="$emit('open-calendar')">
+      <button type="button" class="more-link" aria-label="打开完整追剧日历" @click="$emit('open-calendar', selectedDate)">
         更多 <span class="arrow">&gt;</span>
       </button>
     </div>
@@ -27,7 +27,7 @@
     </div>
 
     <div class="update-summary">
-      {{ getSummaryText() }}更新 <span class="highlight-count">{{ showsList.length }}</span> 部剧集
+      {{ getSummaryText() }}记录与安排 <span class="highlight-count">{{ showsList.length }}</span> 部
     </div>
 
     <div class="shows-list-scroll-area">
@@ -44,19 +44,22 @@
           </div>
         </div>
         
-        <span class="entry-status" :class="show.calendarEntry.type">{{ getStatusText(show.calendarEntry) }}</span>
+        <span class="entry-status" :class="show.calendarEntry.type">{{ show.presentation.status }}</span>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
+import { useCalendarToday } from '@/composables/useCalendarToday';
 import {
   getCalendarEpisodeEntry,
+  getCalendarEntryPresentation,
   getCurrentTimeZoneLabel,
   isSameCalendarDay,
-  toLocalCalendarDate
+  toLocalCalendarDate,
+  toLocalConfirmationDate
 } from '@/utils/dateUtils';
 
 const props = defineProps({
@@ -64,13 +67,17 @@ const props = defineProps({
 });
 defineEmits(['open-calendar']);
 
-const selectedDate = ref(toLocalCalendarDate(new Date()));
+const today = useCalendarToday();
+const selectedDate = ref(today.value);
+watch(today, (current, previous) => {
+  if (isSameCalendarDay(selectedDate.value, previous)) selectedDate.value = current;
+});
 const dayLabels = ['一', '二', '三', '四', '五', '六', '日'];
 const timeZoneLabel = getCurrentTimeZoneLabel();
 
 const weekDays = computed(() => {
   const days = [];
-  const curr = toLocalCalendarDate(new Date());
+  const curr = today.value;
   let dayOfWeek = curr.getDay();
   dayOfWeek = dayOfWeek === 0 ? 7 : dayOfWeek; 
   
@@ -92,13 +99,13 @@ const selectDate = (date) => {
 };
 
 const getSummaryText = () => {
-  if (isSameCalendarDay(selectedDate.value, new Date())) return '今日';
+  if (isSameCalendarDay(selectedDate.value, today.value)) return '今日';
   
-  const tomorrow = new Date();
+  const tomorrow = new Date(today.value);
   tomorrow.setDate(tomorrow.getDate() + 1);
   if (isSameCalendarDay(selectedDate.value, tomorrow)) return '明日';
 
-  const yesterday = new Date();
+  const yesterday = new Date(today.value);
   yesterday.setDate(yesterday.getDate() - 1);
   if (isSameCalendarDay(selectedDate.value, yesterday)) return '昨日';
 
@@ -106,17 +113,14 @@ const getSummaryText = () => {
   return `周${dayLabels[dayIndex === 0 ? 6 : dayIndex - 1]}`;
 };
 
-const getStatusText = entry => entry.type === 'scheduled' ? '确认播出' : entry.type === 'estimated' ? '预计更新' : entry.statusText === '当前' ? '当前更新' : '已更新';
-
 const getEntryTitle = show => {
   const entry = show.calendarEntry;
-  if (entry.type === 'scheduled') return 'TMDB 已提供明确播出日期';
-  if (entry.type === 'estimated') return '根据更新频率和当前集数推测';
-  if (!entry.confirmedAt) return '当前已确认的实际进度';
-  const confirmedDate = toLocalCalendarDate(entry.confirmedAt);
+  const description = show.presentation.description;
+  if (entry.type !== 'confirmed' || !entry.confirmedAt) return description;
+  const confirmedDate = toLocalConfirmationDate(entry.confirmedAt);
   return confirmedDate
-    ? `实际进度确认于 ${confirmedDate.toLocaleDateString('zh-CN')}`
-    : '当前已确认的实际进度';
+    ? `${description}；确认于 ${confirmedDate.toLocaleDateString('zh-CN')}`
+    : description;
 };
 
 const showsList = computed(() => {
@@ -124,11 +128,12 @@ const showsList = computed(() => {
   const results = [];
 
   props.shows.forEach(s => {
-    const calendarEntry = getCalendarEpisodeEntry(s, targetDate);
+    const calendarEntry = getCalendarEpisodeEntry(s, targetDate, today.value);
     if (calendarEntry) results.push({
       ...s,
       calendarEntry,
-      calculatedEpisodeText: calendarEntry.episodeText
+      presentation: getCalendarEntryPresentation(calendarEntry, targetDate, today.value),
+      calculatedEpisodeText: getCalendarEntryPresentation(calendarEntry, targetDate, today.value).episode
     });
   });
   

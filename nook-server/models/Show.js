@@ -2,6 +2,8 @@ const mongoose = require('mongoose');
 
 const EpisodeUpdateSchema = new mongoose.Schema({
   date: { type: Date, required: true },
+  kind: { type: String, enum: ['broadcast', 'snapshot'], default: 'broadcast' },
+  confirmedAt: { type: Date, default: null },
   startEpisode: { type: Number, required: true, min: 1, validate: Number.isInteger },
   endEpisode: { type: Number, required: true, min: 1, validate: Number.isInteger },
   source: { type: String, enum: ['tmdb', 'manual'], default: 'tmdb' }

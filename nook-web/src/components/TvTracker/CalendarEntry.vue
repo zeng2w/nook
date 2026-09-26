@@ -10,16 +10,16 @@
 </template>
 <script setup>
 import { computed } from 'vue';
-import { isSameCalendarDay } from '@/utils/dateUtils';
+import { getCalendarEntryPresentation } from '@/utils/dateUtils';
 const props = defineProps({ item: { type: Object, required: true }, date: { type: Date, required: true }, today: { type: Date, required: true } });
 defineEmits(['details']);
 const playUrl = computed(() => {
   try { const url = new URL(props.item.show.playUrl); return ['https:', 'http:'].includes(url.protocol) ? url.href : ''; } catch { return ''; }
 });
-const state = computed(() => props.item.entry.type === 'confirmed' ? 'aired' : isSameCalendarDay(props.date, props.today) ? 'pending' : 'upcoming');
-const episode = computed(() => props.item.entry.episodeText.replace(/^Ep\s*/, 'Ep.'));
-const badge = computed(() => state.value === 'aired' ? `已更 ${episode.value}` : state.value === 'pending' ? `今日待播 · ${episode.value}` : `更新至 ${episode.value}`);
-const description = computed(() => props.item.entry.type === 'estimated' ? '根据更新规律推算，具体播出以平台为准' : props.item.entry.type === 'scheduled' ? '已确认播出日期，具体时刻以平台为准' : '已确认更新进度，不代表当日实际播出时间');
+const presentation = computed(() => getCalendarEntryPresentation(props.item.entry, props.date, props.today));
+const state = computed(() => presentation.value.state);
+const badge = computed(() => presentation.value.badge);
+const description = computed(() => presentation.value.description);
 </script>
 <style scoped>
 .mini-item-card { position: relative; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 8px; padding: 9px 15px 9px 9px; background: #fff; border: 1px solid #eceaf0; border-radius: 10px; box-shadow: 0 2px 5px #30234504; color: #373344; text-align: left; text-decoration: none; font: inherit; cursor: pointer; transition: transform .16s, box-shadow .16s, border-color .16s; min-width: 0; }

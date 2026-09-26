@@ -296,6 +296,7 @@ router.post('/', async (req, res, next) => {
     if (newShow.airedEpisodes > 0) {
       confirmEpisodeProgress(newShow, newShow.airedEpisodes, {
         confirmedAt: new Date(),
+        confirmationDate: getCalendarDateKeyInTimeZone(new Date(), isValidTimeZone(req.body.timeZone) ? req.body.timeZone : 'UTC'),
         eventDate: newShow.lastAirDate || new Date(),
         source: 'manual'
       });
@@ -402,9 +403,10 @@ router.put('/:id', validateObjectIdParam(), async (req, res, next) => {
     const nextAiredEpisodes = updates.airedEpisodes;
     delete updates.airedEpisodes;
     Object.assign(show, updates, { updatedAt: Date.now() });
-    if (hasAiredEpisodes) {
+    if (hasAiredEpisodes && Number(nextAiredEpisodes) !== Number(show.airedEpisodes)) {
       confirmEpisodeProgress(show, nextAiredEpisodes, {
         confirmedAt: new Date(),
+        confirmationDate: getCalendarDateKeyInTimeZone(new Date(), isValidTimeZone(req.body.timeZone) ? req.body.timeZone : 'UTC'),
         eventDate: show.lastAirDate || new Date(),
         source: 'manual'
       });
@@ -513,6 +515,7 @@ router.post('/sync', syncRateLimit, limitForcedSync, preventConcurrentSync, asyn
           }
 
           let seasonProgress = null;
+          let episodeDates;
           const shouldLoadSeason = trackedSeasonNumber && (
             show.updateFrequency !== 'ended' ||
             force ||
@@ -524,6 +527,7 @@ router.post('/sync', syncRateLimit, limitForcedSync, preventConcurrentSync, asyn
               params: { language: 'zh-CN' }
             });
             if (seasonRes.tmdbCache !== 'miss') cacheHitCount++;
+            episodeDates = seasonRes.data.episodes;
             seasonProgress = getTmdbSeasonProgress(seasonRes.data, remoteData, {
               seasonNumber: trackedSeasonNumber,
               today
@@ -581,6 +585,8 @@ router.post('/sync', syncRateLimit, limitForcedSync, preventConcurrentSync, asyn
           if (shouldApplyEpisodeCount || syncedEpisodeCount === previousEpisodeCount) {
             confirmEpisodeProgress(show, syncedEpisodeCount, {
               confirmedAt: checkedAt,
+              confirmationDate: today,
+              episodeDates,
               eventDate: remoteAirDate || today,
               updateCount: remoteSchedule.updateCount,
               source: 'tmdb'

@@ -336,11 +336,12 @@ test('opens a discovered single season without asking for a season choice', asyn
 
 test('syncs only on the visible tracker and automatically loads popular discovery', async ({ page }) => {
   const syncRequests = []
+  let calendarRequests = 0
   let trendingRequests = 0
   let newReleaseRequests = 0
   await mockSignedIn(page, { onSyncRequest: request => syncRequests.push(request) })
 
-  await page.route('**/api/shows/calendar', route => fulfillJson(route, []))
+  await page.route('**/api/shows/calendar', route => { calendarRequests++; return fulfillJson(route, []) })
   await page.route(/\/api\/shows(?:\?.*)?$/, route => fulfillJson(route, {
     items: [],
     pagination: { page: 1, limit: 24, total: 0, totalPages: 0, hasMore: false },
@@ -370,6 +371,7 @@ test('syncs only on the visible tracker and automatically loads popular discover
   expect(syncRequests[0].postDataJSON()).toMatchObject({ force: false })
   expect(syncRequests[0].postDataJSON().timeZone).toMatch(/\S/)
   await expect(page.getByText(/已同步/)).toBeVisible()
+  await expect.poll(() => calendarRequests).toBeGreaterThanOrEqual(2)
 
   await page.getByRole('button', { name: '智能同步 TMDB 数据' }).click()
   await expect.poll(() => syncRequests.length).toBe(2)
@@ -517,8 +519,8 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
   await expect(page.getByRole('heading', { name: 'First Show', level: 3 })).toBeVisible()
   const calendarWidget = page.locator('.update-calendar-widget')
   const currentCalendarItem = calendarWidget.locator('.show-item').filter({ hasText: 'Rebased Daily Show' })
-  await expect(currentCalendarItem.getByText('当前更新', { exact: true })).toBeVisible()
-  await expect(currentCalendarItem.getByText('Ep 19', { exact: true })).toBeVisible()
+  await expect(currentCalendarItem.getByText('当前进度', { exact: true })).toBeVisible()
+  await expect(currentCalendarItem.getByText('Ep.19', { exact: true })).toBeVisible()
   const firstCard = page.locator('.show-card').filter({ has: page.getByRole('heading', { name: 'First Show', level: 3 }) })
   const posterBounds = await firstCard.locator('.poster-preview-btn').boundingBox()
   const favoriteBounds = await firstCard.getByRole('button', { name: '喜爱 First Show' }).boundingBox()
@@ -561,9 +563,9 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
   await expect(calendarDialog).toBeVisible()
   await expect(calendarDialog.locator('.calendar-grid-view').getByText('Caught Up Weekly Show')).toBeVisible()
   const rebasedCalendarItems = calendarDialog.locator('.calendar-grid-view .mini-item-card').filter({ hasText: 'Rebased Daily Show' })
-  await expect(rebasedCalendarItems.getByText('已更 Ep.19', { exact: true })).toBeVisible()
+  await expect(rebasedCalendarItems.getByText('当前进度 · Ep.19', { exact: true })).toBeVisible()
   await calendarDialog.getByRole('button', { name: '上一周' }).click()
-  await expect(rebasedCalendarItems.getByText('已更 18-19', { exact: true })).toBeVisible()
+  await expect(rebasedCalendarItems.getByText('已更新 · 18-19', { exact: true })).toBeVisible()
   await expect(calendarDialog.locator('.timezone-label')).not.toBeEmpty()
   await calendarDialog.getByRole('button', { name: '关闭追剧日历' }).click()
   await expect(calendarDialog).toHaveCount(0)
@@ -826,6 +828,29 @@ test.describe('touch card layout', () => {
 test.describe('release calendar navigation', () => {
   test.use({ timezoneId: 'Asia/Shanghai', viewport: { width: 1440, height: 1000 } })
 
+  test('calendar rolls over at local midnight without another sync request', async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-09-27T15:59:50Z') })
+    const requests = []
+    await mockSignedIn(page, { onSyncRequest: request => requests.push(request) })
+    await page.route('**/api/shows/calendar', route => fulfillJson(route, []))
+    await page.route('**/api/tmdb/trending', route => fulfillJson(route, []))
+    await page.route(/\/api\/shows(?:\?.*)?$/, route => fulfillJson(route, {
+      items: [], pagination: { page: 1, total: 0, hasMore: false },
+      facets: { allCount: 0, statusCounts: {}, categoryCounts: {}, networks: [] }
+    }))
+    await page.goto('/home/tv-shows')
+    await page.getByRole('button', { name: '打开追剧日历', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: '追剧日历' })
+    await expect(dialog.locator('.day-column.is-today .day-circle')).toHaveText('27')
+    await page.clock.runFor(3000)
+    const count = requests.length
+    await page.clock.fastForward(12000)
+    await expect(dialog.locator('.day-column.is-today .day-circle')).toHaveText('28')
+    await dialog.getByRole('button', { name: '关闭追剧日历' }).click()
+    await expect(page.locator('.update-calendar-widget .day-item.active .day-number')).toHaveText('28')
+    expect(requests.length).toBe(count)
+  })
+
   test('switches week and month, highlights today and opens calendar entries', async ({ page }, testInfo) => {
     await page.clock.setFixedTime(new Date('2026-09-25T04:00:00Z'))
     await mockSignedIn(page)
@@ -840,6 +865,16 @@ test.describe('release calendar navigation', () => {
     await page.route(/\/api\/shows(?:\?.*)?$/, route => fulfillJson(route, { items: shows, pagination: { page: 1, total: 3, hasMore: false }, facets: { allCount: 3, statusCounts: { watching: 3 }, categoryCounts: {}, networks: [] } }))
     await page.goto('/home/tv-shows')
     const trigger = page.getByRole('button', { name: '打开追剧日历', exact: true })
+    const widget = page.locator('.update-calendar-widget')
+    await widget.getByRole('button', { name: '日 9月27日', exact: true }).click()
+    const sidebarEntry = widget.locator('.show-item').filter({ hasText: '山海之间' })
+    const sidebarEpisode = await sidebarEntry.locator('.show-episode').innerText()
+    const sidebarStatus = await sidebarEntry.locator('.entry-status').innerText()
+    await widget.getByRole('button', { name: '打开完整追剧日历' }).click()
+    const selectedDay = page.getByRole('dialog', { name: '追剧日历' }).locator('.day-column[data-selected="true"]')
+    await expect(selectedDay.locator('.day-circle')).toHaveText('27')
+    await expect(selectedDay.getByRole('link', { name: '播放 山海之间（新标签页）' }).locator('.entry-state')).toHaveText(`${sidebarStatus} · ${sidebarEpisode}`)
+    await page.getByRole('button', { name: '关闭追剧日历' }).click()
     await trigger.click()
     const dialog = page.getByRole('dialog', { name: '追剧日历' })
     await expect(dialog.locator('.day-column')).toHaveCount(7)

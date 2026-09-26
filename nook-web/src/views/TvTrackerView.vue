@@ -19,7 +19,7 @@
         @sync="syncData"
         @export="exportData"
         @import="triggerImport"
-        @open-calendar="showCalendar = true"
+        @open-calendar="openCalendar()"
         @add-season="openDiscoveredSeason"
         @remove-noti="removeNotification"
         @clear-notis="clearNotifications"
@@ -131,7 +131,7 @@
       </div>
 
       <div class="discovery-sidebar-column">
-        <UpdateCalendar :shows="calendarShows" @open-calendar="showCalendar = true" />
+        <UpdateCalendar :shows="calendarShows" @open-calendar="openCalendar" />
         <TrendingSidebar :shows="calendarShows" @details="openDiscoveryDetails" />
 
       </div>
@@ -140,7 +140,7 @@
 
     <ShowDetailsModal :show="detailShow" @close="detailSelection = null" @edit="openEditModal" @add="addFromDiscovery" />
     <EditShowModal v-model:visible="showModal" :edit-data="editingShow" :initial-selection="newShowPreset" :is-saving="isSavingShow" @save="saveShow" />
-    <CalendarModal v-model:visible="showCalendar" :shows="calendarShows" @details="openDetails" />
+    <CalendarModal v-model:visible="showCalendar" :shows="calendarShows" :initial-date="calendarInitialDate" @details="openDetails" />
     <input type="file" ref="fileInput" style="display: none" accept=".json" @change="handleFileUpload" />
   </div>
 </template>
@@ -194,6 +194,11 @@ const currentStatus = ref('watching');
 const currentNetwork = ref('all');
 const showModal = ref(false);
 const showCalendar = ref(false);
+const calendarInitialDate = ref(null);
+const openCalendar = (date = null) => {
+  calendarInitialDate.value = date;
+  showCalendar.value = true;
+};
 const isSyncing = ref(false);
 const isAutoSyncing = ref(false);
 const isLoading = ref(false); 
@@ -474,11 +479,11 @@ const saveShow = async (formData) => {
   isSavingShow.value = true;
   try {
     if (editingShow.value && editingShow.value._id) {
-      await updateShowApi(editingShow.value._id, formData);
+      await updateShowApi(editingShow.value._id, { ...formData, timeZone: getCurrentTimeZone() });
       showToast("编辑成功", "success");
     } else {
       const initialStatus = calcStatus(formData.watchedEpisodes, formData.airedEpisodes, formData.totalEpisodes);
-      await addShowApi({ ...formData, status: initialStatus });
+      await addShowApi({ ...formData, status: initialStatus, timeZone: getCurrentTimeZone() });
       if (pendingDiscoverySignature.value) {
         notifications.value = notifications.value.filter(
           notification => getNotificationSignature(notification) !== pendingDiscoverySignature.value
@@ -737,6 +742,7 @@ const runAutoSync = async () => {
     applySyncNotifications(response.data);
     recordSyncResult(response.data);
     if (response.data.changedCount > 0) await refreshShowData();
+    else await fetchCalendarShows();
   } catch (error) {
     if (!isSyncInProgressError(error)) recordSyncFailure(error);
     console.warn('Automatic TMDB sync failed:', getApiErrorMessage(error, '同步失败'));

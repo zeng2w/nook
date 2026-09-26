@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import process from 'node:process'
 
 import {
   calculateEpisodeForDate,
@@ -11,7 +12,29 @@ import {
   isShowUpdateDay,
   toCalendarDateInput,
   toLocalCalendarDate,
+  toLocalConfirmationDate,
 } from '../src/utils/dateUtils.js'
+
+test('confirmation instants use local dates on both sides of UTC', () => {
+  const original = process.env.TZ
+  try {
+    process.env.TZ = 'Asia/Shanghai'
+    assert.equal(toCalendarDateInput(toLocalConfirmationDate('2026-09-25T17:00:00Z')), '2026-09-26')
+    process.env.TZ = 'America/Chicago'
+    assert.equal(toCalendarDateInput(toLocalConfirmationDate('2026-09-26T01:00:00Z')), '2026-09-25')
+  } finally {
+    if (original === undefined) delete process.env.TZ
+    else process.env.TZ = original
+  }
+})
+
+test('unknown broadcast dates are labeled as cumulative snapshots', () => {
+  const entry = getCalendarEpisodeEntry({
+    episodeUpdateHistory: [{date: '2026-09-25', startEpisode: 25, endEpisode: 25, kind: 'snapshot'}]
+  }, '2026-09-25', '2026-09-26')
+  assert.equal(entry.statusText, '截至')
+  assert.equal(entry.episodeText, 'Ep 25')
+})
 
 test('calendar dates preserve their written day in the current timezone', () => {
   const date = toLocalCalendarDate('2026-08-22T23:30:00-05:00')

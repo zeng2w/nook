@@ -9,6 +9,9 @@
 const DATE_PARTS_PATTERN = /^(\d{4})-(\d{2})-(\d{2})/;
 const MAX_CALENDAR_ITERATIONS = 5000;
 
+// 确认时间是一个时刻；播出日期才需要保留字面日期。
+export const toLocalConfirmationDate = value => value ? toLocalCalendarDate(new Date(value)) : null;
+
 export const toLocalCalendarDate = (value) => {
   if (!value) return null;
 
@@ -152,7 +155,7 @@ const getProjectionAnchorDate = (show, referenceDate = new Date()) => {
   const lastUpdate = toLocalCalendarDate(show?.lastAirDate);
   if (!reference) return lastUpdate;
 
-  const confirmedAt = toLocalCalendarDate(show?.episodeProgressConfirmedAt);
+  const confirmedAt = toLocalConfirmationDate(show?.episodeProgressConfirmedAt);
   const confirmedDay = getCalendarDayNumber(confirmedAt);
   const referenceDay = getCalendarDayNumber(reference);
   const projectionReference = Number.isFinite(confirmedDay) && confirmedDay <= referenceDay
@@ -300,6 +303,14 @@ const getConfirmedHistoryEntry = (show, targetDate) => {
     : [];
   if (matches.length === 0) return null;
 
+  const snapshot = matches.find(entry => entry.kind === 'snapshot');
+  if (snapshot) return {
+    episodeText: `Ep ${snapshot.endEpisode}`,
+    type: 'confirmed',
+    statusText: '截至',
+    confirmedAt: snapshot.confirmedAt || show.episodeProgressConfirmedAt || null
+  };
+
   const startEpisode = Math.min(...matches.map(entry => Number(entry.startEpisode) || Infinity));
   const endEpisode = Math.max(...matches.map(entry => Number(entry.endEpisode) || 0));
   if (!Number.isFinite(startEpisode) || endEpisode < startEpisode) return null;
@@ -308,7 +319,7 @@ const getConfirmedHistoryEntry = (show, targetDate) => {
     episodeText: formatEpisodeRange(startEpisode, endEpisode),
     type: 'confirmed',
     statusText: '已更',
-    confirmedAt: show.episodeProgressConfirmedAt || matches.at(-1)?.date || null
+    confirmedAt: matches.at(-1)?.confirmedAt || show.episodeProgressConfirmedAt || null
   };
 };
 
@@ -331,14 +342,10 @@ export const getCalendarEpisodeEntry = (show, targetDate, referenceDate = new Da
     if (!hasHistory && isSameCalendarDay(target, show.lastAirDate)) {
       const airedEpisodes = Math.max(0, Number(show.airedEpisodes) || 0);
       if (airedEpisodes <= 0) return null;
-      const updateCount = Math.max(1, Number(show.updateCount) || 1);
       return {
-        episodeText: formatEpisodeRange(
-          Math.max(1, airedEpisodes - updateCount + 1),
-          airedEpisodes
-        ),
+        episodeText: `Ep ${airedEpisodes}`,
         type: 'confirmed',
-        statusText: '已更',
+        statusText: '截至',
         confirmedAt: show.episodeProgressConfirmedAt || show.lastAirDate || null
       };
     }
@@ -347,7 +354,7 @@ export const getCalendarEpisodeEntry = (show, targetDate, referenceDate = new Da
 
   if (show.updateFrequency === 'ended' || !isShowUpdateDay(show, target)) return null;
 
-  const confirmedAt = toLocalCalendarDate(show.episodeProgressConfirmedAt);
+  const confirmedAt = toLocalConfirmationDate(show.episodeProgressConfirmedAt);
   const isCurrentProgress = targetDay === referenceDay && (
     !confirmedAt || isSameCalendarDay(confirmedAt, reference)
   );
@@ -371,6 +378,22 @@ export const getCalendarEpisodeEntry = (show, targetDate, referenceDate = new Da
     statusText: hasExactNextDate ? '排期' : '预计',
     confirmedAt: show.episodeProgressConfirmedAt || null
   };
+};
+
+// 侧栏和完整日历共用文案，避免把累计进度解释为当天新播。
+export const getCalendarEntryPresentation = (entry, date, today) => {
+  const isToday = isSameCalendarDay(date, today);
+  const state = entry.type === 'confirmed' ? 'aired' : isToday ? 'pending' : 'upcoming';
+  const status = entry.type === 'estimated' ? (isToday ? '今日预计' : '预计更新')
+    : entry.type === 'scheduled' ? (isToday ? '今日待播' : '播出排期')
+    : entry.statusText === '截至' ? '截至当日'
+    : entry.statusText === '当前' ? '当前进度' : '已更新';
+  const episode = entry.episodeText.replace(/^Ep\s*/, 'Ep.');
+  const description = entry.type === 'estimated' ? '根据更新规律推算，以平台实际更新为准'
+    : entry.type === 'scheduled' ? '已有播出日期安排，不代表已经播出'
+    : entry.statusText === '已更' ? '记录的播出集数'
+    : '截至确认时的累计进度，不代表当天新增集数';
+  return { state, status, episode, badge: `${status} · ${episode}`, description };
 };
 
 // Broadcast completion is independent of the viewer's watched status.
