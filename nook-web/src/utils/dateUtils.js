@@ -303,23 +303,36 @@ const getConfirmedHistoryEntry = (show, targetDate) => {
     : [];
   if (matches.length === 0) return null;
 
-  const snapshot = matches.find(entry => entry.kind === 'snapshot');
-  if (snapshot) return {
+  const confirmationTime = entry => new Date(entry.confirmedAt || 0).getTime() || 0;
+  const snapshots = matches.filter(entry => entry.kind === 'snapshot').sort((a, b) => confirmationTime(b) - confirmationTime(a));
+  const snapshot = snapshots[0];
+  const broadcasts = matches.filter(entry => entry.kind !== 'snapshot');
+  const latestBroadcastTime = Math.max(0, ...broadcasts.map(confirmationTime));
+  if (snapshot && (!broadcasts.length || confirmationTime(snapshot) > latestBroadcastTime)) return {
     episodeText: `Ep ${snapshot.endEpisode}`,
     type: 'confirmed',
     statusText: '截至',
     confirmedAt: snapshot.confirmedAt || show.episodeProgressConfirmedAt || null
   };
 
-  const startEpisode = Math.min(...matches.map(entry => Number(entry.startEpisode) || Infinity));
-  const endEpisode = Math.max(...matches.map(entry => Number(entry.endEpisode) || 0));
-  if (!Number.isFinite(startEpisode) || endEpisode < startEpisode) return null;
+  const ranges = broadcasts.map(entry => [Number(entry.startEpisode), Number(entry.endEpisode)])
+    .filter(([start, end]) => Number.isInteger(start) && Number.isInteger(end) && start > 0 && end >= start)
+    .sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const [start, end] of ranges) {
+    const previous = merged.at(-1);
+    if (previous && start <= previous[1] + 1) previous[1] = Math.max(previous[1], end);
+    else merged.push([start, end]);
+  }
+  if (!merged.length) return null;
+  const latestBroadcast = broadcasts.reduce((latest, entry) => confirmationTime(entry) > confirmationTime(latest) ? entry : latest);
 
   return {
-    episodeText: formatEpisodeRange(startEpisode, endEpisode),
+    episodeText: merged.length === 1 ? formatEpisodeRange(...merged[0])
+      : merged.map(([start, end]) => start === end ? `${end}` : `${start}-${end}`).join('、'),
     type: 'confirmed',
     statusText: '已更',
-    confirmedAt: matches.at(-1)?.confirmedAt || show.episodeProgressConfirmedAt || null
+    confirmedAt: latestBroadcast.confirmedAt || show.episodeProgressConfirmedAt || null
   };
 };
 

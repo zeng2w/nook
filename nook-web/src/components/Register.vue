@@ -40,6 +40,15 @@
         Already have an account? <button type="button" class="link-text" @click="goToLogin">Log in</button>
       </div>
     </div>
+    <div v-else-if="configState === 'loading'" class="auth-card" role="status">
+      <h2 class="title">Checking registration…</h2>
+    </div>
+    <div v-else-if="configState === 'error'" class="auth-card" role="alert">
+      <h2 class="title">Unable to load registration</h2>
+      <p class="subtitle">Please check your connection and try again.</p>
+      <button type="button" class="auth-btn primary" @click="loadRegistrationConfig">Retry</button>
+      <div class="footer-link"><button type="button" class="link-text" @click="goToLogin">Back to login</button></div>
+    </div>
     <div v-else class="auth-card">
       <h2 class="title">Registration Disabled</h2>
       <p class="subtitle">This personal deployment is not accepting new accounts.</p>
@@ -63,7 +72,8 @@
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue';
+import { reactive, ref } from 'vue';
+import { useRegistrationConfig } from '@/composables/useRegistrationConfig';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import { getApiErrorMessage } from '@/api/errors';
@@ -73,16 +83,7 @@ defineOptions({ name: 'RegisterPage' });
 
 const router = useRouter();
 const isLoading = ref(false); // 加载状态防止重复提交
-const registrationEnabled = ref(false);
-
-onMounted(async () => {
-  try {
-    const response = await axios.get('/api/config');
-    registrationEnabled.value = response.data.registrationEnabled === true;
-  } catch {
-    registrationEnabled.value = false;
-  }
-});
+const { registrationEnabled, configState, loadRegistrationConfig } = useRegistrationConfig();
 
 const form = reactive({
   username: '',

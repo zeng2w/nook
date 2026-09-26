@@ -36,6 +36,24 @@ test('unknown broadcast dates are labeled as cumulative snapshots', () => {
   assert.equal(entry.episodeText, 'Ep 25')
 })
 
+test('new broadcast evidence supersedes an older snapshot, but a later correction wins', () => {
+  const snapshot = { date: '2026-09-26', kind: 'snapshot', startEpisode: 19, endEpisode: 19, confirmedAt: '2026-09-26T01:00:00Z' }
+  const broadcast = { date: '2026-09-26', kind: 'broadcast', startEpisode: 20, endEpisode: 21, confirmedAt: '2026-09-26T09:00:00Z' }
+  const show = { episodeUpdateHistory: [snapshot, broadcast] }
+  assert.equal(getCalendarEpisodeEntry(show, '2026-09-26', '2026-09-26').episodeText, '20-21')
+  snapshot.confirmedAt = '2026-09-26T10:00:00Z'
+  assert.equal(getCalendarEpisodeEntry(show, '2026-09-26', '2026-09-26').episodeText, 'Ep 19')
+  snapshot.confirmedAt = broadcast.confirmedAt
+  assert.equal(getCalendarEpisodeEntry(show, '2026-09-26', '2026-09-26').episodeText, '20-21')
+})
+
+test('history merges only adjacent or overlapping episode ranges', () => {
+  const show = { episodeUpdateHistory: [[20, 20], [22, 22], [23, 24], [24, 25], [28, 28]].map(([startEpisode, endEpisode]) => ({
+    date: '2026-09-26', kind: 'broadcast', startEpisode, endEpisode
+  })) }
+  assert.equal(getCalendarEpisodeEntry(show, '2026-09-26', '2026-09-26').episodeText, '20、22-25、28')
+})
+
 test('calendar dates preserve their written day in the current timezone', () => {
   const date = toLocalCalendarDate('2026-08-22T23:30:00-05:00')
 

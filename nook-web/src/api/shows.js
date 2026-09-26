@@ -7,7 +7,7 @@ export const fetchShowsApi = (params = {}) => {
 };
 
 export const fetchShowStatsApi = () => axios.get('/api/shows/stats');
-export const fetchCalendarShowsApi = () => axios.get('/api/shows/calendar');
+export const fetchCalendarShowsApi = () => axios.get('/api/shows/calendar', { timeout: 15000 });
 
 // 2. 添加新剧集
 export const addShowApi = (data) => {

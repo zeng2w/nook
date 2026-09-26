@@ -10,6 +10,7 @@
       </button>
     </div>
 
+    <CalendarLoadStatus :loading="loading" :error="error" :has-data="shows.length > 0" @retry="$emit('retry')" />
     <div class="week-selector">
       <button
         v-for="(day, index) in weekDays" 
@@ -31,9 +32,9 @@
     </div>
 
     <div class="shows-list-scroll-area">
-      <div v-if="showsList.length === 0" class="empty-state">当日暂无剧集更新</div>
+      <div v-if="showsList.length === 0 && !loading && !error" class="empty-state">当日暂无剧集更新</div>
       
-      <div v-else v-for="show in showsList" :key="show._id" class="show-item" :title="getEntryTitle(show)">
+      <div v-for="show in showsList" :key="show._id" class="show-item" :title="getEntryTitle(show)">
         <img v-if="show.posterUrl || show.poster_path" :src="show.posterUrl || show.poster_path" :alt="show.title || show.name" class="show-cover" loading="lazy" decoding="async" />
         <span v-else class="show-cover cover-placeholder" aria-hidden="true">{{ (show.title || show.name || '?').charAt(0) }}</span>
         
@@ -53,6 +54,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { useCalendarToday } from '@/composables/useCalendarToday';
+import CalendarLoadStatus from './CalendarLoadStatus.vue';
 import {
   getCalendarEpisodeEntry,
   getCalendarEntryPresentation,
@@ -63,9 +65,11 @@ import {
 } from '@/utils/dateUtils';
 
 const props = defineProps({
+  loading: Boolean,
+  error: { type: String, default: '' },
   shows: { type: Array, default: () => [] }
 });
-defineEmits(['open-calendar']);
+defineEmits(['open-calendar', 'retry']);
 
 const today = useCalendarToday();
 const selectedDate = ref(today.value);

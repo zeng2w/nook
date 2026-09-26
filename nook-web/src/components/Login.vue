@@ -37,6 +37,11 @@
       <div v-if="registrationEnabled" class="footer-link">
         No account yet? <button type="button" class="link-text" @click="goToRegister">Sign up</button>
       </div>
+      <p v-else-if="configState === 'loading'" class="footer-link" role="status">Checking registration availability…</p>
+      <div v-else-if="configState === 'error'" class="footer-link" role="alert">
+        Unable to check registration availability.
+        <button type="button" class="link-text" @click="loadRegistrationConfig">Retry</button>
+      </div>
     </div>
 
     <Transition name="slide-fade">
@@ -56,7 +61,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive } from 'vue';
+import { useRegistrationConfig } from '@/composables/useRegistrationConfig';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 import { getApiErrorMessage } from '@/api/errors';
@@ -68,16 +74,7 @@ const router = useRouter();
 const email = ref('');
 const password = ref('');
 const isLoading = ref(false);
-const registrationEnabled = ref(false);
-
-onMounted(async () => {
-  try {
-    const response = await axios.get('/api/config');
-    registrationEnabled.value = response.data.registrationEnabled === true;
-  } catch {
-    registrationEnabled.value = false;
-  }
-});
+const { registrationEnabled, configState, loadRegistrationConfig } = useRegistrationConfig();
 
 // Toast 状态
 const toast = reactive({

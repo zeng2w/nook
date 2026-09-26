@@ -52,6 +52,63 @@ const mockSignedIn = async (page, { onActivityRequest, onSyncRequest, syncRespon
   })
 }
 
+for (const path of ['/login', '/register']) {
+  test(`registration configuration distinguishes loading and failure on ${path}`, async ({ page }) => {
+    await mockSignedOut(page)
+    let pending
+    await page.route('**/api/config', route => { pending = route })
+    await page.goto(path)
+    await expect(page.getByRole('status')).toContainText('Checking registration')
+    await expect(page.getByText('Registration Disabled', { exact: true })).toHaveCount(0)
+    await expect.poll(() => Boolean(pending)).toBe(true)
+    await fulfillJson(pending, {}, 503)
+    await expect(page.getByRole('alert')).toContainText('Unable')
+    await page.route('**/api/config', route => fulfillJson(route, { registrationEnabled: true }))
+    await page.getByRole('button', { name: 'Retry', exact: true }).click()
+    await expect(page.getByRole('button', { name: /Sign up/i })).toBeVisible()
+    await page.route('**/api/config', route => fulfillJson(route, { registrationEnabled: false }))
+    await page.goto('/register')
+    await expect(page.getByRole('heading', { name: 'Registration Disabled' })).toBeVisible()
+  })
+}
+
+test('calendar keeps newer data when an old request finishes and supports retry', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-09-26T12:00:00Z'))
+  await mockSignedIn(page)
+  await page.route('**/api/tmdb/trending', route => fulfillJson(route, []))
+  await page.route(/\/api\/shows(?:\?.*)?$/, route => fulfillJson(route, {
+    items: [], pagination: { page: 1, total: 0, hasMore: false },
+    facets: { allCount: 0, statusCounts: {}, categoryCounts: {}, networks: [] }
+  }))
+  const show = { _id: '507f1f77bcf86cd799439081', title: 'Latest Calendar Show', status: 'watching', airedEpisodes: 21,
+    updateFrequency: 'daily', updateCount: 1, totalEpisodes: 30, lastAirDate: '2026-09-26' }
+  let firstRequest
+  let count = 0
+  let fail = false
+  await page.route('**/api/shows/calendar', route => {
+    count++
+    if (count === 1) { firstRequest = route; return }
+    return fail ? fulfillJson(route, {}, 503) : fulfillJson(route, [show])
+  })
+  await page.goto('/home/tv-shows')
+  const widget = page.locator('.update-calendar-widget')
+  await expect(widget.getByText('Latest Calendar Show')).toBeVisible()
+  await fulfillJson(firstRequest, [])
+  await expect(widget.getByText('Latest Calendar Show')).toBeVisible()
+  fail = true
+  await page.getByRole('button', { name: '智能同步 TMDB 数据' }).click()
+  await expect(widget.getByRole('alert')).toContainText('当前显示上次加载的数据')
+  await expect(widget.getByText('Latest Calendar Show')).toBeVisible()
+  await page.getByRole('button', { name: '打开完整追剧日历' }).click()
+  const dialog = page.getByRole('dialog', { name: '追剧日历' })
+  await expect(dialog.getByRole('alert')).toContainText('日历加载失败')
+  fail = false
+  await dialog.getByRole('button', { name: '重试', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toHaveCount(0)
+  await dialog.getByRole('button', { name: '关闭追剧日历' }).click()
+  await expect(widget.getByRole('alert')).toHaveCount(0)
+})
+
 test('redirects the app root to login', async ({ page }) => {
   await mockSignedOut(page)
   await page.goto('/')

@@ -10,6 +10,7 @@
           <button class="close-btn" aria-label="关闭追剧日历" @click="close">✕</button>
         </div>
       </header>
+      <CalendarLoadStatus :loading="loading" :error="error" :has-data="shows.length > 0" @retry="$emit('retry')" />
       <div class="calendar-scroll">
         <div class="calendar-grid-view" :class="{ 'month-view': view === 'month' }">
           <template v-if="view === 'month'"><div v-for="label in weekDays" :key="label" class="month-weekday">{{ label }}</div></template>
@@ -23,11 +24,11 @@
           </section>
         </div>
         <div class="mobile-agenda-view">
-          <p v-if="!mobileAgendaDays.length" class="agenda-day-empty">{{ view === 'week' ? '本周' : '本月' }}暂无更新安排</p>
+          <p v-if="!mobileAgendaDays.length && !loading && !error" class="agenda-day-empty">{{ view === 'week' ? '本周' : '本月' }}暂无更新安排</p>
           <section v-for="day in mobileAgendaDays" :key="day.key" class="agenda-day" :class="dayClasses(day)" :data-selected="isSameCalendarDay(day.date, anchor)">
             <div class="agenda-day-header"><strong>{{ formatDate(day.date) }}</strong><span>{{ isToday(day.date) ? '今天 · ' : '' }}{{ day.items.length }} 部</span></div>
             <CalendarEntry v-for="item in day.items" :key="item.show._id" :item="item" :date="day.date" :today="today" @details="openDetails" />
-            <p v-if="!day.items.length" class="agenda-day-empty">今天暂无更新</p>
+            <p v-if="!day.items.length && !loading && !error" class="agenda-day-empty">今天暂无更新</p>
           </section>
         </div>
       </div>
@@ -38,10 +39,11 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
 import CalendarEntry from './CalendarEntry.vue';
+import CalendarLoadStatus from './CalendarLoadStatus.vue';
 import { useCalendarToday } from '@/composables/useCalendarToday';
 import { getCalendarEpisodeEntry, getCurrentTimeZoneLabel, isSameCalendarDay, toLocalCalendarDate, toCalendarDateInput } from '@/utils/dateUtils';
-const props = defineProps({ visible: Boolean, shows: { type: Array, default: () => [] }, initialDate: { type: Date, default: null } });
-const emit = defineEmits(['update:visible', 'details']);
+const props = defineProps({ visible: Boolean, shows: { type: Array, default: () => [] }, initialDate: { type: Date, default: null }, loading: Boolean, error: { type: String, default: '' } });
+const emit = defineEmits(['update:visible', 'details', 'retry']);
 const today = useCalendarToday();
 const dialog = ref(null), view = ref('week'), anchor = ref(today.value), expanded = ref({});
 watch(today, (current, previous) => {

@@ -131,7 +131,7 @@
       </div>
 
       <div class="discovery-sidebar-column">
-        <UpdateCalendar :shows="calendarShows" @open-calendar="openCalendar" />
+        <UpdateCalendar :shows="calendarShows" :loading="calendarLoading" :error="calendarError" @retry="fetchCalendarShows" @open-calendar="openCalendar" />
         <TrendingSidebar :shows="calendarShows" @details="openDiscoveryDetails" />
 
       </div>
@@ -140,7 +140,7 @@
 
     <ShowDetailsModal :show="detailShow" @close="detailSelection = null" @edit="openEditModal" @add="addFromDiscovery" />
     <EditShowModal v-model:visible="showModal" :edit-data="editingShow" :initial-selection="newShowPreset" :is-saving="isSavingShow" @save="saveShow" />
-    <CalendarModal v-model:visible="showCalendar" :shows="calendarShows" :initial-date="calendarInitialDate" @details="openDetails" />
+    <CalendarModal v-model:visible="showCalendar" :shows="calendarShows" :loading="calendarLoading" :error="calendarError" :initial-date="calendarInitialDate" @retry="fetchCalendarShows" @details="openDetails" />
     <input type="file" ref="fileInput" style="display: none" accept=".json" @change="handleFileUpload" />
   </div>
 </template>
@@ -209,6 +209,9 @@ const loadError = ref('');
 const mainColumn = ref(null);
 const shows = ref([]);
 const calendarShows = ref([]);
+const calendarLoading = ref(false);
+const calendarError = ref('');
+let calendarRequestId = 0;
 const showPagination = reactive({ page: 0, limit: 24, total: 0, totalPages: 0, hasMore: false });
 const showFacets = reactive({
   allCount: 0,
@@ -428,11 +431,19 @@ const fetchShows = async (reset = true) => {
 };
 
 const fetchCalendarShows = async () => {
+  const requestId = ++calendarRequestId;
+  calendarLoading.value = true;
+  calendarError.value = '';
   try {
     const response = await fetchCalendarShowsApi();
+    if (requestId !== calendarRequestId) return;
     calendarShows.value = response.data.map(preservePendingProgress);
   } catch (error) {
+    if (requestId !== calendarRequestId) return;
+    calendarError.value = '日历加载失败';
     console.error('Calendar data load failed:', error);
+  } finally {
+    if (requestId === calendarRequestId) calendarLoading.value = false;
   }
 };
 
