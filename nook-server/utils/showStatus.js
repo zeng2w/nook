@@ -10,7 +10,7 @@ const deriveShowStatus = (show = {}) => {
   const totalEpisodes = toNonNegativeInteger(show.totalEpisodes);
   const airedEpisodes = toNonNegativeInteger(show.airedEpisodes);
 
-  if (watchedEpisodes === 0) return 'wish';
+  if (watchedEpisodes === 0) return show.trackingStarted ? 'watching' : 'wish';
   if (
     totalEpisodes > 0 &&
     airedEpisodes >= totalEpisodes &&
@@ -30,6 +30,7 @@ const getSyncedEpisodeCount = (show = {}, remoteEpisodeCount) => {
 const applyDerivedShowStatus = (show) => {
   const nextStatus = deriveShowStatus(show);
   if (show.status === nextStatus) return false;
+  if (nextStatus === 'watched') show.completedAt = new Date();
   show.status = nextStatus;
   return true;
 };

@@ -51,3 +51,18 @@ test('a locked local total caps TMDB aired progress without changing unlocked sh
   assert.equal(getSyncedEpisodeCount({ totalEpisodesLocked: false, totalEpisodes: 12 }, 13), 13);
   assert.equal(getSyncedEpisodeCount({ totalEpisodesLocked: true, totalEpisodes: 0 }, 13), 13);
 });
+
+test('starting at zero stays watching and completion records the viewing date once', () => {
+  assert.equal(deriveShowStatus({ trackingStarted: true, watchedEpisodes: 0 }), 'watching');
+  const show = { status: 'watching', watchedEpisodes: 12, airedEpisodes: 12, totalEpisodes: 12 };
+  applyDerivedShowStatus(show);
+  assert.equal(show.status, 'watched');
+  assert.ok(show.completedAt instanceof Date);
+  const date = show.completedAt;
+  applyDerivedShowStatus(show);
+  assert.equal(show.completedAt, date);
+  Object.assign(show, { status: 'watching', watchedEpisodes: 0, trackingStarted: true });
+  applyDerivedShowStatus(show);
+  assert.equal(show.status, 'watching');
+  assert.equal(show.completedAt, date);
+});

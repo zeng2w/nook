@@ -18,3 +18,9 @@ test('an explicit dropped status is preserved', () => {
     totalEpisodes: 12,
   }), 'dropped')
 })
+
+test('explicitly started shows stay watching at zero without inventing viewed episodes', () => {
+  assert.equal(deriveShowStatus({ trackingStarted: true, watchedEpisodes: 0 }), 'watching')
+  assert.equal(deriveShowStatus({ status: 'dropped', trackingStarted: true, watchedEpisodes: 0 }), 'dropped')
+  assert.equal(deriveShowStatus({ trackingStarted: true, watchedEpisodes: 12, airedEpisodes: 12, totalEpisodes: 12 }), 'watched')
+})

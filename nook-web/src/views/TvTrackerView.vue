@@ -54,6 +54,7 @@
             <span v-else>{{ activeFilterSummary }} · {{ showPagination.total }} 部</span>
             <button @click="clearSecondaryFilters">清除筛选</button>
           </div>
+          <div v-for="show in premiereNotices" :key="`premiere-${show._id}`" class="premiere-notice" role="status">《{{ show.title }}》已开播<button @click="openDetails(show)">查看作品</button><button @click="dismissPremiere(show)">知道了</button></div>
           <div v-for="failure in failedProgress" :key="failure._id" class="inline-error" role="alert">《{{ failure.title }}》进度未同步，已保留本次输入。<button @click="retryProgress(failure)">重试保存</button></div>
           <div v-if="loadError && shows.length" class="inline-error" role="alert">{{ loadError }}，当前显示上次加载的结果。<button @click="fetchShows(true)">重试</button></div>
           <div v-if="isLoading && !shows.length" class="loading-state">
@@ -78,7 +79,7 @@
 
           <template v-else>
             <div v-if="viewMode === 'grid'" class="grid-layout">
-              <ShowGridCard 
+              <component :is="show.status === 'watching' ? ShowGridCard : InactiveShowCard" :on-state-action="changeInactiveState"
                 v-for="show in displayShows" 
                 :key="show._id" 
                 :show="show"
@@ -100,7 +101,7 @@
             </div>
 
             <div v-else class="list-layout-container">
-              <ShowListItem
+              <component :is="show.status === 'watching' ? ShowListItem : InactiveShowCard" :on-state-action="changeInactiveState" compact-list
                 v-for="show in displayShows" 
                 :key="show._id" 
                 :show="show"
@@ -159,6 +160,7 @@ import { readJsonStorage, writeJsonStorage } from '@/utils/storage';
 
 import TvHeader from '@/components/TvTracker/TvHeader.vue';
 import FilterBar from '@/components/TvTracker/FilterBar.vue';
+import InactiveShowCard from '@/components/TvTracker/InactiveShowCard.vue';
 import ShowGridCard from '@/components/TvTracker/ShowGridCard.vue';
 import ShowListItem from '@/components/TvTracker/ShowListItem.vue';
 import EditShowModal from '@/components/TvTracker/EditShowModal.vue';
@@ -383,7 +385,7 @@ const showToast = (msg, type = 'success') => { toast.message = msg; toast.type =
 const preservePendingProgress = show => {
   const state = progressStates[show._id];
   if (!state || state.state === 'saved') return show;
-  return { ...show, ...state.correction, watchedEpisodes: state.target, status: show.status === 'dropped' ? 'dropped' : calcStatus(state.target, show.airedEpisodes, state.correction?.totalEpisodes ?? show.totalEpisodes) };
+  return { ...show, ...state.correction, watchedEpisodes: state.target, status: show.status === 'dropped' ? 'dropped' : calcStatus(state.target, show.airedEpisodes, state.correction?.totalEpisodes ?? show.totalEpisodes, show.trackingStarted) };
 };
 
 const fetchShows = async (reset = true) => {
@@ -471,7 +473,8 @@ watch(searchQuery, () => {
   searchTimer = setTimeout(() => { mainColumn.value?.scrollTo({ top: 0 }); fetchShows(true); }, 300);
 });
 
-const calcStatus = (watchedEpisodes, airedEpisodes, totalEpisodes) => deriveShowStatus({
+const calcStatus = (watchedEpisodes, airedEpisodes, totalEpisodes, trackingStarted = false) => deriveShowStatus({
+  trackingStarted,
   watchedEpisodes,
   airedEpisodes,
   totalEpisodes
@@ -538,7 +541,7 @@ const progressQueue = createProgressQueue({
       showFacets.statusCounts[saved.status] = (showFacets.statusCounts[saved.status] || 0) + 1;
     }
     confirmedStatuses[id] = saved.status;
-    const overrides = { watchedEpisodes: target, status: calcStatus(target, saved.airedEpisodes, saved.totalEpisodes) };
+    const overrides = { watchedEpisodes: target, status: calcStatus(target, saved.airedEpisodes, saved.totalEpisodes, saved.trackingStarted) };
     Object.assign(progressModels[id], saved, overrides);
     patchShowCollections(saved, overrides);
   }
@@ -551,7 +554,7 @@ const setProgress = (show, target, correction) => {
   if (value === show.watchedEpisodes && !correction) return;
   confirmedStatuses[show._id] ??= show.status;
   progressModels[show._id] = show;
-  const patch = { _id: show._id, ...correction, watchedEpisodes: value, status: calcStatus(value, show.airedEpisodes, total) };
+  const patch = { _id: show._id, ...correction, watchedEpisodes: value, status: calcStatus(value, show.airedEpisodes, total, show.trackingStarted) };
   Object.assign(show, patch);
   patchShowCollections(patch);
   progressQueue.set(show._id, value, correction);
@@ -634,6 +637,17 @@ const dropShow = async (show) => {
     show.status = originalStatus;
     showToast(`${getApiErrorMessage(err, '状态更新失败')}，已回滚`, 'error');
   }
+};
+const changeInactiveState = async (show, patch) => {
+  if (!await settleProgress(show)) throw new Error('请先同步观看进度');
+  const response = await updateShowApi(show._id, patch);
+  patchShowCollections(response.data);
+  await refreshShowData();
+};
+const premiereNotices = computed(() => calendarShows.value.filter(show => show.premiereReminder && show.status === 'wish' && show.airedEpisodes > 0));
+const dismissPremiere = async show => {
+  try { await changeInactiveState(show, { premiereReminder: false }); }
+  catch (error) { showToast(getApiErrorMessage(error, '提醒更新失败'), 'error'); }
 };
 const restoreShow = async (show) => {
   if (!await settleProgress(show)) return;
@@ -925,4 +939,5 @@ const handleFileUpload = (event) => {
 .filter-loading.active::after { content: ""; display: block; width: 35%; height: 100%; background: #9373b5; animation: filter-loading 1.2s ease-in-out infinite alternate; }
 @keyframes filter-loading { to { transform: translateX(185%); } }
 @media (prefers-reduced-motion: reduce) { .filter-loading.active::after { animation: none; width: 100%; } }
+.premiere-notice { padding: 12px; margin-bottom: 12px; border-radius: 10px; background: #f0edf8; color: #705389; font-size: 13px; }.premiere-notice button { border: 0; background: transparent; color: inherit; padding: 10px; cursor: pointer; }
 </style>

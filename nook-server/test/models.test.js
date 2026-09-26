@@ -157,3 +157,12 @@ test('playback links accept web URLs and reject executable or malformed URLs', a
     await assert.rejects(show.validate());
   }
 });
+
+test('personal ratings use the ten point scale independently of public ratings', async () => {
+  for (const personalRating of [null, 0, 9, 10]) {
+    await new Show({ userId: USER_ID, title: 'Rated', category: 'tv', personalRating }).validate();
+  }
+  for (const personalRating of [-1, 11, 2.4]) {
+    await assert.rejects(new Show({ userId: USER_ID, title: 'Rated', category: 'tv', personalRating }).validate());
+  }
+});

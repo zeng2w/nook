@@ -73,6 +73,7 @@
           </div>
 
           <div class="form-group compact-group">
+            <label for="show-release-date">首播日期（可选）</label><input id="show-release-date" v-model="form.releaseDate" type="date" class="modern-input" />
             <label for="show-play-url">播放链接（可选）</label>
             <input id="show-play-url" ref="playUrlInput" v-model.trim="form.playUrl" type="url" pattern="https?://.+" maxlength="2048" class="modern-input" placeholder="粘贴平台作品页链接，日历卡片可直达" />
           </div>
@@ -243,6 +244,8 @@ const createInitialForm = () => ({
   nextAirDate: '',
   posterUrl: '',
   playUrl: '',
+  releaseDate: '',
+  trackingStarted: false,
   network: '',
   networkLogo: '',
   tmdbId: null,
@@ -280,6 +283,7 @@ const minimumTotalEpisodes = computed(() => Math.max(
 ));
 
 const replaceForm = (data = {}) => {
+  data = { ...data, releaseDate: toCalendarDateInput(data.releaseDate) };
   const hasLastAirDate = Object.prototype.hasOwnProperty.call(data, 'lastAirDate');
   Object.keys(form).forEach(key => delete form[key]);
   Object.assign(form, createInitialForm(), data, {
@@ -405,6 +409,7 @@ const selectTMDBResult = async (item, preferredSeasonNumber = null) => {
   form.title = item.title;
   form.category = item.category;
   form.posterUrl = item.posterUrl;
+  form.releaseDate = toCalendarDateInput(item.releaseDate);
   availableSeasons.value = [];
   selectedSeasonNumber.value = null;
   selectedSeriesDetails.value = null;

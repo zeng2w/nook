@@ -15,6 +15,12 @@ const ShowSchema = new mongoose.Schema({
   category: { type: String, enum: ['tv', 'anime', 'movie', 'variety'], required: true },
   status: { type: String, enum: ['wish', 'watching', 'watched', 'dropped'], default: 'watching' },
   
+  trackingStarted: { type: Boolean, default: false },
+  personalRating: { type: Number, default: null, min: 0, max: 10, validate: value => value == null || Number.isInteger(value) },
+  completedAt: { type: Date, default: null },
+  premiereReminder: { type: Boolean, default: false },
+  releaseDate: { type: Date, default: null },
+
   // 进度数据
   totalEpisodes: { type: Number, default: 0, min: 0, validate: Number.isInteger },
   airedEpisodes: { type: Number, default: 0, min: 0, validate: Number.isInteger },

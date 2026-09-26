@@ -10,7 +10,7 @@ export const deriveShowStatus = (show = {}) => {
   const airedEpisodes = toNonNegativeInteger(show.airedEpisodes)
   const totalEpisodes = toNonNegativeInteger(show.totalEpisodes)
 
-  if (watchedEpisodes === 0) return 'wish'
+  if (watchedEpisodes === 0) return show.trackingStarted ? 'watching' : 'wish'
   if (
     totalEpisodes > 0 &&
     airedEpisodes >= totalEpisodes &&
