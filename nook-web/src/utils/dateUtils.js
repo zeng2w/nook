@@ -52,18 +52,6 @@ const addCalendarDays = (value, amount) => {
   return date;
 };
 
-const addCalendarMonths = (value, amount, anchorDay) => {
-  const date = toLocalCalendarDate(value);
-  if (!date) return null;
-  const desiredDay = anchorDay || date.getDate();
-  date.setDate(1);
-  date.setMonth(date.getMonth() + amount);
-  const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  date.setDate(Math.min(desiredDay, lastDay));
-  date.setHours(12, 0, 0, 0);
-  return date;
-};
-
 export const getCurrentTimeZone = () => (
   Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 );
@@ -218,26 +206,16 @@ export const getEstimatedDateText = (show, referenceDate = new Date()) => {
   const updatesNeeded = Math.ceil(remaining / episodesPerUpdate);
   let finishDate = projectionAnchor;
 
-  if (show.updateFrequency === 'daily') {
-    finishDate = addCalendarDays(projectionAnchor, updatesNeeded);
-  } else if (show.updateFrequency === 'weekly') {
-    let completedUpdates = 0;
-    let iterations = 0;
-    while (completedUpdates < updatesNeeded && iterations < MAX_CALENDAR_ITERATIONS) {
-      finishDate = addCalendarDays(finishDate, 1);
-      if (isShowUpdateDay(show, finishDate)) completedUpdates++;
-      iterations++;
-    }
-    if (completedUpdates < updatesNeeded) return '待定';
-  } else if (show.updateFrequency === 'monthly') {
-    finishDate = addCalendarMonths(
-      projectionAnchor,
-      updatesNeeded,
-      projectionAnchor.getDate()
-    );
-  } else {
-    return '待定';
+  if (!['daily', 'weekly', 'monthly'].includes(show.updateFrequency)) return '待定';
+  // 与日历集数预测使用同一个更新日判断，包括停播期、明确排期和月末。
+  let completedUpdates = 0;
+  let iterations = 0;
+  while (completedUpdates < updatesNeeded && iterations < MAX_CALENDAR_ITERATIONS) {
+    finishDate = addCalendarDays(finishDate, 1);
+    if (isShowUpdateDay(show, finishDate)) completedUpdates++;
+    iterations++;
   }
+  if (completedUpdates < updatesNeeded) return '待定';
 
   return finishDate ? `预计：${formatDateCN(finishDate)}` : '日期无效';
 };

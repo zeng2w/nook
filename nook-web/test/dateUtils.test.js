@@ -237,6 +237,29 @@ test('estimated finish dates use local calendar arithmetic', () => {
   assert.equal(isAfterCalendarDay('2026-08-22', '2026-08-22T00:00:00.000Z'), false)
 })
 
+test('daily finish estimates skip the same hiatus as calendar projections', () => {
+  const show = {
+    airedEpisodes: 19, totalEpisodes: 21, updateFrequency: 'daily', updateCount: 1,
+    lastAirDate: '2026-09-23', nextAirDate: '2026-10-01',
+  }
+  assert.equal(getEstimatedDateText(show, '2026-09-26'), '预计：2026年10月2日')
+  assert.equal(calculateEpisodeForDate(show, '2026-10-01', '2026-09-26'), 'Ep 20')
+  assert.equal(calculateEpisodeForDate(show, '2026-10-02', '2026-09-26'), 'Ep 21')
+  assert.equal(getEstimatedDateText({ ...show, updateCount: 2 }, '2026-09-26'), '预计：2026年10月1日')
+  assert.equal(getEstimatedDateText({ ...show, scheduleLocked: true }, '2026-09-26'), '预计：2026年9月28日')
+})
+
+test('monthly finish estimates respect hiatuses and preserve the original month-end schedule', () => {
+  const show = {
+    airedEpisodes: 3, totalEpisodes: 5, updateFrequency: 'monthly', updateCount: 1,
+    lastAirDate: '2026-01-31', nextAirDate: '2026-04-30',
+  }
+  assert.equal(getEstimatedDateText(show, '2026-02-28'), '预计：2026年5月31日')
+  assert.equal(calculateEpisodeForDate(show, '2026-04-30', '2026-02-28'), 'Ep 4')
+  assert.equal(calculateEpisodeForDate(show, '2026-05-31', '2026-02-28'), 'Ep 5')
+  assert.equal(getEstimatedDateText({ ...show, nextAirDate: null, totalEpisodes: 4 }, '2026-02-28'), '预计：2026年3月31日')
+})
+
 test('completion captions distinguish a broadcast ending from watched status', async () => {
   const { getCompletionCaption } = await import('../src/utils/dateUtils.js');
   assert.equal(getCompletionCaption({ updateFrequency: 'ended', lastAirDate: '2026-10-30' }), '2026.10.30 播毕');
