@@ -45,8 +45,29 @@ test('uses the current episode number during the first season', () => {
   assert.equal(count, 6);
 });
 
-test('falls back to the total when no last episode is available', () => {
-  assert.equal(getAiredEpisodeCount({ number_of_episodes: 20 }), 20);
+test('a planned total is not treated as aired when no last episode is available', () => {
+  assert.equal(getAiredEpisodeCount({ number_of_episodes: 20 }), 0);
+});
+
+test('today and overdue schedules stay pending until the API confirms the episode', () => {
+  const season = { season_number: 1, episodes: [
+    { episode_number: 19, air_date: '2026-09-25' },
+    { episode_number: 20, air_date: '2026-09-26' },
+    { episode_number: 21, air_date: '2026-09-28', episode_type: 'finale' }
+  ] };
+  const series = { status: 'Returning Series',
+    last_episode_to_air: { season_number: 1, episode_number: 19, air_date: '2026-09-25' },
+    next_episode_to_air: { season_number: 1, episode_number: 20, air_date: '2026-09-26' }
+  };
+  const before = getTmdbSeasonProgress(season, series, { today: '2026-09-28' });
+  assert.equal(before.airedEpisodes, 19);
+  assert.equal(before.lastAirDate, '2026-09-25');
+  assert.equal(before.isEnded, false);
+  const after = getTmdbSeasonProgress(season, {
+    ...series, last_episode_to_air: { season_number: 1, episode_number: 20, air_date: '2026-09-26' }
+  }, { today: '2026-09-28' });
+  assert.equal(after.airedEpisodes, 20);
+  assert.equal(getTmdbSeasonProgress(season, {}, { today: '2026-09-28' }).airedEpisodes, 0);
 });
 
 test('recommends the currently updating or most recently updated season', () => {
@@ -124,6 +145,7 @@ test('calculates progress and the next episode for one season', () => {
   }, {
     name: 'Example Show',
     status: 'Returning Series',
+    last_episode_to_air: { season_number: 2, episode_number: 2, air_date: '2026-08-10' },
     next_episode_to_air: { season_number: 2, episode_number: 3, air_date: '2026-08-30' },
     seasons: [{ season_number: 2, air_date: '2026-08-03', episode_count: 3 }]
   }, { today: '2026-08-23' });

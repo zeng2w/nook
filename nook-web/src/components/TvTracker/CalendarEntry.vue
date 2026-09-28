@@ -22,6 +22,7 @@ const badge = computed(() => presentation.value.badge);
 const description = computed(() => presentation.value.description);
 </script>
 <style scoped>
+.progress { color: #756b85; background: #f3f1f6; }
 .mini-item-card { position: relative; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 8px; padding: 9px 15px 9px 9px; background: #fff; border: 1px solid #eceaf0; border-radius: 10px; box-shadow: 0 2px 5px #30234504; color: #373344; text-align: left; text-decoration: none; font: inherit; cursor: pointer; transition: transform .16s, box-shadow .16s, border-color .16s; min-width: 0; }
 .mini-item-card:hover { transform: translateY(-2px); border-color: #cfc2e0; box-shadow: 0 5px 14px #55416e10; }.mini-item-card:focus-visible { outline: 2px solid #9472b6; outline-offset: 2px; }
 .mini-poster { width: 32px; aspect-ratio: 2/3; flex-shrink: 0; border-radius: 5px; overflow: hidden; background: #f0edf5; display: grid; place-items: center; color: #9686a8; }.mini-poster img { width: 100%; height: 100%; object-fit: cover; }

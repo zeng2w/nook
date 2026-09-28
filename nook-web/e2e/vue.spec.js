@@ -109,6 +109,40 @@ test('calendar keeps newer data when an old request finishes and supports retry'
   await expect(widget.getByRole('alert')).toHaveCount(0)
 })
 
+test('new episode notifications survive reload and stay read until another update arrives', async ({ page }) => {
+  const log = { id: '507f1f77bcf86cd799439081', title: 'Notification Show', oldEp: 19, newEp: 20, date: '2026-09-28' }
+  await mockSignedIn(page, { syncResponse: { logs: [log], updatedCount: 1 } })
+  await page.route('**/api/shows/calendar', route => fulfillJson(route, []))
+  await page.route('**/api/tmdb/trending', route => fulfillJson(route, []))
+  await page.route(/\/api\/shows(?:\?.*)?$/, route => fulfillJson(route, {
+    items: [], pagination: { page: 1, total: 0, hasMore: false },
+    facets: { allCount: 0, statusCounts: {}, categoryCounts: {}, networks: [] }
+  }))
+  await page.goto('/home/tv-shows')
+  const unread = page.getByRole('status', { name: '有未读更新' })
+  await expect(unread).toBeVisible()
+  await page.reload()
+  await expect(unread).toBeVisible()
+  await page.getByRole('button', { name: '消息通知', exact: true }).click()
+  await expect(page.locator('.noti-item')).toHaveCount(1)
+  await expect(page.locator('.noti-item')).toContainText('第 20 集')
+  await expect(unread).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByRole('button', { name: '消息通知', exact: true })).toBeVisible()
+  await expect(unread).toHaveCount(0)
+  await page.getByRole('button', { name: '智能同步 TMDB 数据' }).click()
+  await expect(page.getByRole('button', { name: '智能同步 TMDB 数据' })).toBeEnabled()
+  await expect(unread).toHaveCount(0)
+  await page.route('**/api/shows/sync', route => fulfillJson(route, { changedCount: 0, updatedCount: 1, logs: [{ ...log, oldEp: 20, newEp: 21 }] }))
+  await page.getByRole('button', { name: '智能同步 TMDB 数据' }).click()
+  await expect(unread).toBeVisible()
+  await page.getByRole('button', { name: '消息通知', exact: true }).click()
+  await expect(page.locator('.noti-item')).toHaveCount(2)
+  await page.getByRole('button', { name: '清空通知' }).click()
+  await expect(page.locator('.noti-item')).toHaveCount(0)
+  await expect(unread).toHaveCount(0)
+})
+
 test('redirects the app root to login', async ({ page }) => {
   await mockSignedOut(page)
   await page.goto('/')
@@ -601,6 +635,8 @@ test('loads, filters, adds, and edits shows through the paginated API', async ({
 
   await page.locator('body').press('ControlOrMeta+k')
   await expect(page.getByRole('textbox', { name: '搜索剧集名称' })).toBeFocused()
+  // 等首次自动同步的日历刷新完成，再检查观看进度操作不会额外拉取日历。
+  await expect.poll(() => calendarRequests).toBeGreaterThanOrEqual(2)
   const listRequestCount = listRequests.length
   const calendarRequestCount = calendarRequests
   const posterButton = page.getByRole('button', { name: '查看 First Show 海报' })

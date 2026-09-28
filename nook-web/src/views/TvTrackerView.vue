@@ -23,7 +23,7 @@
         @add-season="openDiscoveredSeason"
         @remove-noti="removeNotification"
         @clear-notis="clearNotifications"
-        @noti-read="hasNewNotis = false"
+        @noti-read="markNotificationsRead"
       />
     </header>
 
@@ -243,7 +243,7 @@ const activeFilterSummary = computed(() => [
   searchQuery.value.trim() ? `搜索「${searchQuery.value.trim()}」` : ''
 ].filter(Boolean).join(' · '));
 const notifications = ref([]);
-const hasNewNotis = ref(false);
+const hasNewNotis = computed(() => notifications.value.some(item => item.read !== true));
 const fileInput = ref(null);
 const toast = reactive({ visible: false, message: '', type: 'success' });
 const syncStatus = reactive({
@@ -483,7 +483,7 @@ const calcStatus = (watchedEpisodes, airedEpisodes, totalEpisodes, trackingStart
 const getNotificationSignature = (notification = {}) => (
   notification.type === 'new-season'
     ? `season|${notification.tmdbId}|${notification.seasonNumber}`
-    : `episode|${notification.title}|${notification.newEp}|${notification.updateDate || notification.date}`
+    : `episode|${notification.id || notification.title}|${notification.newEp}|${notification.updateDate || notification.date}`
 );
 
 const saveShow = async (formData) => {
@@ -686,6 +686,9 @@ const confirmDelete = async (id) => {
 };
 
 const clearNotifications = () => { notifications.value = []; };
+const markNotificationsRead = () => {
+  notifications.value = notifications.value.map(item => ({ ...item, read: true }));
+};
 const removeNotification = (index) => { notifications.value.splice(index, 1); };
 
 const syncData = async () => {
@@ -730,10 +733,9 @@ const applySyncNotifications = (data = {}) => {
   );
   const uniqueNewItems = incomingItems
     .filter(item => !existingSignatures.has(getNotificationSignature(item)))
-    .map(item => ({ ...item, uniqueId: Date.now() + Math.random() }));
+    .map(item => ({ ...item, read: false, uniqueId: Date.now() + Math.random() }));
   if (!uniqueNewItems.length) return;
   notifications.value = [...uniqueNewItems, ...notifications.value].slice(0, MAX_STORED_NOTIFICATIONS);
-  hasNewNotis.value = true;
 };
 
 const clearAutoSyncTimer = () => {

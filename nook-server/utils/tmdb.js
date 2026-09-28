@@ -18,7 +18,7 @@ const getTmdbMediaType = type => (
 
 const getAiredEpisodeCount = (data) => {
   const lastEpisode = data?.last_episode_to_air;
-  if (!lastEpisode) return Number(data?.number_of_episodes) || 0;
+  if (!lastEpisode) return 0;
 
   const previousSeasonEpisodes = (data.seasons || [])
     .filter(season => (
@@ -107,6 +107,11 @@ const getTmdbSeasonProgress = (seasonData = {}, seriesData = {}, options = {}) =
   const seasonNumber = Number(seasonData.season_number ?? options.seasonNumber);
   const today = getValidAirDate(options.today) || new Date().toISOString().slice(0, 10);
   const episodes = Array.isArray(seasonData.episodes) ? seasonData.episodes : [];
+  const lastConfirmed = seriesData.last_episode_to_air;
+  const confirmedSeason = Number(lastConfirmed?.season_number) || 0;
+  const confirmedLimit = confirmedSeason === seasonNumber
+    ? Math.max(0, Number(lastConfirmed.episode_number) || 0)
+    : confirmedSeason > seasonNumber ? Infinity : 0;
   const normalizedEpisodes = episodes
     .map(episode => ({
       episodeNumber: Number(episode.episode_number) || 0,
@@ -115,20 +120,22 @@ const getTmdbSeasonProgress = (seasonData = {}, seriesData = {}, options = {}) =
     }))
     .filter(episode => episode.episodeNumber > 0);
   const aired = normalizedEpisodes
-    .filter(episode => episode.airDate && episode.airDate <= today)
+    .filter(episode => episode.airDate && episode.airDate <= today && episode.episodeNumber <= confirmedLimit)
     .sort((left, right) => (
       left.airDate.localeCompare(right.airDate) || left.episodeNumber - right.episodeNumber
     ));
-  const future = normalizedEpisodes
-    .filter(episode => episode.airDate && episode.airDate > today)
+  // 日期已到但还未进入 last_episode_to_air 的集数仍然属于待播。
+  const pendingEpisodes = normalizedEpisodes
+    .filter(episode => episode.airDate && (episode.airDate > today || episode.episodeNumber > confirmedLimit))
     .sort((left, right) => (
       left.airDate.localeCompare(right.airDate) || left.episodeNumber - right.episodeNumber
     ));
   const latestAiredEpisode = aired.at(-1);
-  const airedEpisodes = aired.reduce(
+  const datedAiredEpisodes = aired.reduce(
     (maximum, episode) => Math.max(maximum, episode.episodeNumber),
     0
   );
+  const airedEpisodes = confirmedSeason === seasonNumber ? confirmedLimit : datedAiredEpisodes;
   const totalEpisodes = Math.max(
     Number(seasonData.episode_count) || 0,
     normalizedEpisodes.length,
@@ -161,7 +168,7 @@ const getTmdbSeasonProgress = (seasonData = {}, seriesData = {}, options = {}) =
       seriesLastAirDate <= today
     )
   );
-  const candidateNextAirDate = seriesNextAirDate || future[0]?.airDate || null;
+  const candidateNextAirDate = seriesNextAirDate || pendingEpisodes[0]?.airDate || null;
   const isEnded = (
     seasonFinaleAired ||
     (seriesEnded && !candidateNextAirDate) ||
@@ -169,7 +176,7 @@ const getTmdbSeasonProgress = (seasonData = {}, seriesData = {}, options = {}) =
   );
   const nextAirDate = isEnded ? null : candidateNextAirDate;
   const updateCount = nextAirDate
-    ? Math.max(1, future.filter(episode => episode.airDate === nextAirDate).length)
+    ? Math.max(1, pendingEpisodes.filter(episode => episode.airDate === nextAirDate).length)
     : 1;
   const updateDay = nextAirDate
     ? new Date(`${nextAirDate}T12:00:00.000Z`).getUTCDay()
@@ -181,7 +188,9 @@ const getTmdbSeasonProgress = (seasonData = {}, seriesData = {}, options = {}) =
     seasonName: seasonData.name || `第 ${seasonNumber} 季`,
     totalEpisodes,
     airedEpisodes,
-    lastAirDate: latestAiredEpisode?.airDate || null,
+    lastAirDate: confirmedSeason === seasonNumber
+      ? getValidAirDate(lastConfirmed.air_date) || latestAiredEpisode?.airDate || null
+      : latestAiredEpisode?.airDate || null,
     nextAirDate,
     updateFrequency: isEnded ? 'ended' : nextAirDate ? 'weekly' : 'unknown',
     updateDays: updateDay === null ? [] : [updateDay],

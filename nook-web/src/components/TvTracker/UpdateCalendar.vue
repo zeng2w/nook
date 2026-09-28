@@ -45,7 +45,7 @@
           </div>
         </div>
         
-        <span class="entry-status" :class="show.calendarEntry.type">{{ show.presentation.status }}</span>
+        <span class="entry-status" :class="[show.calendarEntry.type, show.presentation.state]">{{ show.presentation.status }}</span>
       </div>
     </div>
   </div>
@@ -146,6 +146,7 @@ const showsList = computed(() => {
 </script>
 
 <style scoped>
+.entry-status.confirmed.progress { color: #756b85; }
 /* ★ 1. 调低整体高度并减小内边距 */
 .update-calendar-widget {
   width: 100%; 

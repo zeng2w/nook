@@ -278,6 +278,8 @@ const formatEpisodeRange = (startEpisode, endEpisode) => {
 const getConfirmedHistoryEntry = (show, targetDate) => {
   const matches = Array.isArray(show?.episodeUpdateHistory)
     ? show.episodeUpdateHistory.filter(entry => isSameCalendarDay(entry?.date, targetDate))
+        .filter(entry => !Number.isFinite(show.airedEpisodes) || entry.startEpisode <= show.airedEpisodes)
+        .map(entry => ({ ...entry, endEpisode: Number.isFinite(show.airedEpisodes) ? Math.min(entry.endEpisode, show.airedEpisodes) : entry.endEpisode }))
     : [];
   if (matches.length === 0) return null;
 
@@ -345,6 +347,16 @@ export const getCalendarEpisodeEntry = (show, targetDate, referenceDate = new Da
 
   if (show.updateFrequency === 'ended' || !isShowUpdateDay(show, target)) return null;
 
+  // 今日排期尚未进入 API 已播进度时，不能因今天同步过就标为已更新。
+  if (targetDay === referenceDay && !show.scheduleLocked && isSameCalendarDay(target, show.nextAirDate)) {
+    const aired = Math.max(0, Number(show.airedEpisodes) || 0);
+    const end = aired + Math.max(1, Number(show.updateCount) || 1);
+    if (!show.totalEpisodes || aired < show.totalEpisodes) return {
+      episodeText: formatEpisodeRange(aired + 1, show.totalEpisodes ? Math.min(end, show.totalEpisodes) : end),
+      type: 'scheduled', statusText: '排期', confirmedAt: show.episodeProgressConfirmedAt || null
+    };
+  }
+
   const confirmedAt = toLocalConfirmationDate(show.episodeProgressConfirmedAt);
   const isCurrentProgress = targetDay === referenceDay && (
     !confirmedAt || isSameCalendarDay(confirmedAt, reference)
@@ -374,7 +386,7 @@ export const getCalendarEpisodeEntry = (show, targetDate, referenceDate = new Da
 // 侧栏和完整日历共用文案，避免把累计进度解释为当天新播。
 export const getCalendarEntryPresentation = (entry, date, today) => {
   const isToday = isSameCalendarDay(date, today);
-  const state = entry.type === 'confirmed' ? 'aired' : isToday ? 'pending' : 'upcoming';
+  const state = entry.type === 'confirmed' ? (entry.statusText === '已更' ? 'aired' : 'progress') : isToday ? 'pending' : 'upcoming';
   const status = entry.type === 'estimated' ? (isToday ? '今日预计' : '预计更新')
     : entry.type === 'scheduled' ? (isToday ? '今日待播' : '播出排期')
     : entry.statusText === '截至' ? '截至当日'

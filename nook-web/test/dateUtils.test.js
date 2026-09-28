@@ -28,6 +28,20 @@ test('confirmation instants use local dates on both sides of UTC', () => {
   }
 })
 
+test('today scheduled episodes stay pending after a successful sync with unchanged progress', () => {
+  const show = { airedEpisodes: 19, totalEpisodes: 30, updateCount: 1, updateFrequency: 'daily',
+    lastAirDate: '2026-09-25', nextAirDate: '2026-09-28', episodeProgressConfirmedAt: '2026-09-28T01:00:00Z' }
+  const entry = getCalendarEpisodeEntry(show, '2026-09-28', '2026-09-28')
+  assert.equal(entry.type, 'scheduled')
+  assert.equal(entry.episodeText, 'Ep 20')
+  show.episodeUpdateHistory = [{ date: '2026-09-28', kind: 'broadcast', startEpisode: 20, endEpisode: 21 }]
+  assert.equal(getCalendarEpisodeEntry(show, '2026-09-28', '2026-09-28').type, 'scheduled')
+  show.airedEpisodes = 20
+  const confirmed = getCalendarEpisodeEntry(show, '2026-09-28', '2026-09-28')
+  assert.equal(confirmed.type, 'confirmed')
+  assert.equal(confirmed.episodeText, 'Ep 20')
+})
+
 test('unknown broadcast dates are labeled as cumulative snapshots', () => {
   const entry = getCalendarEpisodeEntry({
     episodeUpdateHistory: [{date: '2026-09-25', startEpisode: 25, endEpisode: 25, kind: 'snapshot'}]
