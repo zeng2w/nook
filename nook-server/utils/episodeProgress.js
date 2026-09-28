@@ -101,7 +101,7 @@ const confirmEpisodeProgress = (show, airedEpisodes, options = {}) => {
     historyChanged = true;
   }
   if (current > 0 && eventDate && !datedEpisodes.some(episode => episode.episode_number === current) &&
-      (current !== previous || history.length === 0)) {
+      current !== previous) {
     mergeHistoryEntry(history, {
       date: eventDate,
       startEpisode: current,

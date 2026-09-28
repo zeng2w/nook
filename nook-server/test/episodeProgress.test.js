@@ -7,6 +7,19 @@ const {
   toCalendarDateKey
 } = require('../utils/episodeProgress');
 
+test('unchanged completed progress updates confirmation time without inventing a calendar event', () => {
+  const show = { airedEpisodes: 12, totalEpisodes: 12, updateFrequency: 'ended',
+    lastAirDate: '2025-01-01', episodeUpdateHistory: [] };
+  const result = confirmEpisodeProgress(show, 12, {
+    confirmedAt: '2026-09-28T08:00:00Z', confirmationDate: '2026-09-28',
+    eventDate: '2025-01-01', source: 'tmdb'
+  });
+  assert.equal(result.changed, false);
+  assert.equal(result.historyChanged, false);
+  assert.deepEqual(show.episodeUpdateHistory, []);
+  assert.equal(show.episodeProgressConfirmedAt.toISOString(), '2026-09-28T08:00:00.000Z');
+});
+
 test('catch-up sync records each episode on its own broadcast date', () => {
   const show = { airedEpisodes: 19, episodeUpdateHistory: [] };
   confirmEpisodeProgress(show, 25, {

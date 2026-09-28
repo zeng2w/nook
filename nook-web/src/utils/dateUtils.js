@@ -277,23 +277,16 @@ const formatEpisodeRange = (startEpisode, endEpisode) => {
 
 const getConfirmedHistoryEntry = (show, targetDate) => {
   const matches = Array.isArray(show?.episodeUpdateHistory)
-    ? show.episodeUpdateHistory.filter(entry => isSameCalendarDay(entry?.date, targetDate))
+    ? show.episodeUpdateHistory.filter(entry => entry?.kind !== 'snapshot' && isSameCalendarDay(entry?.date, targetDate))
         .filter(entry => !Number.isFinite(show.airedEpisodes) || entry.startEpisode <= show.airedEpisodes)
         .map(entry => ({ ...entry, endEpisode: Number.isFinite(show.airedEpisodes) ? Math.min(entry.endEpisode, show.airedEpisodes) : entry.endEpisode }))
     : [];
   if (matches.length === 0) return null;
 
   const confirmationTime = entry => new Date(entry.confirmedAt || 0).getTime() || 0;
-  const snapshots = matches.filter(entry => entry.kind === 'snapshot').sort((a, b) => confirmationTime(b) - confirmationTime(a));
-  const snapshot = snapshots[0];
-  const broadcasts = matches.filter(entry => entry.kind !== 'snapshot');
-  const latestBroadcastTime = Math.max(0, ...broadcasts.map(confirmationTime));
-  if (snapshot && (!broadcasts.length || confirmationTime(snapshot) > latestBroadcastTime)) return {
-    episodeText: `Ep ${snapshot.endEpisode}`,
-    type: 'confirmed',
-    statusText: '截至',
-    confirmedAt: snapshot.confirmedAt || show.episodeProgressConfirmedAt || null
-  };
+  // 快照只表示某次检查确认了累计进度，不是该日期的播出事件。
+  // 同时过滤已保存的旧快照，无需修改或迁移用户数据。
+  const broadcasts = matches;
 
   const ranges = broadcasts.map(entry => [Number(entry.startEpisode), Number(entry.endEpisode)])
     .filter(([start, end]) => Number.isInteger(start) && Number.isInteger(end) && start > 0 && end >= start)
@@ -331,7 +324,7 @@ export const getCalendarEpisodeEntry = (show, targetDate, referenceDate = new Da
   if (historyEntry && targetDay <= referenceDay) return historyEntry;
 
   if (targetDay < referenceDay) {
-    const hasHistory = Array.isArray(show.episodeUpdateHistory) && show.episodeUpdateHistory.length > 0;
+    const hasHistory = Array.isArray(show.episodeUpdateHistory) && show.episodeUpdateHistory.some(entry => entry.kind !== 'snapshot');
     if (!hasHistory && isSameCalendarDay(target, show.lastAirDate)) {
       const airedEpisodes = Math.max(0, Number(show.airedEpisodes) || 0);
       if (airedEpisodes <= 0) return null;
@@ -345,7 +338,9 @@ export const getCalendarEpisodeEntry = (show, targetDate, referenceDate = new Da
     return null;
   }
 
-  if (show.updateFrequency === 'ended' || !isShowUpdateDay(show, target)) return null;
+  const broadcastComplete = show.updateFrequency === 'ended' ||
+    (Number(show.totalEpisodes) > 0 && Number(show.airedEpisodes) >= Number(show.totalEpisodes));
+  if (broadcastComplete || !isShowUpdateDay(show, target)) return null;
 
   // 今日排期尚未进入 API 已播进度时，不能因今天同步过就标为已更新。
   if (targetDay === referenceDay && !show.scheduleLocked && isSameCalendarDay(target, show.nextAirDate)) {

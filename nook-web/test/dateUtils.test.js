@@ -42,23 +42,50 @@ test('today scheduled episodes stay pending after a successful sync with unchang
   assert.equal(confirmed.episodeText, 'Ep 20')
 })
 
-test('unknown broadcast dates are labeled as cumulative snapshots', () => {
+test('unknown broadcast dates do not turn progress snapshots into calendar events', () => {
   const entry = getCalendarEpisodeEntry({
     episodeUpdateHistory: [{date: '2026-09-25', startEpisode: 25, endEpisode: 25, kind: 'snapshot'}]
   }, '2026-09-25', '2026-09-26')
-  assert.equal(entry.statusText, '截至')
-  assert.equal(entry.episodeText, 'Ep 25')
+  assert.equal(entry, null)
 })
 
-test('new broadcast evidence supersedes an older snapshot, but a later correction wins', () => {
+test('snapshots never replace broadcast evidence and current progress still caps corrected history', () => {
   const snapshot = { date: '2026-09-26', kind: 'snapshot', startEpisode: 19, endEpisode: 19, confirmedAt: '2026-09-26T01:00:00Z' }
   const broadcast = { date: '2026-09-26', kind: 'broadcast', startEpisode: 20, endEpisode: 21, confirmedAt: '2026-09-26T09:00:00Z' }
   const show = { episodeUpdateHistory: [snapshot, broadcast] }
   assert.equal(getCalendarEpisodeEntry(show, '2026-09-26', '2026-09-26').episodeText, '20-21')
   snapshot.confirmedAt = '2026-09-26T10:00:00Z'
-  assert.equal(getCalendarEpisodeEntry(show, '2026-09-26', '2026-09-26').episodeText, 'Ep 19')
+  assert.equal(getCalendarEpisodeEntry(show, '2026-09-26', '2026-09-26').episodeText, '20-21')
   snapshot.confirmedAt = broadcast.confirmedAt
   assert.equal(getCalendarEpisodeEntry(show, '2026-09-26', '2026-09-26').episodeText, '20-21')
+  show.airedEpisodes = 20
+  assert.equal(getCalendarEpisodeEntry(show, '2026-09-26', '2026-09-26').episodeText, 'Ep 20')
+})
+
+test('completed shows ignore old sync snapshots but retain actual finale broadcasts', () => {
+  for (const status of ['watching', 'watched']) {
+    for (const updateFrequency of ['ended', 'daily']) {
+      const show = { status, updateFrequency, airedEpisodes: 12, totalEpisodes: 12,
+        lastAirDate: '2025-01-01', episodeProgressConfirmedAt: '2026-09-28T08:00:00Z',
+        episodeUpdateHistory: [{ date: '2026-09-28', kind: 'snapshot', startEpisode: 12, endEpisode: 12 }] }
+      assert.equal(getCalendarEpisodeEntry(show, '2026-09-28', '2026-09-28'), null)
+      assert.equal(getCalendarEpisodeEntry(show, '2026-09-29', '2026-09-28'), null)
+      assert.equal(getCalendarEpisodeEntry(show, '2026-09-28', '2026-09-29'), null)
+      // Old snapshots must not hide the legacy last-air-date fallback either.
+      assert.equal(getCalendarEpisodeEntry(show, '2025-01-01', '2026-09-28').episodeText, 'Ep 12')
+      show.episodeUpdateHistory.push({ date: '2026-09-28', kind: 'broadcast', startEpisode: 12, endEpisode: 12 })
+      assert.equal(getCalendarEpisodeEntry(show, '2026-09-28', '2026-09-28').statusText, '已更')
+      assert.equal(getCalendarEpisodeEntry(show, '2026-09-28', '2026-09-29').statusText, '已更')
+    }
+  }
+})
+
+test('a reopened season with a larger total and a next episode keeps its real schedule', () => {
+  const show = { status: 'watching', updateFrequency: 'weekly', updateDays: [2],
+    airedEpisodes: 12, totalEpisodes: 13, nextAirDate: '2026-09-29', lastAirDate: '2025-01-01',
+    episodeUpdateHistory: [{ date: '2026-09-28', kind: 'snapshot', startEpisode: 12, endEpisode: 12 }] }
+  assert.equal(getCalendarEpisodeEntry(show, '2026-09-29', '2026-09-28').type, 'scheduled')
+  assert.equal(getCalendarEpisodeEntry(show, '2026-09-29', '2026-09-28').episodeText, 'Ep 13')
 })
 
 test('history merges only adjacent or overlapping episode ranges', () => {
