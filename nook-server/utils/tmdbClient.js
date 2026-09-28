@@ -104,6 +104,14 @@ const tmdbGet = createTmdbGet(tmdbClient);
 const classifyTmdbError = (error) => {
   const upstreamStatus = error.response?.status;
 
+  if (error.code === 'TMDB_PROGRESS_UNAVAILABLE') {
+    return {
+      status: 502,
+      code: 'TMDB_PROGRESS_UNAVAILABLE',
+      message: 'TMDB 暂缺已更新集数的确认数据，已保留原有进度，请稍后重试。'
+    };
+  }
+
   if (error.code === 'TMDB_NOT_CONFIGURED' || upstreamStatus === 401) {
     return {
       status: 502,

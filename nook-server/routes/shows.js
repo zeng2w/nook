@@ -490,6 +490,11 @@ router.post('/sync', syncRateLimit, limitForcedSync, preventConcurrentSync, asyn
           if (tmdbRes.tmdbCache !== 'miss') cacheHitCount++;
 
           const remoteData = tmdbRes.data;
+          if (getAiredEpisodeCount(remoteData) === null) {
+            const error = new Error('TMDB episode confirmation is missing');
+            error.code = 'TMDB_PROGRESS_UNAVAILABLE';
+            throw error;
+          }
           const tmdbId = Number(show.tmdbId);
           const trackedSeasonNumber = normalizeSeasonNumber(show.seasonNumber);
           const highestTrackedSeason = highestTrackedSeasonByTmdb.get(tmdbId) || 0;

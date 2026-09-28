@@ -18,7 +18,11 @@ const getTmdbMediaType = type => (
 
 const getAiredEpisodeCount = (data) => {
   const lastEpisode = data?.last_episode_to_air;
-  if (!lastEpisode) return 0;
+  // 缺失确认数据不等于确认更新到 0 集，不能用于覆盖已有进度。
+  if (!Number.isInteger(Number(lastEpisode?.season_number)) ||
+      Number(lastEpisode?.season_number) < 1 ||
+      !Number.isInteger(Number(lastEpisode?.episode_number)) ||
+      Number(lastEpisode?.episode_number) < 1) return null;
 
   const previousSeasonEpisodes = (data.seasons || [])
     .filter(season => (
@@ -126,7 +130,7 @@ const getTmdbSeasonProgress = (seasonData = {}, seriesData = {}, options = {}) =
     ));
   // 日期已到但还未进入 last_episode_to_air 的集数仍然属于待播。
   const pendingEpisodes = normalizedEpisodes
-    .filter(episode => episode.airDate && (episode.airDate > today || episode.episodeNumber > confirmedLimit))
+    .filter(episode => episode.airDate && episode.episodeNumber > confirmedLimit)
     .sort((left, right) => (
       left.airDate.localeCompare(right.airDate) || left.episodeNumber - right.episodeNumber
     ));
@@ -135,7 +139,9 @@ const getTmdbSeasonProgress = (seasonData = {}, seriesData = {}, options = {}) =
     (maximum, episode) => Math.max(maximum, episode.episodeNumber),
     0
   );
-  const airedEpisodes = confirmedSeason === seasonNumber ? confirmedLimit : datedAiredEpisodes;
+  const airedEpisodes = getAiredEpisodeCount(seriesData) === null
+    ? null
+    : confirmedSeason === seasonNumber ? confirmedLimit : datedAiredEpisodes;
   const totalEpisodes = Math.max(
     Number(seasonData.episode_count) || 0,
     normalizedEpisodes.length,
@@ -143,7 +149,8 @@ const getTmdbSeasonProgress = (seasonData = {}, seriesData = {}, options = {}) =
   );
 
   const seriesNextEpisode = seriesData.next_episode_to_air;
-  const seriesNextAirDate = Number(seriesNextEpisode?.season_number) === seasonNumber
+  const seriesNextAirDate = Number(seriesNextEpisode?.season_number) === seasonNumber &&
+    Number(seriesNextEpisode?.episode_number) > (airedEpisodes ?? 0)
     ? getValidAirDate(seriesNextEpisode.air_date)
     : null;
   const latestStartedSeason = (seriesData.seasons || []).reduce((maximum, season) => {
@@ -170,7 +177,7 @@ const getTmdbSeasonProgress = (seasonData = {}, seriesData = {}, options = {}) =
   );
   const candidateNextAirDate = seriesNextAirDate || pendingEpisodes[0]?.airDate || null;
   const isEnded = (
-    seasonFinaleAired ||
+    (seasonFinaleAired && !candidateNextAirDate) ||
     (seriesEnded && !candidateNextAirDate) ||
     (hasLaterSeason && !candidateNextAirDate)
   );

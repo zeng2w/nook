@@ -89,7 +89,7 @@
           <div v-if="!isEditing && isSeasonLoading" class="season-summary loading">正在读取推荐季度的更新进度…</div>
           <div v-else-if="!isEditing && seasonSummary" class="season-summary" :class="{ ended: seasonSummary.isEnded }">
             <strong>{{ availableSeasons.length === 1 ? '已自动选择' : '当前选择' }}第 {{ seasonSummary.seasonNumber }} 季</strong>
-            <span>已更新至第 {{ seasonSummary.airedEpisodes }} 集 / 共 {{ seasonSummary.totalEpisodes }} 集</span>
+            <span>{{ seasonSummary.airedEpisodes == null ? '已更集数待确认' : `已更新至第 ${seasonSummary.airedEpisodes} 集` }} / 共 {{ seasonSummary.totalEpisodes }} 集</span>
             <span v-if="seasonSummary.isEnded" class="season-state">已完结</span>
             <span v-else-if="seasonSummary.nextAirDate" class="season-state">下集：{{ seasonSummary.nextAirDate }}</span>
             <span v-else class="season-state paused">暂无下一集日期</span>
